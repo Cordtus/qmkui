@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "0.1.0",
+  "id": "proj_example_60",
+  "name": "Example 60% Layout",
+  "createdAt": "2026-06-26T00:00:00.000Z",
+  "updatedAt": "2026-06-26T00:00:00.000Z",
+  "target": {
+    "keyboardId": "example/keyboard",
+    "qmkKeyboard": "example/keyboard",
+    "layoutId": "LAYOUT",
+    "qmkLayoutMacro": "LAYOUT",
+    "catalogVersion": "fixture-catalog-0.1.0"
+  },
+  "layers": [
+    {
+      "id": "layer_0",
+      "index": 0,
+      "name": "Base",
+      "enabled": true,
+      "assignments": [
+        {
+          "id": "a0",
+          "visualKeyId": "k00",
+          "matrix": { "row": 0, "col": 0 },
+          "kind": "basic",
+          "qmk": "KC_ESC"
+        },
+        {
+          "id": "a1",
+          "visualKeyId": "k01",
+          "matrix": { "row": 0, "col": 1 },
+          "kind": "basic",
+          "qmk": "KC_A"
+        },
+        {
+          "id": "a2",
+          "visualKeyId": "k02",
+          "matrix": { "row": 0, "col": 2 },
+          "kind": "layer",
+          "qmk": "MO(1)",
+          "params": { "targetLayer": 1 }
+        }
+      ]
+    },
+    {
+      "id": "layer_1",
+      "index": 1,
+      "name": "Fn",
+      "enabled": true,
+      "assignments": [
+        {
+          "id": "b0",
+          "visualKeyId": "k00",
+          "matrix": { "row": 0, "col": 0 },
+          "kind": "transparent",
+          "qmk": "KC_TRNS"
+        },
+        {
+          "id": "b1",
+          "visualKeyId": "k01",
+          "matrix": { "row": 0, "col": 1 },
+          "kind": "media",
+          "qmk": "KC_MUTE"
+        },
+        {
+          "id": "b2",
+          "visualKeyId": "k02",
+          "matrix": { "row": 0, "col": 2 },
+          "kind": "transparent",
+          "qmk": "KC_TRNS"
+        }
+      ]
+    }
+  ],
+  "macros": [],
+  "combos": [],
+  "tapDances": [],
+  "encoders": [],
+  "lightingProfiles": [],
+  "build": {
+    "mode": "localCli",
+    "keymapName": "example_60",
+    "outputPreference": "json",
+    "featureFlags": {}
+  },
+  "metadata": {
+    "notes": "Fixture project for non-hardware platform tests."
+  }
+}

@@ -1,0 +1,36 @@
+# Build and dependency output
+/target/
+/node_modules/
+/apps/desktop/node_modules/
+/apps/desktop/dist/
+/.vite/
+*.log
+
+# Local runtime data
+/apps/desktop/.local/
+/apps/desktop/public/doctor-readiness.local.json
+
+# Local credentials and environment overrides
+/.env
+/.env.*
+!/.env.example
+!/.env.*.example
+/.dev.vars
+/.dev.vars.*
+
+# Internal research and agent material
+/dev-docs/
+/docs/superpowers/
+/.agents/
+/.codex/
+/.superpowers/
+/deep-research-report.md
+/linux-qmk-platform-addendum.md
+/qmk-desktop-ui-docs.zip
+/scripts/refresh-qmk-ecosystem.sh
+
+# Common temporary artifacts
+*.tmp
+*.swp
+*.bak
+.DS_Store

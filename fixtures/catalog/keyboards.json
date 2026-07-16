@@ -1,0 +1,42 @@
+[
+  {
+    "id": "example/keyboard",
+    "qmkKeyboard": "example/keyboard",
+    "displayName": "Example 60% Test Board",
+    "manufacturer": "QMKUI Fixtures",
+    "aliases": ["daily test board", "fixture board"],
+    "usb": {
+      "vid": "FEED",
+      "pid": "6060"
+    },
+    "layouts": [
+      {
+        "id": "LAYOUT",
+        "qmkLayoutMacro": "LAYOUT",
+        "displayName": "Three Key Fixture",
+        "keys": [
+          { "id": "k00", "x": 0, "y": 0, "label": "Esc" },
+          { "id": "k01", "x": 1, "y": 0, "label": "A" },
+          { "id": "k02", "x": 2, "y": 0, "label": "Fn" }
+        ]
+      }
+    ],
+    "features": {
+      "backlight": { "support": "unknown" },
+      "rgblight": { "support": "unsupported", "reason": "Fixture has no RGB underglow metadata." },
+      "ledMatrix": { "support": "unsupported", "reason": "Fixture has no LED matrix metadata." },
+      "rgbMatrix": { "support": "unsupported", "reason": "Fixture has no RGB matrix metadata." },
+      "encoder": { "support": "unsupported", "reason": "Fixture layout has no encoders." },
+      "via": { "support": "unknown" },
+      "dynamicKeymap": { "support": "unknown" },
+      "rawHid": { "support": "unknown" },
+      "macros": { "support": "requiresBuild" },
+      "combos": { "support": "requiresCustomC" },
+      "tapDance": { "support": "requiresCustomC" }
+    },
+    "source": {
+      "kind": "fixture",
+      "version": "fixture-catalog-0.1.0"
+    }
+  }
+]

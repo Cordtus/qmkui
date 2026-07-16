@@ -1,0 +1,39 @@
+# Maintainer: QMKUI maintainers
+pkgname=qmkui-doctor-local
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Local Arch/Garuda software-readiness package for the QMKUI Doctor"
+arch=("x86_64")
+url="https://github.com/Cordtus/qmkui"
+license=("MIT")
+depends=(
+  "qmk"
+)
+makedepends=(
+  "cargo"
+)
+source=()
+sha256sums=()
+
+_local_source="${QMKUI_SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+
+pkgver() {
+  cd "$_local_source"
+  printf "0.1.0.r%s" "$(git rev-list --count HEAD 2>/dev/null || printf 0)"
+}
+
+build() {
+  cd "$_local_source"
+  cargo build --release -p qmkui-doctor
+}
+
+package() {
+  cd "$_local_source"
+  install -Dm755 target/release/qmkui-doctor "$pkgdir/usr/bin/qmkui-doctor"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/qmkui/README.md"
+  install -Dm644 CONTRIBUTING.md "$pkgdir/usr/share/doc/qmkui/CONTRIBUTING.md"
+  install -Dm644 THIRD_PARTY_NOTICES.md \
+    "$pkgdir/usr/share/doc/qmkui/THIRD_PARTY_NOTICES.md"
+  install -Dm644 packaging/arch/README.md "$pkgdir/usr/share/doc/qmkui/arch-packaging.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
