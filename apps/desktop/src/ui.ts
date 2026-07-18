@@ -60,9 +60,11 @@ import {
   createRecoveryBundle,
   createSafetyAssessment,
   createSafetyAuditReceipt,
+  importSafetyAuditReceiptJson,
   importRecoveryBundleJson,
   mergeSafetyLedgers,
   recoveryBundleMatchesKeyboard,
+  safetyAuditMatchesCurrent,
   serializeRecoveryBundle,
   serializeSafetyAuditReceipt,
   type SafetyAuditReceipt,
@@ -115,6 +117,14 @@ type EditorState = {
   now: () => string;
   pendingRecoveryBundle?: {
     bundle: RecoveryBundle;
+    ledger: import("./safety").SafetyLedger;
+    stage: "initial" | "final";
+    projectRevision: string;
+    deviceRevision: string;
+  };
+  pendingDecline?: {
+    ledger: import("./safety").SafetyLedger;
+    receipt: SafetyAuditReceipt;
     projectRevision: string;
     deviceRevision: string;
   };
@@ -309,7 +319,27 @@ function createActions(
           importProjectDraft: () => {
             try {
               const imported = projectFromDraft(state.projectJsonDraft);
+              if (imported.safetyAudit) {
+                if (state.safetyLedgerStorage.availability() !== "available") {
+                  state.projectStatus = "Safety audit could not be restored because the private safety ledger is unavailable.";
+                } else if (!safetyAuditMatchesCurrent(imported.safetyAudit, state.project, state.keyboard)) {
+                  state.projectStatus = "Safety audit does not match the current project and catalog definition; it was not restored.";
+                } else {
+                  state.safetyLedgerStorage.save(
+                    mergeSafetyLedgers(state.safetyLedgerStorage.load(), {
+                      version: 1,
+                      events: [imported.safetyAudit.event],
+                    }),
+                  );
+                  state.projectStatus = "Restored the saved backup-decline audit for the current project and device state.";
+                }
+                actions.render();
+                return;
+              }
               const importedProject = imported.project;
+              if (!importedProject) {
+                throw new Error("Imported content does not contain a project");
+              }
               const keyboard = keyboardForProject(importedProject);
               if (!keyboard) {
                 state.projectStatus = `Imported project target ${importedProject.target.qmkKeyboard} is not bundled.`;
@@ -357,6 +387,8 @@ function createActions(
               );
               state.pendingRecoveryBundle = {
                 bundle,
+                ledger: state.safetyLedgerStorage.load(),
+                stage: "initial",
                 projectRevision: assessment.projectRevision,
                 deviceRevision: assessment.deviceRevision,
               };
@@ -388,14 +420,28 @@ function createActions(
               return;
             }
             try {
-              state.safetyLedgerStorage.append(
-                "backupConfirmed",
-                state.project,
-                state.keyboard,
-                state.now(),
-              );
-              state.pendingRecoveryBundle = undefined;
-              state.projectStatus = `Recorded saved recovery bundle for ${state.project.name}.`;
+              if (pending.stage === "initial") {
+                const ledger = appendSafetyEvent(
+                  state.safetyLedgerStorage.load(),
+                  "backupConfirmed",
+                  state.project,
+                  state.keyboard,
+                  state.now(),
+                );
+                const bundle = createRecoveryBundle({
+                  project: state.project,
+                  keyboard: state.keyboard,
+                  ledger,
+                  createdAt: state.now(),
+                });
+                state.downloadRecoveryBundle(bundle);
+                state.pendingRecoveryBundle = { ...pending, bundle, ledger, stage: "final" };
+                state.projectStatus = "Final recovery record export started. Confirm that you saved this updated file.";
+              } else {
+                state.safetyLedgerStorage.save(pending.ledger);
+                state.pendingRecoveryBundle = undefined;
+                state.projectStatus = `Recorded saved recovery bundle for ${state.project.name}.`;
+              }
             } catch (error) {
               state.projectStatus = `Recovery confirmation failed: ${error instanceof Error ? error.message : "Unknown error"}.`;
             }
@@ -414,6 +460,18 @@ function createActions(
               actions.render();
               return;
             }
+            const assessment = createSafetyAssessment(
+              state.project,
+              state.keyboard,
+              validateProject(state.project, state.keyboard),
+              state.safetyLedgerStorage.load(),
+              state.safetyLedgerStorage.availability(),
+            );
+            if (assessment.state !== "backupRequired") {
+              state.projectStatus = "Re-check the current project and device state before recording a backup decline.";
+              actions.render();
+              return;
+            }
             const ledger = appendSafetyEvent(
               state.safetyLedgerStorage.load(),
               "backupDeclined",
@@ -428,14 +486,45 @@ function createActions(
               return;
             }
             try {
-              state.downloadSafetyAudit(
-                createSafetyAuditReceipt({
-                  project: state.project,
-                  keyboard: state.keyboard,
-                  event,
-                }),
+              const receipt = createSafetyAuditReceipt({
+                project: state.project,
+                keyboard: state.keyboard,
+                event,
+              });
+              state.downloadSafetyAudit(receipt);
+              state.pendingDecline = {
+                ledger,
+                receipt,
+                projectRevision: assessment.projectRevision,
+                deviceRevision: assessment.deviceRevision,
+              };
+              state.projectStatus = "Safety audit export started. Confirm that you saved the audit receipt.";
+            } catch (error) {
+              state.projectStatus = `Backup decline could not be recorded: ${error instanceof Error ? error.message : "Unknown error"}.`;
+            }
+            actions.render();
+          },
+          confirmDeclineAudit: () => {
+            try {
+              const pending = state.pendingDecline;
+              if (!pending) {
+                throw new Error("No safety audit export is awaiting confirmation");
+              }
+              const assessment = createSafetyAssessment(
+                state.project,
+                state.keyboard,
+                validateProject(state.project, state.keyboard),
+                state.safetyLedgerStorage.load(),
+                state.safetyLedgerStorage.availability(),
               );
-              state.safetyLedgerStorage.save(ledger);
+              if (
+                pending.projectRevision !== assessment.projectRevision ||
+                pending.deviceRevision !== assessment.deviceRevision
+              ) {
+                throw new Error("The project or catalog definition changed after the audit export");
+              }
+              state.safetyLedgerStorage.save(pending.ledger);
+              state.pendingDecline = undefined;
               state.projectStatus = "Recovery data declined for the current project and device state.";
             } catch (error) {
               state.projectStatus = `Backup decline could not be recorded: ${error instanceof Error ? error.message : "Unknown error"}.`;
@@ -510,6 +599,7 @@ type RenderActions = {
   confirmRecoveryBundle: () => void;
   updateBackupDeclineConfirmation: (field: "noBackup" | "responsibility", checked: boolean) => void;
   declineRecoveryBundle: () => void;
+  confirmDeclineAudit: () => void;
   updateSelectedLayerName: (name: string) => void;
   updateLightingMode: (mode: LightingProfile["mode"]) => void;
   updateLightingGlobal: (key: string, value: string | number | boolean) => void;
@@ -993,6 +1083,9 @@ function safetyRecoveryPanel(
   const pendingRecoveryMatchesCurrent =
     state.pendingRecoveryBundle?.projectRevision === assessment.projectRevision &&
     state.pendingRecoveryBundle.deviceRevision === assessment.deviceRevision;
+  const pendingDeclineMatchesCurrent =
+    state.pendingDecline?.projectRevision === assessment.projectRevision &&
+    state.pendingDecline.deviceRevision === assessment.deviceRevision;
   const card = element("section", {
     className: "project-card safety-recovery",
     attrs: { "data-safety-panel": "true" },
@@ -1006,7 +1099,11 @@ function safetyRecoveryPanel(
     element("p", { className: "muted", text: assessment.reason }),
   ]);
 
-  if (assessment.state !== "declined" && !pendingRecoveryMatchesCurrent) {
+  if (
+    assessment.state === "backupRequired" &&
+    !pendingRecoveryMatchesCurrent &&
+    !pendingDeclineMatchesCurrent
+  ) {
     const backup = uiButton({
       className: "secondary-action",
       text: "Download recovery bundle",
@@ -1027,7 +1124,10 @@ function safetyRecoveryPanel(
   if (pendingRecoveryMatchesCurrent && assessment.state === "backupRequired") {
     const confirm = uiButton({
       className: "secondary-action",
-      text: "Confirm saved recovery bundle",
+      text:
+        state.pendingRecoveryBundle?.stage === "initial"
+          ? "Confirm saved recovery bundle"
+          : "Confirm saved final recovery record",
       type: "button",
       attrs: { "data-safety-action": "confirm-backup" },
     });
@@ -1042,7 +1142,29 @@ function safetyRecoveryPanel(
     );
   }
 
-  if (assessment.state === "backupRequired" && !pendingRecoveryMatchesCurrent) {
+  if (assessment.state === "backupRequired" && pendingDeclineMatchesCurrent) {
+    const confirm = uiButton({
+      className: "secondary-action danger",
+      text: "Confirm saved decline audit",
+      type: "button",
+      attrs: { "data-safety-action": "confirm-decline-audit" },
+    });
+    confirm.addEventListener("click", actions.confirmDeclineAudit);
+    card.append(
+      element("p", {
+        className: "muted",
+        text: "Confirm only after the local safety-audit receipt is saved in a location you control.",
+        attrs: { "data-safety-recovery-guidance": "true" },
+      }),
+      element("div", { className: "project-actions" }, [confirm]),
+    );
+  }
+
+  if (
+    assessment.state === "backupRequired" &&
+    !pendingRecoveryMatchesCurrent &&
+    !pendingDeclineMatchesCurrent
+  ) {
     const noBackup = safetyConfirmation(
       "no-backup",
       "I choose not to create recovery data for this exact project and device state.",
@@ -2490,12 +2612,20 @@ function keyboardForProject(project: Project): KeyboardDefinition | undefined {
   );
 }
 
-function projectFromDraft(json: string): { project: Project; recoveryBundle?: RecoveryBundle } {
+function projectFromDraft(json: string): {
+  project?: Project;
+  recoveryBundle?: RecoveryBundle;
+  safetyAudit?: SafetyAuditReceipt;
+} {
   try {
     const recoveryBundle = importRecoveryBundleJson(json);
     return { project: recoveryBundle.project, recoveryBundle };
   } catch {
-    return { project: importProjectJson(json) };
+    try {
+      return { safetyAudit: importSafetyAuditReceiptJson(json) };
+    } catch {
+      return { project: importProjectJson(json) };
+    }
   }
 }
 
@@ -2538,6 +2668,10 @@ function openProject(
   keyboard: KeyboardDefinition,
   status: string,
 ): void {
+  state.pendingRecoveryBundle = undefined;
+  state.pendingDecline = undefined;
+  state.declineNoBackupConfirmed = false;
+  state.declineResponsibilityConfirmed = false;
   state.keyboard = structuredClone(keyboard);
   state.project = structuredClone(project);
   state.selectedLayerIndex = defaultSelectedLayerIndex(state.project);

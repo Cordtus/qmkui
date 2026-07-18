@@ -212,6 +212,38 @@ export function serializeSafetyAuditReceipt(receipt: SafetyAuditReceipt): string
   return `${JSON.stringify(receipt, null, 2)}\n`;
 }
 
+export function importSafetyAuditReceiptJson(json: string): SafetyAuditReceipt {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch (error) {
+    throw new Error("Safety audit JSON is invalid", { cause: error });
+  }
+
+  if (!isRecord(parsed) || parsed.format !== SAFETY_AUDIT_FORMAT || parsed.version !== 1) {
+    throw new Error("Safety audit format is not supported");
+  }
+  if (typeof parsed.createdAt !== "string" || typeof parsed.notice !== "string") {
+    throw new Error("Safety audit metadata is invalid");
+  }
+  const device = parseRecoveryDevice(parsed.device);
+  if (!isSafetyEvent(parsed.event) || parsed.event.kind !== "backupDeclined") {
+    throw new Error("Safety audit event is invalid");
+  }
+  if (parsed.createdAt !== parsed.event.occurredAt) {
+    throw new Error("Safety audit timestamps do not match");
+  }
+
+  return {
+    format: SAFETY_AUDIT_FORMAT,
+    version: SAFETY_AUDIT_VERSION,
+    createdAt: parsed.createdAt,
+    notice: parsed.notice,
+    device,
+    event: { ...parsed.event },
+  };
+}
+
 export function importRecoveryBundleJson(json: string): RecoveryBundle {
   let parsed: unknown;
   try {
@@ -263,6 +295,19 @@ export function recoveryBundleMatchesKeyboard(
   keyboard: KeyboardDefinition,
 ): boolean {
   return revisionFor(bundle.keyboard) === revisionFor(keyboard);
+}
+
+export function safetyAuditMatchesCurrent(
+  receipt: SafetyAuditReceipt,
+  project: Project,
+  keyboard: KeyboardDefinition,
+): boolean {
+  return (
+    matchesProjectTarget(project, keyboard) &&
+    revisionFor(receipt.device) === revisionFor(recoveryDeviceFor(project, keyboard)) &&
+    receipt.event.projectRevision === revisionFor(project) &&
+    receipt.event.deviceRevision === revisionFor(keyboard)
+  );
 }
 
 export function mergeSafetyLedgers(

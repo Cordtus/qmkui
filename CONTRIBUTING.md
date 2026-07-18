@@ -73,10 +73,12 @@ target validation, recovery path, and operator steps.
 
 Future write-capable code must remain disabled until it has an authoritative
 device profile and must use the safety foundation: current client-side project
-validation, a recovery bundle or explicit two-step backup decline, and a final
-operator review of every pending action. A past safety record applies only to
-the unchanged project/device-source state. Never infer a bootloader, recovery
-artifact, firmware revision, or device protocol from a generic profile.
+validation, a recovery bundle confirmed both before and after its final
+confirmation record is downloaded, or an explicit two-step backup decline with
+a saved audit receipt, and a final operator review of every pending action. A
+past safety record applies only to the unchanged project/device-source state.
+Never infer a bootloader, recovery artifact, firmware revision, or device
+protocol from a generic profile.
 
 Recovery bundles and browser ledger data are intentionally local-only plain
 JSON. Do not add network upload, analytics, USB serial-number collection, or
