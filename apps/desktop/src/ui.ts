@@ -662,9 +662,14 @@ function topbar(
   projectDetails.addEventListener("click", actions.openProjectDetails);
 
   return element("header", { className: "topbar" }, [
-    element("div", {}, [
+    element("div", { className: "project-heading" }, [
       element("p", { className: "eyebrow", text: state.keyboard.displayName }),
       element("h1", { text: state.project.name }),
+      element("p", {
+        className: "preview-boundary",
+        text: "Software-only preview · no device connection",
+        attrs: { "data-preview-boundary": "true" },
+      }),
     ]),
     element("div", { className: "topbar-actions" }, [
       save,

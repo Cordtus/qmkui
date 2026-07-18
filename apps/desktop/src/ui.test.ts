@@ -399,6 +399,16 @@ describe("desktop preview layer controls", () => {
     expect(root.querySelector(".status")?.textContent).toBe("Keymap valid");
   });
 
+  it("identifies the workspace as a software-only preview", () => {
+    const root = document.createElement("div");
+
+    createApp(root);
+
+    expect(root.querySelector("[data-preview-boundary]")?.textContent).toBe(
+      "Software-only preview · no device connection",
+    );
+  });
+
   it("uses the component layer for core controls and custom key elements", () => {
     const root = document.createElement("div");
 
