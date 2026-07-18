@@ -310,6 +310,33 @@ describe("lower workspace layout", () => {
     expect(layout.actions.top).toBeGreaterThanOrEqual(layout.workspace.top);
     expect(layout.actions.bottom).toBeLessThanOrEqual(layout.workspace.bottom);
   });
+
+  it("frames the keyboard canvas and preserves the inspector", async () => {
+    const page = await openPage({ width: 1440, height: 900 });
+
+    const layout = await page.locator("[data-workbench-surface]").evaluate((surface) => {
+      const canvas = surface.querySelector<HTMLElement>("[data-keyboard-canvas]");
+      const inspector = surface.querySelector<HTMLElement>("[data-key-info-panel]");
+      if (!canvas || !inspector) throw new Error("Missing workbench regions");
+      const canvasStyle = getComputedStyle(canvas);
+      const inspectorStyle = getComputedStyle(inspector);
+      return {
+        canvas: {
+          borderTopWidth: Number.parseFloat(canvasStyle.borderTopWidth),
+          overflowX: canvasStyle.overflowX,
+        },
+        inspector: {
+          borderLeftWidth: Number.parseFloat(inspectorStyle.borderLeftWidth),
+          overflowY: inspectorStyle.overflowY,
+        },
+      };
+    });
+
+    expect(layout.canvas.borderTopWidth).toBeGreaterThan(0);
+    expect(layout.canvas.overflowX).toBe("auto");
+    expect(layout.inspector.borderLeftWidth).toBeGreaterThan(0);
+    expect(["auto", "scroll"]).toContain(layout.inspector.overflowY);
+  });
 });
 
 async function openPage(viewport: { width: number; height: number }): Promise<Page> {

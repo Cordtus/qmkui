@@ -627,7 +627,7 @@ function rail(activeView: AppView, selectView: (view: AppView) => void): HTMLEle
     nav.append(button);
   });
 
-  return element("aside", { className: "rail" }, [
+  return element("aside", { className: "rail app-rail" }, [
     element("div", { className: "brand" }, [
       element("span", { className: "mark", text: "Q" }),
       element("div", {}, [
@@ -661,10 +661,15 @@ function topbar(
   });
   projectDetails.addEventListener("click", actions.openProjectDetails);
 
-  return element("header", { className: "topbar" }, [
-    element("div", {}, [
+  return element("header", { className: "topbar workspace-header" }, [
+    element("div", { className: "project-heading" }, [
       element("p", { className: "eyebrow", text: state.keyboard.displayName }),
       element("h1", { text: state.project.name }),
+      element("p", {
+        className: "preview-boundary",
+        text: "Software-only preview · no device connection",
+        attrs: { "data-preview-boundary": "true" },
+      }),
     ]),
     element("div", { className: "topbar-actions" }, [
       save,
@@ -893,15 +898,15 @@ function keyboardWorkspace(
   const boardPixelWidth = `${boardWidth}px`;
   const boardPixelHeight = `${boardHeight}px`;
   const canvas = element("div", {
-    className: "keyboard-scroll",
-    attrs: { "data-keyboard-canvas": "true" },
+    className: "keyboard-scroll keyboard-canvas",
+    attrs: { "aria-label": "Keyboard layout", "data-keyboard-canvas": "true" },
   }, [
     board(state, layout, actions.selectKey),
   ]);
   canvas.style.width = boardPixelWidth;
   canvas.style.height = boardPixelHeight;
   const stage = element("section", {
-    className: "keyboard-stage",
+    className: "keyboard-stage workbench-stage",
     attrs: { "data-keyboard-stage": "true" },
   }, [
     canvas,
@@ -934,9 +939,9 @@ function selectedKeyInfoPanel(
   const fallbackKey = layout.keys[0];
 
   return element("aside", {
-    className: "key-info-panel",
+    className: "key-info-panel workbench-inspector",
     attrs: {
-      "aria-label": "Selected key information",
+      "aria-label": "Selected key inspector",
       "data-key-info-panel": "true",
     },
   }, [
