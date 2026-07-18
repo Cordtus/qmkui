@@ -337,6 +337,59 @@ describe("lower workspace layout", () => {
     expect(layout.inspector.borderLeftWidth).toBeGreaterThan(0);
     expect(["auto", "scroll"]).toContain(layout.inspector.overflowY);
   });
+
+  it("uses sharp aligned control groups while giving the keymap priority", async () => {
+    const page = await openPage({ width: 1440, height: 900 });
+
+    const layout = await page.locator("body").evaluate((app) => {
+      const canvas = app.querySelector<HTMLElement>("[data-keyboard-canvas]");
+      const inspector = app.querySelector<HTMLElement>("[data-key-info-panel]");
+      const nav = app.querySelector<HTMLElement>(".app-rail nav");
+      const contextTabs = app.querySelector<HTMLElement>(".context-tabs");
+      const groups = [...app.querySelectorAll<HTMLElement>("[data-settings-group]")];
+      const firstKey = app.querySelector<HTMLElement>(".key");
+      if (!canvas || !inspector || !nav || !contextTabs || !firstKey || groups.length !== 2) {
+        throw new Error("Missing grouped editor controls");
+      }
+
+      const metrics = (element: HTMLElement) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          borderRadius: style.borderTopLeftRadius,
+          height: rect.height,
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+        };
+      };
+      const navItems = [...nav.querySelectorAll<HTMLElement>(".nav-item")].map(metrics);
+      return {
+        canvas: metrics(canvas),
+        contextTabs: metrics(contextTabs),
+        firstKey: metrics(firstKey),
+        groups: groups.map(metrics),
+        nav: {
+          gap: getComputedStyle(nav).gap,
+          items: navItems,
+        },
+        inspector: metrics(inspector),
+      };
+    });
+
+    expect(layout.canvas.width).toBeGreaterThan(1_000);
+    expect(layout.inspector.top).toBeGreaterThanOrEqual(layout.canvas.top + layout.canvas.height);
+    expect(layout.firstKey.width).toBeGreaterThan(50);
+    expect(layout.nav.gap).toBe("0px");
+    expect(layout.nav.items.every((item) => item.left === layout.nav.items[0].left && item.width === layout.nav.items[0].width)).toBe(true);
+    expect([
+      layout.canvas,
+      layout.contextTabs,
+      layout.inspector,
+      ...layout.groups,
+      ...layout.nav.items,
+    ].every((element) => element.borderRadius === "0px")).toBe(true);
+  }, 10_000);
 });
 
 async function openPage(viewport: { width: number; height: number }): Promise<Page> {
