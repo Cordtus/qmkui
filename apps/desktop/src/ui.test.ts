@@ -160,6 +160,31 @@ describe("desktop preview layer controls", () => {
     );
   });
 
+  it("ignores a stale protocol result after the user selects a different V5 Max session", async () => {
+    const root = document.createElement("div");
+    const firstVerification = deferred<{ version: 0x000c }>();
+    const firstSelection = v5MaxProtocolSelection(() => firstVerification.promise);
+    const secondSelection = v5MaxProtocolSelection(async () => ({ version: 0x000c }));
+    const selections = [firstSelection, secondSelection];
+
+    createApp(root, {
+      selectKeychronV5MaxDevice: async () => selections.shift()!,
+    });
+    root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
+    await flushDeviceSelection();
+    root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
+    await flushDeviceSelection();
+
+    root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
+    await flushDeviceSelection();
+    firstVerification.resolve({ version: 0x000c });
+    await flushDeviceSelection();
+
+    expect(root.querySelector("[data-device-state]")?.textContent).toBe(
+      "Keychron V5 Max ANSI Knob recognized. Verify its observed protocol version before any future device work.",
+    );
+  });
+
   it("reports a cancelled Keychron chooser without claiming the browser lacks WebHID", async () => {
     const root = document.createElement("div");
 
@@ -1250,6 +1275,24 @@ function readDefinition(root: HTMLElement, term: string): string | undefined {
     (candidate) => candidate.querySelector("dt")?.textContent === term,
   );
   return row?.querySelector("dd")?.textContent ?? undefined;
+}
+
+function v5MaxProtocolSelection(
+  verifyProtocolVersion: () => Promise<{ version: 0x000c }>,
+): Extract<KeychronV5MaxBrowserSelection, { state: "selected"; contract: { state: "partial" } }> {
+  return {
+    state: "selected",
+    identity: {
+      vendorId: 0x3434,
+      productId: 0x0950,
+      collections: [{ usagePage: 0xff60, usage: 0x0061 }],
+    },
+    contract: {
+      state: "partial",
+      capabilities: { protocolVersion: true, read: false, write: false, flash: false },
+    },
+    session: { verifyProtocolVersion },
+  };
 }
 
 function deferred<T>(): {
