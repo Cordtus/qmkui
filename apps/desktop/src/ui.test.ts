@@ -7,6 +7,8 @@ import {
   appendSafetyEvent,
   createEmptySafetyLedger,
   createRecoveryBundle,
+  createSafetyAuditReceipt,
+  serializeSafetyAuditReceipt,
   serializeRecoveryBundle,
   type RecoveryBundle,
 } from "./safety";
@@ -924,6 +926,14 @@ describe("desktop preview layer controls", () => {
     expect(safetyLedgerStorage.load().events).toHaveLength(0);
     root.querySelector<HTMLButtonElement>('[data-safety-action="confirm-backup"]')?.click();
 
+    expect(downloadedBundles).toHaveLength(2);
+    expect(downloadedBundles[1].ledger.events.at(-1)?.kind).toBe("backupConfirmed");
+    expect(safetyLedgerStorage.load().events).toHaveLength(0);
+    expect(root.querySelector('[data-safety-action="confirm-backup"]')?.textContent).toContain(
+      "final recovery record",
+    );
+    root.querySelector<HTMLButtonElement>('[data-safety-action="confirm-backup"]')?.click();
+
     expect(safetyLedgerStorage.load().events.at(-1)?.kind).toBe("backupConfirmed");
     expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup recorded");
   });
@@ -955,12 +965,41 @@ describe("desktop preview layer controls", () => {
     responsibility!.dispatchEvent(new Event("change", { bubbles: true }));
     root.querySelector<HTMLButtonElement>('[data-safety-action="decline"]')?.click();
 
-    expect(safetyLedgerStorage.load().events.at(-1)?.kind).toBe("backupDeclined");
+    expect(safetyLedgerStorage.load().events).toHaveLength(0);
     expect(auditReceipts).toEqual([
       expect.objectContaining({ event: expect.objectContaining({ kind: "backupDeclined" }) }),
     ]);
+    root.querySelector<HTMLButtonElement>('[data-safety-action="confirm-decline-audit"]')?.click();
+
+    expect(safetyLedgerStorage.load().events.at(-1)?.kind).toBe("backupDeclined");
     expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup declined");
     expect(root.querySelector('[data-safety-recovery-guidance]')).toBeNull();
+  });
+
+  it("restores a saved decline audit only for the exact open project and catalog definition", () => {
+    const root = document.createElement("div");
+    const safetyLedgerStorage = createSafetyLedgerStorage(createMemoryStorage());
+    const ledger = appendSafetyEvent(
+      createEmptySafetyLedger(),
+      "backupDeclined",
+      keychronV5MaxProject,
+      keychronV5MaxKeyboard,
+      "2026-07-17T20:00:00.000Z",
+    );
+    const receipt = createSafetyAuditReceipt({
+      project: keychronV5MaxProject,
+      keyboard: keychronV5MaxKeyboard,
+      event: ledger.events[0],
+    });
+
+    createApp(root, { safetyLedgerStorage });
+    const draft = root.querySelector<HTMLTextAreaElement>('[data-focus-id="project-json-draft"]');
+    draft!.value = serializeSafetyAuditReceipt(receipt);
+    draft!.dispatchEvent(new Event("input", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-project-action="import"]')?.click();
+
+    expect(safetyLedgerStorage.load().events.at(-1)?.kind).toBe("backupDeclined");
+    expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup declined");
   });
 
   it("requires a new backup when the edited project changes after a prior backup", () => {
@@ -970,6 +1009,7 @@ describe("desktop preview layer controls", () => {
     createApp(root, { safetyLedgerStorage, downloadRecoveryBundle: () => undefined });
     root.querySelector<HTMLButtonElement>('[data-diagnostics-action="open"]')?.click();
     root.querySelector<HTMLButtonElement>('[data-safety-action="backup"]')?.click();
+    root.querySelector<HTMLButtonElement>('[data-safety-action="confirm-backup"]')?.click();
     root.querySelector<HTMLButtonElement>('[data-safety-action="confirm-backup"]')?.click();
 
     root.querySelector<HTMLButtonElement>('[data-diagnostics-action="close"]')?.click();

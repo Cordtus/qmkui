@@ -46,9 +46,12 @@ workflow. A project recovery export restores the project without a connected key
 paste its JSON into **Project JSON** and choose **Import draft**. Keep any
 vendor recovery firmware separately, matched to the exact model and firmware.
 
-After downloading an export, confirm that you saved it before QMKUI records it
-as a usable backup. Declining recovery data requires two confirmations and
-downloads a local safety-audit receipt before recording the decline. QMKUI then
+After downloading an export, confirm that you saved it. QMKUI then downloads a
+final recovery record containing that confirmation; confirm saving that final
+file before it is recorded locally. Declining recovery data requires two
+confirmations, then a saved local safety-audit receipt before the decline is
+recorded. Paste a saved audit receipt into **Project JSON** to restore that
+exact decline on the same project and bundled catalog definition. QMKUI then
 does not show recovery guidance for that run. A changed project, complete
 bundled catalog definition, missing ledger, or corrupted ledger requires a new
 backup or acknowledgement. There is currently no device-write path.

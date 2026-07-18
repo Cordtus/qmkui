@@ -6,9 +6,13 @@ import {
   createEmptySafetyLedger,
   createRecoveryBundle,
   createSafetyAssessment,
+  createSafetyAuditReceipt,
+  importSafetyAuditReceiptJson,
   importRecoveryBundleJson,
   mergeSafetyLedgers,
   recoveryBundleMatchesKeyboard,
+  safetyAuditMatchesCurrent,
+  serializeSafetyAuditReceipt,
   serializeRecoveryBundle,
 } from "./safety";
 
@@ -162,6 +166,29 @@ describe("safety foundation", () => {
     changedKeyboard.layouts[0].keys[0].matrix = { row: 9, col: 9 };
 
     expect(recoveryBundleMatchesKeyboard(bundle, changedKeyboard)).toBe(false);
+  });
+
+  it("round-trips a decline audit and only applies it to its exact current state", () => {
+    const project = structuredClone(keychronV5MaxProject);
+    const ledger = appendSafetyEvent(
+      createEmptySafetyLedger(),
+      "backupDeclined",
+      project,
+      keychronV5MaxKeyboard,
+      "2026-07-17T20:00:00.000Z",
+    );
+    const receipt = createSafetyAuditReceipt({
+      project,
+      keyboard: keychronV5MaxKeyboard,
+      event: ledger.events[0],
+    });
+    const restored = importSafetyAuditReceiptJson(serializeSafetyAuditReceipt(receipt));
+    const editedProject = structuredClone(project);
+    editedProject.layers[0].assignments[0].qmk = "KC_F13";
+
+    expect(restored.event).toEqual(ledger.events[0]);
+    expect(safetyAuditMatchesCurrent(restored, project, keychronV5MaxKeyboard)).toBe(true);
+    expect(safetyAuditMatchesCurrent(restored, editedProject, keychronV5MaxKeyboard)).toBe(false);
   });
 
   it("merges imported safety history without reusing conflicting sequence numbers", () => {
