@@ -1,9 +1,12 @@
 # QMKUI
 
 QMKUI is an early QMK keyboard project editor. In Chrome, Edge, or Opera, the
-public app can ask you to select the exact wired **Keychron V5 Max ANSI Knob**
-and recognize its static HID identity. After recognition, it can perform only
-one bounded read-only check: verify the observed VIA protocol version
+public app checks at launch for HID devices you have already allowed this
+site to access; it does not assume the connected keyboard is a Keychron V5
+Max. Use **Choose keyboard** to identify a newly connected device in the
+browser prompt. QMKUI inspects only its static HID identity until it recognizes
+the exact wired **Keychron V5 Max ANSI Knob**. After recognition, it can
+perform one bounded read-only check: verify the observed VIA protocol version
 (`0x000c`). It does not read keymaps or configuration, write configuration,
 run a QMK compile, enter a bootloader, flash firmware, or write device state.
 
@@ -12,9 +15,10 @@ The public instance is available at
 Actions uses local self-hosted runners to deploy the same audited static
 artifact built and previewed with the commands below.
 
-The current real editing preset is the **Keychron V5 Max ANSI Knob**. A small
-synthetic keyboard definition is also bundled for automated tests; it is not a
-supported hardware target.
+The current real editing preset is the **Keychron V5 Max ANSI Knob**. It is an
+offline project template until its exact hardware identity is recognized. A
+small synthetic keyboard definition is also bundled for automated tests; it is
+not a supported hardware target.
 
 ## What works
 
@@ -22,10 +26,12 @@ supported hardware target.
 - Configure local RGB Matrix preview profiles from the preset's capabilities.
 - Validate a project, then download its QMK JSON for handoff to your local QMK
   build workflow.
-- Select the exact wired Keychron V5 Max ANSI Knob in a supported browser,
-  then verify its observed protocol version (`0x000c`). This sends one
-  32-byte version request and accepts only its matching 32-byte response; it
-  does not read or change keyboard configuration.
+- Detect a previously allowed HID device at launch, or choose a keyboard in
+  a supported browser, and accurately show unsupported hardware as unsupported.
+- Recognize the exact wired Keychron V5 Max ANSI Knob, then verify its observed
+  protocol version (`0x000c`). This sends one 32-byte version request and
+  accepts only its matching 32-byte response; it does not read or change
+  keyboard configuration.
 - Save, reopen, rename, duplicate, delete, import, and export app project JSON
   in the current browser session.
 - Restore a valid app-native recovery bundle. Its prior safety history is

@@ -12,7 +12,7 @@ import {
   serializeRecoveryBundle,
 } from "./safety";
 import { createSafetyLedgerStorage } from "./safetyStorage";
-import type { KeychronV5MaxBrowserSelection } from "./devices/keychronV5MaxBrowser";
+import type { BrowserKeyboardSelection } from "./devices/browserKeyboardDiscovery";
 import { createApp } from "./ui";
 
 afterEach(() => {
@@ -48,27 +48,32 @@ describe("desktop preview layer controls", () => {
     expect(root.querySelector('[data-key="v5_001"]')).not.toBeNull();
   });
 
-  it("offers an exact Keychron V5 Max chooser instead of a generic device control", () => {
+  it("discovers previously authorized keyboards without assuming the V5 Max", async () => {
     const root = document.createElement("div");
+    const discoverBrowserKeyboard = vi.fn(async (): Promise<BrowserKeyboardSelection> => ({
+      state: "no-authorized-device",
+    }));
 
-    createApp(root);
+    createApp(root, { discoverBrowserKeyboard });
+    await flushDeviceSelection();
 
     const workflow = root.querySelector<HTMLElement>("[data-editor-workflow]");
     expect(workflow?.textContent).toContain("Download QMK JSON");
     expect(root.querySelector('[data-device-action="connect"]')?.textContent).toBe(
-      "Identify Keychron V5 Max",
+      "Choose keyboard",
     );
     expect(root.querySelector("[data-device-state]")?.textContent).toBe(
-      "Select the wired Keychron V5 Max ANSI Knob to identify it. The app does not open it or grant configuration access.",
+      "No previously allowed HID device was found. Choose a keyboard to identify it; no configuration will be read or changed.",
     );
+    expect(discoverBrowserKeyboard).toHaveBeenCalledOnce();
     expect(root.querySelector('[data-device-action="read"]')).toBeNull();
     expect(root.querySelector('[data-device-action="write"]')).toBeNull();
     expect(root.querySelector('[data-device-action="flash"]')).toBeNull();
   });
 
-  it("shows the recognized V5 Max identity after the injected chooser returns the exact partial target", async () => {
+  it("shows the recognized V5 Max identity after launch discovery finds the exact partial target", async () => {
     const root = document.createElement("div");
-    const selection: KeychronV5MaxBrowserSelection = {
+    const selection: BrowserKeyboardSelection = {
       state: "selected",
       identity: {
         vendorId: 0x3434,
@@ -82,8 +87,7 @@ describe("desktop preview layer controls", () => {
       session: { verifyProtocolVersion: async () => ({ version: 0x000c }) },
     };
 
-    createApp(root, { selectKeychronV5MaxDevice: async () => selection });
-    root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
     await flushDeviceSelection();
 
     expect(root.querySelector("[data-device-state]")?.textContent).toContain(
@@ -100,7 +104,7 @@ describe("desktop preview layer controls", () => {
   it("reports the captured protocol version through an injected selected-device session without exposing device configuration controls", async () => {
     const root = document.createElement("div");
     const verifyProtocolVersion = vi.fn(async () => ({ version: 0x000c as const }));
-    const selection: KeychronV5MaxBrowserSelection = {
+    const selection: BrowserKeyboardSelection = {
       state: "selected",
       identity: {
         vendorId: 0x3434,
@@ -114,7 +118,10 @@ describe("desktop preview layer controls", () => {
       session: { verifyProtocolVersion },
     };
 
-    createApp(root, { selectKeychronV5MaxDevice: async () => selection });
+    createApp(root, {
+      discoverBrowserKeyboard: async () => ({ state: "no-authorized-device" }),
+      chooseBrowserKeyboard: async () => selection,
+    });
     root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
     await flushDeviceSelection();
     root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
@@ -131,7 +138,7 @@ describe("desktop preview layer controls", () => {
 
   it("keeps protocol verification retry-safe when the selected-device session rejects", async () => {
     const root = document.createElement("div");
-    const selection: KeychronV5MaxBrowserSelection = {
+    const selection: BrowserKeyboardSelection = {
       state: "selected",
       identity: {
         vendorId: 0x3434,
@@ -145,7 +152,10 @@ describe("desktop preview layer controls", () => {
       session: { verifyProtocolVersion: async () => Promise.reject(new Error("no response")) },
     };
 
-    createApp(root, { selectKeychronV5MaxDevice: async () => selection });
+    createApp(root, {
+      discoverBrowserKeyboard: async () => ({ state: "no-authorized-device" }),
+      chooseBrowserKeyboard: async () => selection,
+    });
     root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
     await flushDeviceSelection();
     root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
@@ -167,7 +177,8 @@ describe("desktop preview layer controls", () => {
     const selections = [firstSelection, secondSelection];
 
     createApp(root, {
-      selectKeychronV5MaxDevice: async () => selections.shift()!,
+      discoverBrowserKeyboard: async () => ({ state: "no-authorized-device" }),
+      chooseBrowserKeyboard: async () => selections.shift()!,
     });
     root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
     await flushDeviceSelection();
@@ -184,11 +195,12 @@ describe("desktop preview layer controls", () => {
     );
   });
 
-  it("reports a cancelled Keychron chooser without claiming the browser lacks WebHID", async () => {
+  it("reports a cancelled generic keyboard chooser without claiming the browser lacks WebHID", async () => {
     const root = document.createElement("div");
 
     createApp(root, {
-      selectKeychronV5MaxDevice: async () => {
+      discoverBrowserKeyboard: async () => ({ state: "no-authorized-device" }),
+      chooseBrowserKeyboard: async () => {
         throw new Error("chooser cancelled");
       },
     });
@@ -196,11 +208,39 @@ describe("desktop preview layer controls", () => {
     await flushDeviceSelection();
 
     expect(root.querySelector("[data-device-state]")?.textContent).toBe(
-      "Keychron chooser was cancelled or did not complete. Try again when you are ready.",
+      "Keyboard chooser was cancelled or did not complete. Try again when you are ready.",
     );
   });
 
-  it("keeps the V5 Max chooser available when validation blocks QMK JSON download", () => {
+  it("reports an unsupported selected keyboard without exposing V5-specific device actions", async () => {
+    const root = document.createElement("div");
+
+    createApp(root, {
+      discoverBrowserKeyboard: async () => ({ state: "no-authorized-device" }),
+      chooseBrowserKeyboard: async () => ({
+        state: "selected",
+        identity: {
+          vendorId: 0xfeed,
+          productId: 0xbeef,
+          productName: "Example keyboard",
+          collections: [{ usagePage: 0x0001, usage: 0x0006 }],
+        },
+        contract: { state: "unsupported" },
+      }),
+    });
+    await flushDeviceSelection();
+    root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
+    await flushDeviceSelection();
+
+    expect(root.querySelector("[data-device-state]")?.textContent).toBe(
+      "Example keyboard was detected, but QMKUI does not currently support configuration for it.",
+    );
+    ["verify-protocol", "read", "write", "flash"].forEach((action) => {
+      expect(root.querySelector(`[data-device-action="${action}"]`)).toBeNull();
+    });
+  });
+
+  it("keeps keyboard detection available when validation blocks QMK JSON download", () => {
     const root = document.createElement("div");
 
     createApp(root, {
@@ -211,7 +251,7 @@ describe("desktop preview layer controls", () => {
     });
 
     expect(root.querySelector('[data-device-action="connect"]')?.textContent).toBe(
-      "Identify Keychron V5 Max",
+      "Choose keyboard",
     );
   });
 
@@ -1258,7 +1298,7 @@ function readDefinition(root: HTMLElement, term: string): string | undefined {
 
 function v5MaxProtocolSelection(
   verifyProtocolVersion: () => Promise<{ version: 0x000c }>,
-): Extract<KeychronV5MaxBrowserSelection, { state: "selected"; contract: { state: "partial" } }> {
+): Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "partial" } }> {
   return {
     state: "selected",
     identity: {
