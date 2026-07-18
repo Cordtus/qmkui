@@ -62,7 +62,16 @@ describe("lower workspace layout", () => {
         actions: bounds("[data-layer-actions]"),
         actionButtons: [...actions.querySelectorAll<HTMLElement>("[data-layer-action]")].map((button) => {
           const rect = button.getBoundingClientRect();
-          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+          return {
+            clientWidth: button.clientWidth,
+            scrollWidth: button.scrollWidth,
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height,
+          };
         }),
       };
     });
@@ -73,6 +82,7 @@ describe("lower workspace layout", () => {
     expect(isContained(layout.actions, layout.layerStrip)).toBe(true);
     expect(layout.actionButtons).toHaveLength(2);
     expect(layout.actionButtons.every((button) => button.width > 0 && button.height > 0 && isContained(button, layout.actions))).toBe(true);
+    expect(layout.actionButtons.every((button) => button.scrollWidth <= button.clientWidth)).toBe(true);
   });
 
   it("stacks lower groups without horizontal page overflow on a narrow viewport", async () => {
@@ -98,7 +108,11 @@ describe("lower workspace layout", () => {
         layerName: bounds(layerName),
         actions: bounds(actions),
         contextDock: bounds(contextDock),
-        buttons: [...actions.querySelectorAll<HTMLElement>("[data-layer-action]")].map(bounds),
+        buttons: [...actions.querySelectorAll<HTMLElement>("[data-layer-action]")].map((button) => ({
+          ...bounds(button),
+          clientWidth: button.clientWidth,
+          scrollWidth: button.scrollWidth,
+        })),
         overflowY: getComputedStyle(controls).overflowY,
         scrollHeight: controls.scrollHeight,
         clientHeight: controls.clientHeight,
@@ -114,6 +128,7 @@ describe("lower workspace layout", () => {
     expect(isContained(layout.layerName, layout.layerTools)).toBe(true);
     expect(isContained(layout.actions, layout.layerTools)).toBe(true);
     expect(layout.buttons.every((button) => button.width > 0 && button.height > 0 && isContained(button, layout.actions))).toBe(true);
+    expect(layout.buttons.every((button) => button.scrollWidth <= button.clientWidth)).toBe(true);
     expect(layout.actions.top).toBeGreaterThanOrEqual(layout.layerName.bottom);
     expect(layout.overflowY).toBe("auto");
     expect(layout.scrollHeight).toBeGreaterThan(layout.clientHeight);

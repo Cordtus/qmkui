@@ -3,6 +3,7 @@
 /node_modules/
 /apps/desktop/node_modules/
 /apps/desktop/dist/
+/.cache/
 /.vite/
 *.log
 

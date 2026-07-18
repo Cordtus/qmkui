@@ -5,11 +5,14 @@ root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "$root_dir"
 
+export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$root_dir/.cache/ms-playwright}"
+
 cargo fmt --all -- --check
 cargo test --workspace
 cargo build --workspace
 
 npm --prefix apps/desktop ci
+npm --prefix apps/desktop exec playwright install chromium
 npm --prefix apps/desktop test
 npm --prefix apps/desktop run build
 scripts/test-public-packaging.sh
