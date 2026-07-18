@@ -32,7 +32,6 @@ tool readiness, but it does not run a QMK compile or flash command.
 
 - Node.js 24 and npm
 - Stable Rust with `rustfmt` and `clippy`
-- ripgrep (`rg`), used by the public-build audit
 - Linux for the optional read-only hardware probe
 
 The browser app itself can be built and served without QMK CLI or connected

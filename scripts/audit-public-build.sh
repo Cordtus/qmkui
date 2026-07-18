@@ -45,8 +45,8 @@ if ! cmp -s "$canonical_notices" "$build_dir/THIRD_PARTY_NOTICES.md"; then
   exit 1
 fi
 
-if ! command -v rg >/dev/null 2>&1; then
-  printf 'Public build audit failed: rg is required.\n' >&2
+if ! command -v grep >/dev/null 2>&1; then
+  printf 'Public build audit failed: grep is required.\n' >&2
   exit 2
 fi
 
@@ -85,7 +85,7 @@ done <"$path_manifest"
 leak_pattern='/home/|/Users/|doctor-readiness\.local\.json|/sys/bus/usb/devices|nodev2|gh-runner-'
 
 if scan_output="$(
-  rg --no-config -n -a --hidden --no-ignore -o -e "$leak_pattern" "$build_dir" 2>&1
+  grep -a -r -n -E -o -- "$leak_pattern" "$build_dir" 2>&1
 )"; then
   scan_status=0
 else
@@ -105,7 +105,7 @@ case "$scan_status" in
     if [[ -n "$scan_output" ]]; then
       printf '%s\n' "$scan_output" >&2
     fi
-    printf 'Public build audit failed: rg exited with status %s while scanning %s\n' \
+    printf 'Public build audit failed: grep exited with status %s while scanning %s\n' \
       "$scan_status" "$build_dir" >&2
     exit "$scan_status"
     ;;
