@@ -100,6 +100,24 @@ describe("desktop preview layer controls", () => {
     expect(downloads).toHaveLength(1);
   });
 
+  it("downloads the current key assignment after editing it in the editor", () => {
+    const downloads: unknown[] = [];
+    const root = document.createElement("div");
+
+    createApp(root, { downloadQmkJson: (output) => downloads.push(output) });
+    root.querySelector<HTMLButtonElement>('[data-key="v5_001"]')?.click();
+    const keycodeInput = root.querySelector<HTMLInputElement>(
+      '[data-focus-id="selected-keycode"]',
+    );
+    keycodeInput!.value = "KC_F13";
+    keycodeInput!.dispatchEvent(new Event("input", { bubbles: true }));
+
+    root.querySelector<HTMLButtonElement>('[data-qmk-action="download"]')?.click();
+
+    const output = downloads[0] as ReturnType<typeof exportQmkJson>;
+    expect(output.layers[2][1]).toBe("KC_F13");
+  });
+
   it("labels the computer keyboard capture tool as a host key test", () => {
     const root = document.createElement("div");
 

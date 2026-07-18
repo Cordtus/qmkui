@@ -2,8 +2,8 @@
 
 QMKUI is an early, software-only keyboard project editor for QMK. The public
 app is a static browser application: it does not connect to a keyboard, open
-HID or serial devices, enter a bootloader, flash firmware, or write device
-state.
+HID or serial devices, run a QMK compile, enter a bootloader, flash firmware,
+or write device state.
 
 The public instance is available at
 [https://cordtus.github.io/qmkui/](https://cordtus.github.io/qmkui/). GitHub
@@ -18,7 +18,8 @@ supported hardware target.
 
 - Edit key assignments and layers for the Keychron V5 Max ANSI Knob preset.
 - Configure local RGB Matrix preview profiles from the preset's capabilities.
-- Validate a project and inspect its generated QMK JSON.
+- Validate a project, then download its QMK JSON for handoff to your local QMK
+  build workflow.
 - Inspect, edit, and import an app-native project JSON draft.
 - Download and restore an app-native project recovery export containing the
   project, its exact bundled catalog definition, and its safety history.
