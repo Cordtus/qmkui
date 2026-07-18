@@ -24,6 +24,7 @@
 /.agents/
 /.codex/
 /.superpowers/
+/.worktrees/
 /deep-research-report.md
 /linux-qmk-platform-addendum.md
 /qmk-desktop-ui-docs.zip
