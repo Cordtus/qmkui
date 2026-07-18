@@ -56,17 +56,11 @@ import {
   type ProjectSummary,
 } from "./projectStorage";
 import {
-  appendSafetyEvent,
-  createRecoveryBundle,
-  createSafetyAssessment,
-  createSafetyAuditReceipt,
   importSafetyAuditReceiptJson,
   importRecoveryBundleJson,
   mergeSafetyLedgers,
   recoveryBundleMatchesKeyboard,
   safetyAuditMatchesCurrent,
-  serializeRecoveryBundle,
-  serializeSafetyAuditReceipt,
   type SafetyAuditReceipt,
   type RecoveryBundle,
 } from "./safety";
@@ -95,8 +89,7 @@ type AppOptions = {
   project?: Project;
   projectStorage?: ProjectStorage;
   safetyLedgerStorage?: SafetyLedgerStorage;
-  downloadRecoveryBundle?: (bundle: RecoveryBundle) => void;
-  downloadSafetyAudit?: (receipt: SafetyAuditReceipt) => void;
+  downloadProjectJson?: (project: Project) => void;
   downloadQmkJson?: (output: unknown, project: Project) => void;
   selectKeychronV5MaxDevice?: () => Promise<KeychronV5MaxBrowserSelection>;
   now?: () => string;
@@ -111,7 +104,7 @@ type EditorState = {
   qmkDetected: boolean;
   activeView: AppView;
   activeContextPanel: ContextPanel;
-  diagnosticsOpen: boolean;
+  projectDetailsOpen: boolean;
   selectedLayerIndex: number;
   selectedKeyId: string;
   keycodeCategoryId: string;
@@ -119,29 +112,13 @@ type EditorState = {
   catalogSearch: string;
   projectStorage: ProjectStorage;
   safetyLedgerStorage: SafetyLedgerStorage;
-  downloadRecoveryBundle: (bundle: RecoveryBundle) => void;
-  downloadSafetyAudit: (receipt: SafetyAuditReceipt) => void;
+  downloadProjectJson: (project: Project) => void;
   downloadQmkJson: (output: unknown, project: Project) => void;
   selectKeychronV5MaxDevice: () => Promise<KeychronV5MaxBrowserSelection>;
   deviceSelection: DeviceSelectionState;
   deviceSelectionEpoch: number;
   protocolVerification: ProtocolVerificationState;
   now: () => string;
-  pendingRecoveryBundle?: {
-    bundle: RecoveryBundle;
-    ledger: import("./safety").SafetyLedger;
-    stage: "initial" | "final";
-    projectRevision: string;
-    deviceRevision: string;
-  };
-  pendingDecline?: {
-    ledger: import("./safety").SafetyLedger;
-    receipt: SafetyAuditReceipt;
-    projectRevision: string;
-    deviceRevision: string;
-  };
-  declineNoBackupConfirmed: boolean;
-  declineResponsibilityConfirmed: boolean;
   projectStatus: string;
   projectJsonDraft: string;
   selectedSavedProjectId: string;
@@ -178,7 +155,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     qmkDetected: options.qmkDetected ?? false,
     activeView: "workspace",
     activeContextPanel: "assignment",
-    diagnosticsOpen: false,
+    projectDetailsOpen: false,
     selectedLayerIndex: defaultSelectedLayerIndex(currentProject),
     selectedKeyId: layout.keys[0]?.id ?? "",
     keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
@@ -186,16 +163,13 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     catalogSearch: "",
     projectStorage,
     safetyLedgerStorage,
-    downloadRecoveryBundle: options.downloadRecoveryBundle ?? downloadRecoveryBundle,
-    downloadSafetyAudit: options.downloadSafetyAudit ?? downloadSafetyAudit,
+    downloadProjectJson: options.downloadProjectJson ?? downloadProjectJson,
     downloadQmkJson: options.downloadQmkJson ?? downloadQmkJson,
     selectKeychronV5MaxDevice: options.selectKeychronV5MaxDevice ?? selectKeychronV5MaxBrowserDevice,
     deviceSelection: { state: "idle" },
     deviceSelectionEpoch: 0,
     protocolVerification: { state: "idle" },
     now: options.now ?? (() => new Date().toISOString()),
-    declineNoBackupConfirmed: false,
-    declineResponsibilityConfirmed: false,
     projectStatus: "Project is not saved in this preview session.",
     projectJsonDraft: JSON.stringify(currentProject, null, 2),
     selectedSavedProjectId: projectStorage.list()[0]?.id ?? "",
@@ -254,12 +228,12 @@ function createActions(
             state.activeContextPanel = panel;
             actions.render();
           },
-          openDiagnostics: () => {
-            state.diagnosticsOpen = true;
+          openProjectDetails: () => {
+            state.projectDetailsOpen = true;
             actions.render();
           },
-          closeDiagnostics: () => {
-            state.diagnosticsOpen = false;
+          closeProjectDetails: () => {
+            state.projectDetailsOpen = false;
             actions.render();
           },
           selectKey: (keyId) => {
@@ -377,6 +351,56 @@ function createActions(
             state.projectJsonDraft = JSON.stringify(state.project, null, 2);
             actions.render();
           },
+          renameSavedProject: (name) => {
+            const savedProject = state.projectStorage.load(state.selectedSavedProjectId);
+            const nextName = name.trim();
+            if (!savedProject || !nextName) {
+              state.projectStatus = "Choose a saved project and enter a name.";
+              actions.render();
+              return;
+            }
+            savedProject.name = nextName;
+            state.projectStorage.save(savedProject);
+            if (savedProject.id === state.project.id) {
+              state.project.name = nextName;
+              state.projectJsonDraft = JSON.stringify(state.project, null, 2);
+            }
+            state.projectStatus = `Renamed saved project to ${nextName}.`;
+            actions.render();
+          },
+          duplicateSavedProject: () => {
+            const savedProject = state.projectStorage.load(state.selectedSavedProjectId);
+            if (!savedProject) {
+              state.projectStatus = "Choose a saved project to duplicate.";
+              actions.render();
+              return;
+            }
+            const copy = {
+              ...savedProject,
+              id: `${savedProject.id}_copy_${crypto.randomUUID()}`,
+              name: `${savedProject.name} copy`,
+            };
+            state.projectStorage.save(copy);
+            state.selectedSavedProjectId = copy.id;
+            state.projectStatus = `Duplicated ${savedProject.name}.`;
+            actions.render();
+          },
+          deleteSavedProject: () => {
+            const deletedProject = state.projectStorage.load(state.selectedSavedProjectId);
+            if (!deletedProject || !state.projectStorage.remove(deletedProject.id)) {
+              state.projectStatus = "Choose a saved project to delete.";
+              actions.render();
+              return;
+            }
+            state.selectedSavedProjectId = state.projectStorage.list()[0]?.id ?? "";
+            state.projectStatus = `Deleted saved project ${deletedProject.name}.`;
+            actions.render();
+          },
+          downloadProjectJson: () => {
+            state.downloadProjectJson(structuredClone(state.project));
+            state.projectStatus = `Project export started for ${state.project.name}.`;
+            actions.render();
+          },
           selectSavedProject: (projectId) => {
             state.selectedSavedProjectId = projectId;
             actions.render();
@@ -453,169 +477,6 @@ function createActions(
             }
             actions.render();
           },
-          createRecoveryBundle: () => {
-            const createdAt = state.now();
-            const bundle = createRecoveryBundle({
-              project: state.project,
-              keyboard: state.keyboard,
-              ledger: state.safetyLedgerStorage.load(),
-              createdAt,
-            });
-            try {
-              state.downloadRecoveryBundle(bundle);
-              const assessment = createSafetyAssessment(
-                state.project,
-                state.keyboard,
-                validateProject(state.project, state.keyboard),
-                state.safetyLedgerStorage.load(),
-                state.safetyLedgerStorage.availability(),
-              );
-              state.pendingRecoveryBundle = {
-                bundle,
-                ledger: state.safetyLedgerStorage.load(),
-                stage: "initial",
-                projectRevision: assessment.projectRevision,
-                deviceRevision: assessment.deviceRevision,
-              };
-              state.declineNoBackupConfirmed = false;
-              state.declineResponsibilityConfirmed = false;
-              state.projectStatus = `Recovery export started for ${state.project.name}. Confirm that you saved the file.`;
-            } catch (error) {
-              state.projectStatus = `Recovery export failed: ${error instanceof Error ? error.message : "Unknown error"}.`;
-            }
-            actions.render();
-          },
-          confirmRecoveryBundle: () => {
-            const issues = validateProject(state.project, state.keyboard);
-            const assessment = createSafetyAssessment(
-              state.project,
-              state.keyboard,
-              issues,
-              state.safetyLedgerStorage.load(),
-              state.safetyLedgerStorage.availability(),
-            );
-            const pending = state.pendingRecoveryBundle;
-            if (
-              !pending ||
-              pending.projectRevision !== assessment.projectRevision ||
-              pending.deviceRevision !== assessment.deviceRevision
-            ) {
-              state.projectStatus = "Export a recovery bundle for the current project and device state first.";
-              actions.render();
-              return;
-            }
-            try {
-              if (pending.stage === "initial") {
-                const ledger = appendSafetyEvent(
-                  state.safetyLedgerStorage.load(),
-                  "backupConfirmed",
-                  state.project,
-                  state.keyboard,
-                  state.now(),
-                );
-                const bundle = createRecoveryBundle({
-                  project: state.project,
-                  keyboard: state.keyboard,
-                  ledger,
-                  createdAt: state.now(),
-                });
-                state.downloadRecoveryBundle(bundle);
-                state.pendingRecoveryBundle = { ...pending, bundle, ledger, stage: "final" };
-                state.projectStatus = "Final recovery record export started. Confirm that you saved this updated file.";
-              } else {
-                state.safetyLedgerStorage.save(pending.ledger);
-                state.pendingRecoveryBundle = undefined;
-                state.projectStatus = `Recorded saved recovery bundle for ${state.project.name}.`;
-              }
-            } catch (error) {
-              state.projectStatus = `Recovery confirmation failed: ${error instanceof Error ? error.message : "Unknown error"}.`;
-            }
-            actions.render();
-          },
-          updateBackupDeclineConfirmation: (field, checked) => {
-            if (field === "noBackup") {
-              state.declineNoBackupConfirmed = checked;
-            } else {
-              state.declineResponsibilityConfirmed = checked;
-            }
-          },
-          declineRecoveryBundle: () => {
-            if (!state.declineNoBackupConfirmed || !state.declineResponsibilityConfirmed) {
-              state.projectStatus = "Both decline confirmations are required.";
-              actions.render();
-              return;
-            }
-            const assessment = createSafetyAssessment(
-              state.project,
-              state.keyboard,
-              validateProject(state.project, state.keyboard),
-              state.safetyLedgerStorage.load(),
-              state.safetyLedgerStorage.availability(),
-            );
-            if (assessment.state !== "backupRequired") {
-              state.projectStatus = "Re-check the current project and device state before recording a backup decline.";
-              actions.render();
-              return;
-            }
-            const ledger = appendSafetyEvent(
-              state.safetyLedgerStorage.load(),
-              "backupDeclined",
-              state.project,
-              state.keyboard,
-              state.now(),
-            );
-            const event = ledger.events.at(-1);
-            if (!event) {
-              state.projectStatus = "Backup decline could not be recorded.";
-              actions.render();
-              return;
-            }
-            try {
-              const receipt = createSafetyAuditReceipt({
-                project: state.project,
-                keyboard: state.keyboard,
-                event,
-              });
-              state.downloadSafetyAudit(receipt);
-              state.pendingDecline = {
-                ledger,
-                receipt,
-                projectRevision: assessment.projectRevision,
-                deviceRevision: assessment.deviceRevision,
-              };
-              state.projectStatus = "Safety audit export started. Confirm that you saved the audit receipt.";
-            } catch (error) {
-              state.projectStatus = `Backup decline could not be recorded: ${error instanceof Error ? error.message : "Unknown error"}.`;
-            }
-            actions.render();
-          },
-          confirmDeclineAudit: () => {
-            try {
-              const pending = state.pendingDecline;
-              if (!pending) {
-                throw new Error("No safety audit export is awaiting confirmation");
-              }
-              const assessment = createSafetyAssessment(
-                state.project,
-                state.keyboard,
-                validateProject(state.project, state.keyboard),
-                state.safetyLedgerStorage.load(),
-                state.safetyLedgerStorage.availability(),
-              );
-              if (
-                pending.projectRevision !== assessment.projectRevision ||
-                pending.deviceRevision !== assessment.deviceRevision
-              ) {
-                throw new Error("The project or catalog definition changed after the audit export");
-              }
-              state.safetyLedgerStorage.save(pending.ledger);
-              state.pendingDecline = undefined;
-              state.projectStatus = "Recovery data declined for the current project and device state.";
-            } catch (error) {
-              state.projectStatus = `Backup decline could not be recorded: ${error instanceof Error ? error.message : "Unknown error"}.`;
-            }
-            actions.render();
-          },
           updateSelectedLayerName: (name) => {
             renameLayer(state.project, state.selectedLayerIndex, name);
             actions.render();
@@ -665,8 +526,8 @@ type RenderActions = {
   selectLayer: (layerIndex: number) => void;
   selectView: (view: AppView) => void;
   selectContextPanel: (panel: ContextPanel) => void;
-  openDiagnostics: () => void;
-  closeDiagnostics: () => void;
+  openProjectDetails: () => void;
+  closeProjectDetails: () => void;
   selectKey: (keyId: string) => void;
   updateSelectedKeycode: (qmk: string) => void;
   updateSelectedLighting: (color: string) => void;
@@ -679,15 +540,14 @@ type RenderActions = {
   updateCatalogSearch: (query: string) => void;
   selectKeyboardFromCatalog: (keyboardId: string) => void;
   saveProject: () => void;
+  renameSavedProject: (name: string) => void;
+  duplicateSavedProject: () => void;
+  deleteSavedProject: () => void;
+  downloadProjectJson: () => void;
   selectSavedProject: (projectId: string) => void;
   openSavedProject: () => void;
   updateProjectJsonDraft: (json: string) => void;
   importProjectDraft: () => void;
-  createRecoveryBundle: () => void;
-  confirmRecoveryBundle: () => void;
-  updateBackupDeclineConfirmation: (field: "noBackup" | "responsibility", checked: boolean) => void;
-  declineRecoveryBundle: () => void;
-  confirmDeclineAudit: () => void;
   updateSelectedLayerName: (name: string) => void;
   updateLightingMode: (mode: LightingProfile["mode"]) => void;
   updateLightingGlobal: (key: string, value: string | number | boolean) => void;
@@ -711,7 +571,7 @@ function mainShell(
       topbar(state, issues, buildPlan, actions),
       detectionStrip(state, actions.reloadProbe),
       activePanel(state, layout, issues, qmkJson, actions),
-      diagnosticsDrawer(state, layout, issues, qmkJson, buildPlan, actions),
+      projectDetailsDrawer(state, actions),
     ]),
   ]);
 }
@@ -765,12 +625,12 @@ function topbar(
   });
   save.addEventListener("click", actions.saveProject);
 
-  const diagnostics = uiButton({
+  const projectDetails = uiButton({
     className: "secondary-action",
     text: "Project details",
-    attrs: { "data-diagnostics-action": "open" },
+    attrs: { "data-project-details-action": "open" },
   });
-  diagnostics.addEventListener("click", actions.openDiagnostics);
+  projectDetails.addEventListener("click", actions.openProjectDetails);
 
   return element("header", { className: "topbar" }, [
     element("div", {}, [
@@ -779,7 +639,7 @@ function topbar(
     ]),
     element("div", { className: "topbar-actions" }, [
       save,
-      diagnostics,
+      projectDetails,
       element("div", {
         className: `status ${statusClass}`,
         text: topbarStatusLabel(issues, buildPlan),
@@ -806,7 +666,7 @@ function activePanel(
     return catalogPanel(state, actions);
   }
   if (state.activeView === "system") {
-    return systemPanel(state, actions.reloadProbe);
+    return systemPanel(state, issues, qmkJson, actions.reloadProbe);
   }
 
   return element("div", {
@@ -1158,12 +1018,14 @@ function contextPanelSection(
 function projectPanel(
   state: EditorState,
   actions: RenderActions,
-  issues: UiIssue[],
 ): HTMLElement {
   const savedProjects = state.projectStorage.list();
   if (!state.selectedSavedProjectId && savedProjects[0]) {
     state.selectedSavedProjectId = savedProjects[0].id;
   }
+  const selectedSavedProject = savedProjects.find(
+    (project) => project.id === state.selectedSavedProjectId,
+  );
 
   const savedSelect = element("select", {
     attrs: {
@@ -1202,7 +1064,7 @@ function projectPanel(
 
   const save = uiButton({
     className: "secondary-action",
-    text: "Save current",
+    text: "Save project",
     type: "button",
     attrs: { "data-project-action": "save" },
   });
@@ -1216,9 +1078,41 @@ function projectPanel(
   });
   open.addEventListener("click", actions.openSavedProject);
 
+  const savedProjectName = element("input", {
+    attrs: {
+      "aria-label": "Saved project name",
+      "data-focus-id": "saved-project-name",
+      value: selectedSavedProject?.name ?? "",
+    },
+  }) as HTMLInputElement;
+
+  const rename = uiButton({
+    className: "secondary-action",
+    text: "Rename",
+    type: "button",
+    attrs: { "data-project-action": "rename" },
+  });
+  rename.addEventListener("click", () => actions.renameSavedProject(savedProjectName.value));
+
+  const duplicate = uiButton({
+    className: "secondary-action",
+    text: "Duplicate",
+    type: "button",
+    attrs: { "data-project-action": "duplicate" },
+  });
+  duplicate.addEventListener("click", actions.duplicateSavedProject);
+
+  const remove = uiButton({
+    className: "secondary-action danger",
+    text: "Delete",
+    type: "button",
+    attrs: { "data-project-action": "delete" },
+  });
+  remove.addEventListener("click", actions.deleteSavedProject);
+
   const refreshDraft = uiButton({
     className: "secondary-action",
-    text: "Refresh draft",
+    text: "Reset draft",
     type: "button",
     attrs: { "data-project-action": "refresh-draft" },
   });
@@ -1234,14 +1128,40 @@ function projectPanel(
   });
   importDraft.addEventListener("click", actions.importProjectDraft);
 
-  return element("section", { className: "drawer-section project-panel", attrs: { "data-drawer-section": "project" } }, [
-    element("div", { className: "panel-heading" }, [
-      element("h2", { text: "Project" }),
-      element("small", { text: `${savedProjects.length} saved in preview session` }),
+  const exportProject = uiButton({
+    className: "secondary-action",
+    text: "Export project JSON",
+    type: "button",
+    attrs: { "data-project-action": "export" },
+  });
+  exportProject.addEventListener("click", actions.downloadProjectJson);
+
+  const transfer = element("wa-details", {
+    className: "project-transfer",
+    attrs: {
+      appearance: "outlined",
+      summary: "Import or export",
+      "data-project-section": "transfer",
+    },
+  }, [
+    element("div", { className: "project-transfer-content" }, [
+      element("p", {
+        className: "muted",
+        text: "Export a project file for editing or transfer. This is not a device recovery backup.",
+      }),
+      element("div", { className: "project-actions" }, [exportProject]),
+      projectDraft,
+      element("div", { className: "project-actions" }, [refreshDraft, importDraft]),
     ]),
-    element("div", { className: "project-layout" }, [
-      element("section", { className: "project-card" }, [
-        element("h3", { text: "Current project" }),
+  ]);
+
+  return element("section", { className: "project-panel" }, [
+    element("div", { className: "project-details-content" }, [
+      element("section", {
+        className: "project-section",
+        attrs: { "data-project-section": "current" },
+      }, [
+        element("h2", { text: "Current project" }),
         definitionList([
           ["Name", state.project.name],
           ["Keyboard", state.project.target.qmkKeyboard],
@@ -1253,186 +1173,29 @@ function projectPanel(
           text: state.projectStatus,
           attrs: { "data-project-status": "true" },
         }),
-        element("div", { className: "project-actions" }, [save, refreshDraft]),
+        element("div", { className: "project-actions" }, [save]),
       ]),
-      element("section", { className: "project-card" }, [
-        element("h3", { text: "Saved projects" }),
+      element("section", {
+        className: "project-section",
+        attrs: { "data-project-section": "saved" },
+      }, [
+        element("h2", { text: "Saved projects" }),
+        element("small", { text: `${savedProjects.length} saved in this browser` }),
         savedSelect,
         savedProjectList(savedProjects),
-        element("div", { className: "project-actions" }, [open]),
+        ...(savedProjects.length > 0
+          ? [
+              element("label", { className: "saved-project-name" }, [
+                element("span", { text: "Saved project name" }),
+                savedProjectName,
+              ]),
+              element("div", { className: "project-actions" }, [open, rename, duplicate, remove]),
+            ]
+          : []),
       ]),
-      element("section", { className: "project-card project-json" }, [
-        element("h3", { text: "Project JSON" }),
-        projectDraft,
-        element("div", { className: "project-actions" }, [importDraft]),
-      ]),
-      safetyRecoveryPanel(state, issues, actions),
+      transfer,
     ]),
   ]);
-}
-
-function safetyRecoveryPanel(
-  state: EditorState,
-  issues: UiIssue[],
-  actions: RenderActions,
-): HTMLElement {
-  const assessment = createSafetyAssessment(
-    state.project,
-    state.keyboard,
-    issues,
-    state.safetyLedgerStorage.load(),
-    state.safetyLedgerStorage.availability(),
-  );
-  const status = safetyStatusLabel(assessment.state);
-  const pendingRecoveryMatchesCurrent =
-    state.pendingRecoveryBundle?.projectRevision === assessment.projectRevision &&
-    state.pendingRecoveryBundle.deviceRevision === assessment.deviceRevision;
-  const pendingDeclineMatchesCurrent =
-    state.pendingDecline?.projectRevision === assessment.projectRevision &&
-    state.pendingDecline.deviceRevision === assessment.deviceRevision;
-  const card = element("section", {
-    className: "project-card safety-recovery",
-    attrs: { "data-safety-panel": "true" },
-  }, [
-    element("h3", { text: "Safety & recovery" }),
-    element("p", {
-      className: "project-status muted",
-      text: status,
-      attrs: { "data-safety-status": "true" },
-    }),
-    element("p", { className: "muted", text: assessment.reason }),
-  ]);
-
-  if (
-    assessment.state === "backupRequired" &&
-    !pendingRecoveryMatchesCurrent &&
-    !pendingDeclineMatchesCurrent
-  ) {
-    const backup = uiButton({
-      className: "secondary-action",
-      text: "Download recovery bundle",
-      type: "button",
-      attrs: { "data-safety-action": "backup" },
-    });
-    backup.addEventListener("click", actions.createRecoveryBundle);
-    card.append(
-      element("p", {
-        className: "muted",
-        text: "This local JSON file restores the project without a connected keyboard. Keep it with any official recovery firmware for this exact device.",
-        attrs: { "data-safety-recovery-guidance": "true" },
-      }),
-      element("div", { className: "project-actions" }, [backup]),
-    );
-  }
-
-  if (pendingRecoveryMatchesCurrent && assessment.state === "backupRequired") {
-    const confirm = uiButton({
-      className: "secondary-action",
-      text:
-        state.pendingRecoveryBundle?.stage === "initial"
-          ? "Confirm saved recovery bundle"
-          : "Confirm saved final recovery record",
-      type: "button",
-      attrs: { "data-safety-action": "confirm-backup" },
-    });
-    confirm.addEventListener("click", actions.confirmRecoveryBundle);
-    card.append(
-      element("p", {
-        className: "muted",
-        text: "Confirm only after the downloaded file is present in a location you control.",
-        attrs: { "data-safety-recovery-guidance": "true" },
-      }),
-      element("div", { className: "project-actions" }, [confirm]),
-    );
-  }
-
-  if (assessment.state === "backupRequired" && pendingDeclineMatchesCurrent) {
-    const confirm = uiButton({
-      className: "secondary-action danger",
-      text: "Confirm saved decline audit",
-      type: "button",
-      attrs: { "data-safety-action": "confirm-decline-audit" },
-    });
-    confirm.addEventListener("click", actions.confirmDeclineAudit);
-    card.append(
-      element("p", {
-        className: "muted",
-        text: "Confirm only after the local safety-audit receipt is saved in a location you control.",
-        attrs: { "data-safety-recovery-guidance": "true" },
-      }),
-      element("div", { className: "project-actions" }, [confirm]),
-    );
-  }
-
-  if (
-    assessment.state === "backupRequired" &&
-    !pendingRecoveryMatchesCurrent &&
-    !pendingDeclineMatchesCurrent
-  ) {
-    const noBackup = safetyConfirmation(
-      "no-backup",
-      "I choose not to create recovery data for this exact project and device state.",
-      state.declineNoBackupConfirmed,
-      (checked) => actions.updateBackupDeclineConfirmation("noBackup", checked),
-    );
-    const responsibility = safetyConfirmation(
-      "responsibility",
-      "I understand QMKUI will not provide recovery guidance for this run.",
-      state.declineResponsibilityConfirmed,
-      (checked) => actions.updateBackupDeclineConfirmation("responsibility", checked),
-    );
-    const decline = uiButton({
-      className: "secondary-action danger",
-      text: "Record backup decline",
-      type: "button",
-      attrs: { "data-safety-action": "decline" },
-    });
-    decline.addEventListener("click", actions.declineRecoveryBundle);
-    card.append(noBackup, responsibility, element("div", { className: "project-actions" }, [decline]));
-  }
-
-  card.append(
-    element("div", { className: "safety-write-gate", attrs: { "data-safety-write-gate": "true" } }, [
-      element("h4", { text: "Device write" }),
-      element("p", {
-        className: "muted",
-        text: assessment.requiresRunConfirmation
-          ? "Unavailable. A future exact-device write adapter must still require a fresh confirmation for this run."
-          : "Unavailable. QMKUI has no exact-device compile, bootloader, or flash adapter yet.",
-      }),
-    ]),
-  );
-  return card;
-}
-
-function safetyConfirmation(
-  id: "no-backup" | "responsibility",
-  label: string,
-  checked: boolean,
-  onChange: (checked: boolean) => void,
-): HTMLElement {
-  const input = element("input", {
-    attrs: {
-      type: "checkbox",
-      "data-safety-confirmation": id,
-    },
-  }) as HTMLInputElement;
-  input.checked = checked;
-  input.addEventListener("change", () => onChange(input.checked));
-  return element("label", { className: "safety-confirmation" }, [input, document.createTextNode(label)]);
-}
-
-function safetyStatusLabel(state: ReturnType<typeof createSafetyAssessment>["state"]): string {
-  switch (state) {
-    case "blocked":
-      return "Safety checks blocked";
-    case "backupRecorded":
-      return "Backup recorded";
-    case "declined":
-      return "Backup declined";
-    default:
-      return "Backup required";
-  }
 }
 
 function savedProjectList(projects: ProjectSummary[]): HTMLElement {
@@ -1456,23 +1219,19 @@ function savedProjectList(projects: ProjectSummary[]): HTMLElement {
   return list;
 }
 
-function diagnosticsDrawer(
+function projectDetailsDrawer(
   state: EditorState,
-  layout: KeyboardDefinition["layouts"][number],
-  issues: UiIssue[],
-  qmkJson: unknown,
-  buildPlan: BuildPlan,
   actions: RenderActions,
 ): HTMLElement {
   const drawer = element("wa-drawer", {
-    className: "diagnostics-drawer",
+    className: "project-details-drawer",
     attrs: {
-      "data-diagnostics-drawer": "true",
-      label: "Diagnostics",
+      "data-project-details-drawer": "true",
+      label: "Project details",
       placement: "end",
     },
   });
-  if (state.diagnosticsOpen) {
+  if (state.projectDetailsOpen) {
     drawer.setAttribute("open", "");
     (drawer as HTMLElement & { open: boolean }).open = true;
   } else {
@@ -1483,18 +1242,11 @@ function diagnosticsDrawer(
   const close = uiButton({
     className: "secondary-action",
     text: "Close",
-    attrs: { "data-diagnostics-action": "close", slot: "footer" },
+    attrs: { "data-project-details-action": "close", slot: "footer" },
   });
-  close.addEventListener("click", actions.closeDiagnostics);
+  close.addEventListener("click", actions.closeProjectDetails);
 
-  drawer.append(
-    projectPanel(state, actions, issues),
-    element("section", { className: "drawer-section" }, [
-      buildSection(buildPlan, layout.keys.length),
-    ]),
-    details(issues, qmkJson, state),
-    close,
-  );
+  drawer.append(projectPanel(state, actions), close);
 
   return drawer;
 }
@@ -1805,7 +1557,12 @@ function catalogRow(
   ]);
 }
 
-function systemPanel(state: EditorState, reloadProbe: () => void): HTMLElement {
+function systemPanel(
+  state: EditorState,
+  issues: UiIssue[],
+  qmkJson: unknown,
+  reloadProbe: () => void,
+): HTMLElement {
   const report = state.doctorReport;
   const layout = selectedLayout(state.keyboard, state.project);
   const buildPlan = createBuildPlan(
@@ -1862,6 +1619,7 @@ function systemPanel(state: EditorState, reloadProbe: () => void): HTMLElement {
         findingList,
       ]),
     ]),
+    supportDetails(issues, qmkJson, state),
   ]);
 }
 
@@ -2748,20 +2506,29 @@ function restoreFocusedInput(root: HTMLElement, focusedInput: FocusedElement): v
   }
 }
 
-function details(issues: UiIssue[], qmkJson: unknown, state: EditorState): HTMLElement {
+function supportDetails(issues: UiIssue[], qmkJson: unknown, state: EditorState): HTMLElement {
   const detected = state.doctorReport?.snapshot.hardwareProbe.detectedKeyboards?.[0];
-  return element("section", { className: "details" }, [
-    element("div", {}, [element("h2", { text: "Validation" }), issueList(issues)]),
-    element("div", {}, [
-      element("h2", { text: "QMK JSON" }),
-      element("pre", { text: JSON.stringify(qmkJson, null, 2) }),
-    ]),
-    element("div", {}, [
-      element("h2", { text: "System" }),
-      definitionList([
-        ["Local build", state.qmkDetected ? "Ready" : "Missing qmk"],
-        ["Keyboard", detected?.displayName ?? state.keyboard.displayName],
-        ["Device", detected ? `${detected.device.vid}:${detected.device.pid}` : "Preset"],
+  return element("wa-details", {
+    className: "support-details",
+    attrs: {
+      appearance: "outlined",
+      summary: "Support details",
+      "data-support-details": "true",
+    },
+  }, [
+    element("div", { className: "support-details-content" }, [
+      element("section", {}, [element("h3", { text: "Validation" }), issueList(issues)]),
+      element("section", {}, [
+        element("h3", { text: "QMK JSON" }),
+        element("pre", { text: JSON.stringify(qmkJson, null, 2) }),
+      ]),
+      element("section", {}, [
+        element("h3", { text: "Environment" }),
+        definitionList([
+          ["Local build", state.qmkDetected ? "Ready" : "Missing qmk"],
+          ["Keyboard", detected?.displayName ?? state.keyboard.displayName],
+          ["Device", detected ? `${detected.device.vid}:${detected.device.pid}` : "Preset"],
+        ]),
       ]),
     ]),
   ]);
@@ -2844,20 +2611,6 @@ function defaultSafetyLedgerStorage(): SafetyLedgerStorage {
   }
 }
 
-function downloadRecoveryBundle(bundle: RecoveryBundle): void {
-  downloadJson(
-    serializeRecoveryBundle(bundle),
-    `${bundle.project.name.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase()}-recovery.json`,
-  );
-}
-
-function downloadSafetyAudit(receipt: SafetyAuditReceipt): void {
-  downloadJson(
-    serializeSafetyAuditReceipt(receipt),
-    `${receipt.device.qmkKeyboard.replace(/[^a-z0-9_-]+/gi, "-")}-safety-audit.json`,
-  );
-}
-
 function downloadQmkJson(output: unknown, currentProject: Project): void {
   const contents = JSON.stringify(output, null, 2);
   if (typeof contents !== "string") {
@@ -2867,6 +2620,12 @@ function downloadQmkJson(output: unknown, currentProject: Project): void {
     .replace(/[^a-z0-9_-]+/gi, "-")
     .toLowerCase();
   downloadJson(`${contents}\n`, `${filename}-qmk.json`);
+}
+
+function downloadProjectJson(project: Project): void {
+  const contents = JSON.stringify(project, null, 2);
+  const filename = project.name.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase();
+  downloadJson(`${contents}\n`, `${filename}-project.json`);
 }
 
 function downloadJson(contents: string, filename: string): void {
@@ -2885,10 +2644,6 @@ function openProject(
   keyboard: KeyboardDefinition,
   status: string,
 ): void {
-  state.pendingRecoveryBundle = undefined;
-  state.pendingDecline = undefined;
-  state.declineNoBackupConfirmed = false;
-  state.declineResponsibilityConfirmed = false;
   state.keyboard = structuredClone(keyboard);
   state.project = structuredClone(project);
   state.selectedLayerIndex = defaultSelectedLayerIndex(state.project);
@@ -2897,7 +2652,7 @@ function openProject(
   state.projectStatus = status;
   state.activeView = "workspace";
   state.activeContextPanel = "assignment";
-  state.diagnosticsOpen = false;
+  state.projectDetailsOpen = false;
 }
 
 function qmkDetectedFromReport(report: DoctorReport): boolean {

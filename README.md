@@ -26,21 +26,19 @@ supported hardware target.
   then verify its observed protocol version (`0x000c`). This sends one
   32-byte version request and accepts only its matching 32-byte response; it
   does not read or change keyboard configuration.
-- Inspect, edit, and import an app-native project JSON draft.
-- Download and restore an app-native project recovery export containing the
-  project, its exact bundled catalog definition, and its safety history.
-- Keep a local-only browser safety ledger for recovery-bundle creation or an
-  explicit backup decline.
+- Save, reopen, rename, duplicate, delete, import, and export app project JSON
+  in the current browser session.
+- Restore a valid app-native recovery bundle. Its prior safety history is
+  reused only when its embedded catalog and device facts still match.
+- Apply an existing safety-audit receipt only to the exact current project and
+  bundled catalog definition.
 - Test host key events without reading from or writing to the keyboard.
 - Inspect software and read-only Linux readiness with `qmkui-doctor`.
 
 Project saves currently live in memory and disappear when the page reloads.
-Project recovery exports are downloaded as plain local JSON; the separate safety ledger
-uses browser local storage. Neither is transmitted by QMKUI, encrypted, or
-tamper-proof against someone controlling the local browser/app data. Keep a
-project recovery export yourself if you need it to survive browser-data removal.
-They do not read, back up, or restore keyboard firmware, EEPROM, wireless
-configuration, or other device state.
+Project JSON exports are plain local files. QMKUI does not transmit, encrypt,
+or treat them as tamper-proof. They do not read, back up, or restore keyboard
+firmware, EEPROM, wireless configuration, or other device state.
 
 Compilation, device configuration or keymap reads, flashing, live keyboard
 mode, persistent native storage, and broad catalog ingestion are not
@@ -50,20 +48,17 @@ lighting, write, or flash operation.
 
 ## Safety and recovery
 
-Open **Project details** and use **Safety & recovery** before any future write
-workflow. A project recovery export restores the project without a connected keyboard;
-paste its JSON into **Project JSON** and choose **Import draft**. Keep any
-vendor recovery firmware separately, matched to the exact model and firmware.
+There is currently no device-write path, so Project details contains no device
+backup, recovery, or write controls. A normal project JSON export is not a
+device backup. Existing recovery bundles can restore a valid project, but their
+prior safety history is reused only when their embedded catalog and device facts
+still match. Safety-audit receipts apply only to the exact current project and
+bundled catalog definition.
 
-After downloading an export, confirm that you saved it. QMKUI then downloads a
-final recovery record containing that confirmation; confirm saving that final
-file before it is recorded locally. Declining recovery data requires two
-confirmations, then a saved local safety-audit receipt before the decline is
-recorded. Paste a saved audit receipt into **Project JSON** to restore that
-exact decline on the same project and bundled catalog definition. QMKUI then
-does not show recovery guidance for that run. A changed project, complete
-bundled catalog definition, missing ledger, or corrupted ledger requires a new
-backup or acknowledgement. There is currently no device-write path.
+Any future exact-device write workflow must require a confirmed recovery record
+or an explicit two-step decline with a saved local audit receipt, followed by a
+fresh final confirmation for that run. Keep vendor recovery firmware separately,
+matched to the exact model and firmware.
 
 ## Requirements
 

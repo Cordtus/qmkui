@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { exportQmkJson, type DoctorReport } from "./domain";
+import { exportQmkJson, type DoctorReport, type Project } from "./domain";
 import { createMemoryProjectStorage } from "./projectStorage";
 import { keychronV5MaxKeyboard, keychronV5MaxProject } from "./presets";
 import {
@@ -10,7 +10,6 @@ import {
   createSafetyAuditReceipt,
   serializeSafetyAuditReceipt,
   serializeRecoveryBundle,
-  type RecoveryBundle,
 } from "./safety";
 import { createSafetyLedgerStorage } from "./safetyStorage";
 import type { KeychronV5MaxBrowserSelection } from "./devices/keychronV5MaxBrowser";
@@ -273,21 +272,30 @@ describe("desktop preview layer controls", () => {
     );
   });
 
-  it("keeps diagnostics out of the default workspace and opens them on demand", () => {
+  it("opens project details as a project-management drawer", () => {
     const root = document.createElement("div");
 
     createApp(root);
 
-    expect(root.querySelector('[data-panel="workspace"] > .details')).toBeNull();
-    const diagnostics = root.querySelector<HTMLElement>("[data-diagnostics-drawer]");
-    expect(diagnostics).not.toBeNull();
-    expect(diagnostics?.hidden).toBe(true);
+    expect(root.querySelector<HTMLElement>("[data-project-details-drawer]")?.hidden).toBe(true);
 
-    root.querySelector<HTMLElement>('[data-diagnostics-action="open"]')?.click();
+    root.querySelector<HTMLElement>('[data-project-details-action="open"]')?.click();
 
-    const opened = root.querySelector<HTMLElement>("[data-diagnostics-drawer]");
-    expect(opened?.hidden).toBe(false);
-    expect(opened?.querySelector("pre")?.textContent).toContain("keychron/v5_max/ansi_encoder");
+    const drawer = root.querySelector<HTMLElement>("[data-project-details-drawer]");
+    expect(drawer?.hidden).toBe(false);
+    expect(drawer?.getAttribute("label")).toBe("Project details");
+    expect(drawer?.querySelector('[data-project-section="current"]')).not.toBeNull();
+    expect(drawer?.querySelector('[data-project-action="save"]')?.textContent).toBe("Save project");
+    expect(drawer?.querySelector('[data-project-section="saved"]')).not.toBeNull();
+    const transfer = drawer?.querySelector<HTMLElement>(
+      'wa-details[data-project-section="transfer"]',
+    );
+    expect(transfer).not.toBeNull();
+    expect(transfer?.getAttribute("appearance")).toBe("outlined");
+    expect(drawer?.querySelector('[data-project-action="open"]')).toBeNull();
+    expect(drawer?.querySelector("[data-safety-panel]")).toBeNull();
+    expect(drawer?.querySelector("[data-build-output]")).toBeNull();
+    expect(drawer?.querySelector("[data-support-details]")).toBeNull();
   });
 
   it("keeps header actions distinct and reports keymap status before build status", () => {
@@ -296,7 +304,7 @@ describe("desktop preview layer controls", () => {
     createApp(root, { qmkDetected: false });
 
     expect(root.querySelector('[data-project-action="save"]')?.textContent).toBe("Save project");
-    expect(root.querySelector('[data-diagnostics-action="open"]')?.textContent).toBe("Project details");
+    expect(root.querySelector('[data-project-details-action="open"]')?.textContent).toBe("Project details");
     expect(root.querySelector(".topbar-actions")?.textContent).not.toContain("Save Diagnostics");
     expect(root.querySelector(".status")?.textContent).toBe("Keymap valid");
   });
@@ -306,8 +314,8 @@ describe("desktop preview layer controls", () => {
 
     createApp(root);
 
-    expect(root.querySelector('wa-button[data-diagnostics-action="open"]')).not.toBeNull();
-    expect(root.querySelector("wa-drawer[data-diagnostics-drawer]")).not.toBeNull();
+    expect(root.querySelector('wa-button[data-project-details-action="open"]')).not.toBeNull();
+    expect(root.querySelector("wa-drawer[data-project-details-drawer]")).not.toBeNull();
     expect(root.querySelector("qmk-key[data-key='v5_001']")).not.toBeNull();
     expect(
       [...root.querySelectorAll("wa-button")].every((button) =>
@@ -467,7 +475,7 @@ describe("desktop preview layer controls", () => {
     keycodeInput!.value = "KC_F13";
     keycodeInput!.dispatchEvent(new Event("input", { bubbles: true }));
 
-    expect(root.querySelector("pre")?.textContent).toContain("KC_F13");
+    expect(JSON.stringify(readQmkPreview(root))).toContain("KC_F13");
   });
 
   it("updates selected key lighting immediately", () => {
@@ -499,7 +507,7 @@ describe("desktop preview layer controls", () => {
     expect(
       root.querySelector<HTMLInputElement>('[data-focus-id="selected-keycode"]')?.value,
     ).toBe("KC_MUTE");
-    expect(root.querySelector("pre")?.textContent).toContain("KC_MUTE");
+    expect(JSON.stringify(readQmkPreview(root))).toContain("KC_MUTE");
   });
 
   it("formats Windows-key aliases without changing exported QMK", () => {
@@ -512,7 +520,7 @@ describe("desktop preview layer controls", () => {
     expect(
       root.querySelector<HTMLInputElement>('[data-focus-id="selected-keycode"]')?.value,
     ).toBe("KC_LWIN");
-    expect(root.querySelector("pre")?.textContent).toContain("KC_LWIN");
+    expect(JSON.stringify(readQmkPreview(root))).toContain("KC_LWIN");
   });
 
   it("keeps the keycode input focused during multi-character edits", () => {
@@ -540,7 +548,7 @@ describe("desktop preview layer controls", () => {
     expect(document.activeElement).toBe(
       root.querySelector<HTMLInputElement>('[data-focus-id="selected-keycode"]'),
     );
-    expect(root.querySelector("pre")?.textContent).toContain("KC_F14");
+    expect(JSON.stringify(readQmkPreview(root))).toContain("KC_F14");
   });
 
   it("keeps the color input focused when lighting changes", () => {
@@ -1033,7 +1041,48 @@ describe("desktop preview layer controls", () => {
     expect(exported.layers[0]).toEqual(["KC_ESC", "KC_B", "MO(1)"]);
   });
 
-  it("imports project JSON from the diagnostics file draft", () => {
+  it("renames, duplicates, and deletes a saved project from Project details", () => {
+    const root = document.createElement("div");
+    const storage = createMemoryProjectStorage(() => "2026-07-17T20:00:00.000Z");
+    storage.save(keychronV5MaxProject);
+
+    createApp(root, { projectStorage: storage });
+    root.querySelector<HTMLElement>('[data-project-details-action="open"]')?.click();
+
+    const name = root.querySelector<HTMLInputElement>('[data-focus-id="saved-project-name"]');
+    expect(name?.value).toBe("Keychron V5 Max ANSI Knob");
+    name!.value = "Work keyboard";
+    root.querySelector<HTMLButtonElement>('[data-project-action="rename"]')?.click();
+    expect(storage.load(keychronV5MaxProject.id)?.name).toBe("Work keyboard");
+
+    root.querySelector<HTMLButtonElement>('[data-project-action="duplicate"]')?.click();
+    const copies = storage.list();
+    expect(copies).toHaveLength(2);
+    expect(copies.some((project) => project.name === "Work keyboard copy")).toBe(true);
+
+    root.querySelector<HTMLButtonElement>('[data-project-action="delete"]')?.click();
+    expect(storage.list()).toHaveLength(1);
+    expect(storage.list()[0]?.id).toBe(keychronV5MaxProject.id);
+  });
+
+  it("exports a project transfer file without exporting QMK JSON", () => {
+    const root = document.createElement("div");
+    const exportedProjects: Project[] = [];
+    const qmkExports: unknown[] = [];
+
+    createApp(root, {
+      downloadProjectJson: (project) => exportedProjects.push(project),
+      downloadQmkJson: (output) => qmkExports.push(output),
+    });
+    root.querySelector<HTMLElement>('[data-project-details-action="open"]')?.click();
+    root.querySelector<HTMLButtonElement>('[data-project-action="export"]')?.click();
+
+    expect(exportedProjects).toEqual([keychronV5MaxProject]);
+    expect(qmkExports).toEqual([]);
+    expect(root.querySelector("[data-project-status]")?.textContent).toContain("Project export started");
+  });
+
+  it("keeps project import inside the project transfer section", () => {
     const root = document.createElement("div");
     const importedProject = {
       ...structuredClone(keychronV5MaxProject),
@@ -1041,6 +1090,7 @@ describe("desktop preview layer controls", () => {
     };
 
     createApp(root);
+    root.querySelector<HTMLElement>('[data-project-details-action="open"]')?.click();
     const draft = root.querySelector<HTMLTextAreaElement>('[data-focus-id="project-json-draft"]');
     expect(draft).not.toBeNull();
     draft!.value = JSON.stringify(importedProject);
@@ -1051,6 +1101,23 @@ describe("desktop preview layer controls", () => {
       "Imported Imported Keychron",
     );
     expect(root.querySelector("h1")?.textContent).toBe("Imported Keychron");
+  });
+
+  it("keeps generated QMK JSON and validation details in System support details", () => {
+    const root = document.createElement("div");
+
+    createApp(root);
+    root.querySelector<HTMLElement>('[data-project-details-action="open"]')?.click();
+    expect(root.querySelector("[data-project-details-drawer] pre")).toBeNull();
+
+    root.querySelector<HTMLElement>('[data-view="system"]')?.click();
+
+    const supportDetails = root.querySelector<HTMLElement>("[data-support-details]");
+    expect(supportDetails?.tagName).toBe("WA-DETAILS");
+    expect(supportDetails?.getAttribute("appearance")).toBe("outlined");
+    expect(supportDetails?.hasAttribute("open")).toBe(false);
+    expect(supportDetails?.querySelector("pre")?.textContent).toContain("keychron/v5_max/ansi_encoder");
+    expect(supportDetails?.querySelector(".issues")).not.toBeNull();
   });
 
   it("restores a project from an app-native recovery bundle without a connected keyboard", () => {
@@ -1130,75 +1197,6 @@ describe("desktop preview layer controls", () => {
     expect(readQmkPreview(root).keyboard).toBe("keychron/v5_max/ansi_encoder");
   });
 
-  it("creates a local recovery bundle before future write preparation", () => {
-    const root = document.createElement("div");
-    const downloadedBundles: RecoveryBundle[] = [];
-    const safetyLedgerStorage = createSafetyLedgerStorage(createMemoryStorage());
-
-    createApp(root, {
-      safetyLedgerStorage,
-      downloadRecoveryBundle: (bundle) => downloadedBundles.push(bundle),
-    });
-    root.querySelector<HTMLButtonElement>('[data-diagnostics-action="open"]')?.click();
-
-    expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup required");
-    root.querySelector<HTMLButtonElement>('[data-safety-action="backup"]')?.click();
-
-    expect(downloadedBundles).toHaveLength(1);
-    expect(downloadedBundles[0].project).toEqual(keychronV5MaxProject);
-    expect(safetyLedgerStorage.load().events).toHaveLength(0);
-    root.querySelector<HTMLButtonElement>('[data-safety-action="confirm-backup"]')?.click();
-
-    expect(downloadedBundles).toHaveLength(2);
-    expect(downloadedBundles[1].ledger.events.at(-1)?.kind).toBe("backupConfirmed");
-    expect(safetyLedgerStorage.load().events).toHaveLength(0);
-    expect(root.querySelector('[data-safety-action="confirm-backup"]')?.textContent).toContain(
-      "final recovery record",
-    );
-    root.querySelector<HTMLButtonElement>('[data-safety-action="confirm-backup"]')?.click();
-
-    expect(safetyLedgerStorage.load().events.at(-1)?.kind).toBe("backupConfirmed");
-    expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup recorded");
-  });
-
-  it("requires two confirmations before recording a backup decline", () => {
-    const root = document.createElement("div");
-    const safetyLedgerStorage = createSafetyLedgerStorage(createMemoryStorage());
-    const auditReceipts: Array<{ event: { kind: string } }> = [];
-
-    createApp(root, {
-      safetyLedgerStorage,
-      downloadSafetyAudit: (receipt) => auditReceipts.push(receipt),
-    });
-    root.querySelector<HTMLButtonElement>('[data-diagnostics-action="open"]')?.click();
-
-    const declineData = root.querySelector<HTMLInputElement>('[data-safety-confirmation="no-backup"]');
-    const responsibility = root.querySelector<HTMLInputElement>(
-      '[data-safety-confirmation="responsibility"]',
-    );
-    expect(declineData).not.toBeNull();
-    expect(responsibility).not.toBeNull();
-
-    declineData!.checked = true;
-    declineData!.dispatchEvent(new Event("change", { bubbles: true }));
-    root.querySelector<HTMLButtonElement>('[data-safety-action="decline"]')?.click();
-    expect(safetyLedgerStorage.load().events).toHaveLength(0);
-
-    responsibility!.checked = true;
-    responsibility!.dispatchEvent(new Event("change", { bubbles: true }));
-    root.querySelector<HTMLButtonElement>('[data-safety-action="decline"]')?.click();
-
-    expect(safetyLedgerStorage.load().events).toHaveLength(0);
-    expect(auditReceipts).toEqual([
-      expect.objectContaining({ event: expect.objectContaining({ kind: "backupDeclined" }) }),
-    ]);
-    root.querySelector<HTMLButtonElement>('[data-safety-action="confirm-decline-audit"]')?.click();
-
-    expect(safetyLedgerStorage.load().events.at(-1)?.kind).toBe("backupDeclined");
-    expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup declined");
-    expect(root.querySelector('[data-safety-recovery-guidance]')).toBeNull();
-  });
-
   it("restores a saved decline audit only for the exact open project and catalog definition", () => {
     const root = document.createElement("div");
     const safetyLedgerStorage = createSafetyLedgerStorage(createMemoryStorage());
@@ -1222,27 +1220,6 @@ describe("desktop preview layer controls", () => {
     root.querySelector<HTMLButtonElement>('[data-project-action="import"]')?.click();
 
     expect(safetyLedgerStorage.load().events.at(-1)?.kind).toBe("backupDeclined");
-    expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup declined");
-  });
-
-  it("requires a new backup when the edited project changes after a prior backup", () => {
-    const root = document.createElement("div");
-    const safetyLedgerStorage = createSafetyLedgerStorage(createMemoryStorage());
-
-    createApp(root, { safetyLedgerStorage, downloadRecoveryBundle: () => undefined });
-    root.querySelector<HTMLButtonElement>('[data-diagnostics-action="open"]')?.click();
-    root.querySelector<HTMLButtonElement>('[data-safety-action="backup"]')?.click();
-    root.querySelector<HTMLButtonElement>('[data-safety-action="confirm-backup"]')?.click();
-    root.querySelector<HTMLButtonElement>('[data-safety-action="confirm-backup"]')?.click();
-
-    root.querySelector<HTMLButtonElement>('[data-diagnostics-action="close"]')?.click();
-    root.querySelector<HTMLButtonElement>('[data-key="v5_001"]')?.click();
-    const keycode = root.querySelector<HTMLInputElement>('[data-focus-id="selected-keycode"]');
-    keycode!.value = "KC_F13";
-    keycode!.dispatchEvent(new Event("input", { bubbles: true }));
-    root.querySelector<HTMLButtonElement>('[data-diagnostics-action="open"]')?.click();
-
-    expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup required");
   });
 });
 
@@ -1265,8 +1242,10 @@ function readQmkPreview(root: HTMLElement): {
   layout: string;
   layers: string[][];
 } {
-  const text = root.querySelector("pre")?.textContent;
+  root.querySelector<HTMLElement>('[data-view="system"]')?.click();
+  const text = root.querySelector("[data-support-details] pre")?.textContent;
   expect(text).toBeTruthy();
+  root.querySelector<HTMLElement>('[data-view="workspace"]')?.click();
   return JSON.parse(text ?? "{}") as { keyboard: string; layout: string; layers: string[][] };
 }
 
