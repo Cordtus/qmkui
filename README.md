@@ -42,10 +42,11 @@ project recovery export yourself if you need it to survive browser-data removal.
 They do not read, back up, or restore keyboard firmware, EEPROM, wireless
 configuration, or other device state.
 
-Compilation, device reads, flashing, live keyboard mode, persistent native
-storage, and broad catalog ingestion are not implemented. The UI may show
-build planning or tool readiness, but it does not run a QMK compile or flash
-command.
+Compilation, device configuration or keymap reads, flashing, live keyboard
+mode, persistent native storage, and broad catalog ingestion are not
+implemented. The app's only device read is the user-triggered V5 Max protocol
+version check; it has no device-memory backup, configuration, keymap,
+lighting, write, or flash operation.
 
 ## Safety and recovery
 
@@ -106,7 +107,9 @@ npm --prefix apps/desktop run preview
 ```
 
 The preview URL is printed by Vite. The production build contains no local
-Doctor report or hardware integration.
+Doctor report; it includes only the user-triggered V5 Max protocol-version
+check described above, not configuration, keymap, lighting, backup, write, or
+flash operations.
 
 ## Doctor
 
