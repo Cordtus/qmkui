@@ -1,16 +1,17 @@
 :root {
   color-scheme: dark;
-  --accent: #5fb99a;
-  --accent-warn: #f2c94c;
-  --border: #333842;
-  --border-muted: #2a2d34;
-  --panel: #171a20;
-  --panel-raised: #20242c;
-  --text: #f4f0e8;
-  --text-muted: #9aa2ad;
+  --accent: #5ed1aa;
+  --accent-warn: #efbd66;
+  --border: #2b3b4a;
+  --border-muted: #20303d;
+  --panel: #101923;
+  --panel-raised: #17232e;
+  --panel-strong: #1c2b37;
+  --text: #edf4f2;
+  --text-muted: #9badb7;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #111318;
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #0b1118;
   color: var(--text);
   font-synthesis: none;
   text-rendering: geometricPrecision;
@@ -31,7 +32,9 @@ body {
   min-width: 320px;
   min-height: 100svh;
   overflow: hidden;
-  background: #111318;
+  background:
+    radial-gradient(circle at 82% -20%, rgb(94 209 170 / 0.09), transparent 34rem),
+    #0b1118;
   color: var(--text);
 }
 
@@ -75,10 +78,10 @@ h3 {
 .rail {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 30px;
   border-right: 1px solid var(--border-muted);
-  background: var(--panel);
-  padding: 22px 18px;
+  background: linear-gradient(180deg, #111c26 0%, #0d151e 100%);
+  padding: 24px 18px;
   overflow: hidden;
 }
 
@@ -93,9 +96,12 @@ h3 {
   width: 34px;
   height: 34px;
   place-items: center;
-  border: 1px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 86%, white);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
   color: var(--accent);
   font-weight: 800;
+  letter-spacing: -0.06em;
 }
 
 .brand strong,
@@ -114,7 +120,7 @@ small {
 
 nav {
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .nav-item,
@@ -126,10 +132,12 @@ nav {
 }
 
 .nav-item {
-  min-height: 36px;
+  min-height: 40px;
   overflow: hidden;
-  padding: 0 10px;
+  padding: 0 12px;
   color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 650;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -138,25 +146,29 @@ nav {
 .nav-item.active,
 .nav-item:hover {
   border-color: var(--border);
-  background: var(--panel-raised);
+  background: color-mix(in srgb, var(--panel-strong) 88%, var(--accent));
   color: var(--text);
 }
 
 wa-button.nav-item.active::part(base),
 wa-button.nav-item:hover::part(base) {
   border-color: var(--border);
-  background: var(--panel-raised);
+  background: color-mix(in srgb, var(--panel-strong) 88%, var(--accent));
+}
+
+wa-button.nav-item.active::part(base) {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .workspace {
   display: grid;
   grid-template-rows: auto auto auto;
   align-content: start;
-  gap: 14px;
+  gap: 16px;
   min-height: 0;
   min-width: 0;
   overflow: auto;
-  padding: 26px;
+  padding: 24px clamp(18px, 2.5vw, 38px) 34px;
 }
 
 .topbar {
@@ -165,6 +177,14 @@ wa-button.nav-item:hover::part(base) {
   justify-content: space-between;
   gap: 18px;
   min-width: 0;
+}
+
+.workspace-header {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgb(28 43 55 / 0.94), rgb(18 29 39 / 0.94));
+  box-shadow: inset 0 1px 0 rgb(237 244 242 / 0.045);
+  padding: 18px 20px;
 }
 
 .topbar > div:first-child {
@@ -180,8 +200,10 @@ wa-button.nav-item:hover::part(base) {
 }
 
 .eyebrow {
-  margin: 0 0 4px;
-  font-size: 0.82rem;
+  margin: 0 0 5px;
+  font-size: 0.7rem;
+  font-weight: 760;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
@@ -193,9 +215,9 @@ p {
 
 h1 {
   overflow-wrap: anywhere;
-  font-size: clamp(1.7rem, 2vw, 2.2rem);
+  font-size: clamp(1.55rem, 2vw, 2.15rem);
   font-weight: 760;
-  letter-spacing: 0;
+  letter-spacing: -0.035em;
 }
 
 h2 {
@@ -214,7 +236,11 @@ h3 {
   min-width: 190px;
   max-width: 240px;
   border: 1px solid var(--border);
-  padding: 10px 12px;
+  border-radius: 999px;
+  padding: 9px 14px;
+  background: rgb(8 14 20 / 0.42);
+  font-size: 0.8rem;
+  font-weight: 720;
   text-align: center;
   white-space: nowrap;
 }
@@ -230,8 +256,14 @@ h3 {
 }
 
 .status.ready {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
   color: var(--accent);
+}
+
+.preview-boundary {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
 }
 
 .view-stack {
@@ -288,9 +320,10 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  padding: 12px 0;
+  border: 1px solid var(--border-muted);
+  border-radius: 10px;
+  background: rgb(16 25 35 / 0.72);
+  padding: 12px 14px;
 }
 
 .probe-strip p {
@@ -318,22 +351,45 @@ wa-button.control-button {
   min-height: 34px;
   min-width: 0;
   border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--panel-raised);
-  color: #d7dce3;
+  color: var(--text);
   cursor: pointer;
   padding: 0 12px;
   text-decoration: none;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
 }
 
 wa-button.control-button::part(base) {
   min-height: inherit;
   border: 0;
-  border-radius: 0;
+  border-radius: 7px;
   background: transparent;
   color: inherit;
   font: inherit;
   letter-spacing: 0;
   padding: 0;
+}
+
+wa-button.control-button:hover:not([disabled]) {
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--border));
+  background: var(--panel-strong);
+}
+
+wa-button.control-button:active:not([disabled]) {
+  transform: translateY(1px);
+}
+
+wa-button.control-button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent-warn);
+  outline-offset: 2px;
 }
 
 wa-button.control-button::part(label) {
@@ -366,7 +422,8 @@ wa-button.secondary-action.danger {
 wa-button.layer-tab.active,
 wa-button.keycode-tab.active,
 wa-button.segment.active {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 76%, var(--border));
+  background: color-mix(in srgb, var(--panel-strong) 88%, var(--accent));
   color: var(--text);
 }
 
@@ -403,8 +460,8 @@ wa-button.keycode-option {
 }
 
 .keyboard-stage {
-  --key-info-width: 240px;
-  --keyboard-stage-gap: 12px;
+  --key-info-width: 280px;
+  --keyboard-stage-gap: 16px;
   --keyboard-canvas-pad-y: 0px;
   display: grid;
   grid-template-columns: minmax(0, var(--keyboard-board-width)) minmax(var(--key-info-width), 1fr);
@@ -418,20 +475,23 @@ wa-button.keycode-option {
 .key-info-panel {
   display: grid;
   grid-template-columns: minmax(180px, 0.68fr) minmax(260px, 1fr);
-  gap: 10px 14px;
+  gap: 12px 16px;
   align-content: start;
   max-height: var(--keyboard-board-height);
   min-height: 0;
   min-width: 0;
   overflow: auto;
-  border-left: 2px solid var(--border-muted);
-  padding-left: 12px;
+  border: 1px solid var(--border-muted);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 62%, var(--border-muted));
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgb(23 35 46 / 0.9), rgb(16 25 35 / 0.9));
+  padding: 16px;
 }
 
 .key-info-panel .panel-heading {
   grid-column: 1 / -1;
-  border-bottom: 0;
-  padding-bottom: 0;
+  border-bottom: 1px solid var(--border-muted);
+  padding-bottom: 10px;
 }
 
 .key-info-panel dl {
@@ -457,28 +517,30 @@ wa-button.keycode-option {
   border-top: 0;
   border-left: 1px solid var(--border-muted);
   padding-top: 0;
-  padding-left: 10px;
+  padding-left: 12px;
 }
 
 .workspace-controls {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 14px;
+  gap: 16px;
   align-items: start;
   min-height: 0;
   min-width: 0;
   overflow: visible;
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
+  border-top: 0;
+  padding-top: 2px;
 }
 
 .settings-group {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   align-content: start;
   min-width: 0;
-  border-left: 2px solid var(--border-muted);
-  padding-left: 10px;
+  border: 1px solid var(--border-muted);
+  border-radius: 12px;
+  background: rgb(16 25 35 / 0.72);
+  padding: 14px;
 }
 
 .settings-group-title {
@@ -491,7 +553,7 @@ wa-button.keycode-option {
 }
 
 .settings-group:focus-within {
-  border-left-color: color-mix(in srgb, var(--accent) 68%, var(--border-muted));
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--border-muted));
 }
 
 .layer-strip {
@@ -512,6 +574,8 @@ wa-button.keycode-option {
   min-width: 0;
   overflow: hidden;
   padding: 0 10px;
+  border-color: var(--border-muted);
+  border-radius: 8px;
   background: var(--panel);
   text-align: left;
   text-overflow: ellipsis;
@@ -524,7 +588,8 @@ wa-button.keycode-option {
   height: 18px;
   flex: 0 0 auto;
   place-items: center;
-  background: #262b33;
+  border-radius: 5px;
+  background: var(--panel-strong);
   color: var(--text-muted);
   font-size: 0.78rem;
 }
@@ -606,6 +671,14 @@ wa-button.keycode-option {
   max-height: var(--keyboard-board-height);
   max-width: 100%;
   min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background-color: #0e1821;
+  background-image:
+    linear-gradient(rgb(94 209 170 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(94 209 170 / 0.035) 1px, transparent 1px);
+  background-size: 24px 24px;
+  box-shadow: inset 0 1px 0 rgb(237 244 242 / 0.035);
   padding: 0;
   place-items: start;
 }
@@ -622,11 +695,12 @@ wa-button.keycode-option {
   min-height: 30px;
   place-items: center;
   padding: 5px;
-  border-color: #333842;
-  color: #dfe5ed;
+  border-color: #324554;
+  border-radius: 6px;
+  color: var(--text);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--key-light) 22%, #20242c), #20242c 64%),
-    #20242c;
+    linear-gradient(180deg, color-mix(in srgb, var(--key-light) 21%, #243542), #182631 64%),
+    #182631;
   text-align: center;
   cursor: pointer;
   transition:
@@ -643,20 +717,22 @@ wa-button.keycode-option {
 .key:hover {
   border-color: var(--accent);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--key-light) 32%, #242a32), #242a32 64%),
-    #242a32;
+    linear-gradient(180deg, color-mix(in srgb, var(--key-light) 34%, #2a4150), #1c2d38 64%),
+    #1c2d38;
   transform: translateY(-1px);
 }
 
 .key.selected {
   border-color: var(--accent-warn);
-  box-shadow: inset 0 -3px 0 var(--key-light);
+  box-shadow:
+    inset 0 -3px 0 var(--key-light),
+    inset 0 1px 0 rgb(237 244 242 / 0.08);
 }
 
 .key strong {
   overflow: hidden;
   max-width: 100%;
-  color: #dfe5ed;
+  color: var(--text);
   font-size: var(--key-label-size, 12px);
   line-height: 1;
   letter-spacing: 0;
@@ -675,7 +751,7 @@ wa-button.keycode-option {
 
 .context-tabs {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   overflow-x: auto;
 }
@@ -684,7 +760,8 @@ wa-button.keycode-option {
   flex: 0 0 auto;
   min-height: 34px;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-muted);
+  border-radius: 8px;
   background: var(--panel);
   color: var(--text-muted);
   text-overflow: ellipsis;
@@ -692,7 +769,8 @@ wa-button.keycode-option {
 }
 
 .context-tab.active {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 78%, var(--border));
+  background: color-mix(in srgb, var(--panel-strong) 86%, var(--accent));
   color: var(--text);
 }
 
@@ -762,7 +840,7 @@ wa-button.keycode-option {
 
 .context-disclosure::part(base) {
   border-color: var(--border-muted);
-  border-radius: 0;
+  border-radius: 8px;
   background: var(--panel);
 }
 
@@ -821,6 +899,7 @@ textarea {
   min-height: 36px;
   min-width: 0;
   border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--panel);
   color: var(--text);
   font: inherit;
@@ -886,6 +965,7 @@ input[type="color"] {
   min-height: 34px;
   overflow: hidden;
   border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--panel);
   color: var(--text);
   padding: 0 8px;
@@ -959,6 +1039,7 @@ input[type="color"] {
   min-height: 42px;
   overflow: hidden;
   border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--panel);
   color: inherit;
   justify-items: start;
@@ -1016,6 +1097,7 @@ input[type="color"] {
   align-items: center;
   min-width: 0;
   border: 1px solid var(--border-muted);
+  border-radius: 10px;
   background: var(--panel);
   padding: 8px;
 }
@@ -1040,7 +1122,8 @@ input[type="color"] {
   min-width: 28px;
   height: 24px;
   place-items: center;
-  background: #262b33;
+  border-radius: 5px;
+  background: var(--panel-strong);
   color: var(--text-muted);
   font-size: 0.72rem;
 }
@@ -1070,6 +1153,7 @@ input[type="color"] {
   gap: 10px;
   min-width: 0;
   border: 1px solid var(--border);
+  border-radius: 10px;
   background: var(--panel);
   padding: 12px;
 }
@@ -1090,6 +1174,7 @@ input[type="color"] {
   gap: 2px;
   min-width: 0;
   border: 1px solid var(--border-muted);
+  border-radius: 8px;
   background: var(--panel);
   padding: 8px;
 }
@@ -1113,6 +1198,7 @@ input[type="color"] {
   gap: 2px;
   min-width: 0;
   border: 1px solid var(--border-muted);
+  border-radius: 8px;
   background: var(--panel);
   padding: 8px;
 }
@@ -1148,6 +1234,7 @@ input[type="color"] {
   min-height: 34px;
   overflow: hidden;
   border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--panel);
   color: var(--text-muted);
   text-overflow: ellipsis;
@@ -1155,7 +1242,8 @@ input[type="color"] {
 }
 
 .segment.active {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 76%, var(--border));
+  background: color-mix(in srgb, var(--panel-strong) 86%, var(--accent));
   color: var(--text);
 }
 
@@ -1194,6 +1282,7 @@ input[type="color"] {
 .project-transfer::part(base),
 .support-details::part(base) {
   border-color: var(--border-muted);
+  border-radius: 10px;
   background: var(--panel);
 }
 
@@ -1212,6 +1301,7 @@ input[type="color"] {
 .project-status {
   min-height: 32px;
   border: 1px solid var(--border-muted);
+  border-radius: 8px;
   background: var(--panel);
   padding: 8px;
   font-size: 0.82rem;
@@ -1243,6 +1333,7 @@ input[type="color"] {
   gap: 2px;
   min-width: 0;
   border: 1px solid var(--border-muted);
+  border-radius: 8px;
   background: var(--panel);
   padding: 8px;
 }
@@ -1281,6 +1372,8 @@ input[type="color"] {
 
 .project-details-drawer::part(dialog) {
   width: min(640px, calc(100vw - 24px));
+  border: 1px solid var(--border);
+  border-radius: 14px;
   background: var(--panel-raised);
   color: var(--text);
 }
@@ -1492,6 +1585,10 @@ dd {
     flex-direction: column;
   }
 
+  .workspace-header {
+    padding: 16px;
+  }
+
   .topbar-actions {
     flex-wrap: wrap;
     width: 100%;
@@ -1512,5 +1609,29 @@ dd {
   .workspace {
     overflow: auto;
     padding: 18px;
+  }
+
+  .keyboard-stage {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: none !important;
+  }
+
+  .keyboard-scroll {
+    width: 100% !important;
+    max-height: none;
+  }
+
+  .key-info-panel {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
