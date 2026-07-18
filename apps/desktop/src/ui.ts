@@ -75,6 +75,10 @@ import {
   createSafetyLedgerStorage,
   type SafetyLedgerStorage,
 } from "./safetyStorage";
+import {
+  selectKeychronV5MaxBrowserDevice,
+  type KeychronV5MaxBrowserSelection,
+} from "./devices/keychronV5MaxBrowser";
 
 const fixtureKeyboard = catalog[0] as KeyboardDefinition;
 const fixtureProject = project as Project;
@@ -93,6 +97,7 @@ type AppOptions = {
   downloadRecoveryBundle?: (bundle: RecoveryBundle) => void;
   downloadSafetyAudit?: (receipt: SafetyAuditReceipt) => void;
   downloadQmkJson?: (output: unknown, project: Project) => void;
+  selectKeychronV5MaxDevice?: () => Promise<KeychronV5MaxBrowserSelection>;
   now?: () => string;
   qmkDetected?: boolean;
   doctorReportLoader?: () => Promise<DoctorReport | null>;
@@ -116,6 +121,8 @@ type EditorState = {
   downloadRecoveryBundle: (bundle: RecoveryBundle) => void;
   downloadSafetyAudit: (receipt: SafetyAuditReceipt) => void;
   downloadQmkJson: (output: unknown, project: Project) => void;
+  selectKeychronV5MaxDevice: () => Promise<KeychronV5MaxBrowserSelection>;
+  deviceSelection: DeviceSelectionState;
   now: () => string;
   pendingRecoveryBundle?: {
     bundle: RecoveryBundle;
@@ -139,6 +146,8 @@ type EditorState = {
   doctorReport?: DoctorReport;
   doctorStatus: "loading" | "ready" | "missing";
 };
+
+type DeviceSelectionState = KeychronV5MaxBrowserSelection | { state: "idle" | "selecting" };
 
 export function createApp(root: HTMLElement, options: AppOptions = {}): void {
   const keyboard = structuredClone(options.keyboard ?? keychronV5MaxKeyboard ?? fixtureKeyboard);
@@ -169,6 +178,8 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     downloadRecoveryBundle: options.downloadRecoveryBundle ?? downloadRecoveryBundle,
     downloadSafetyAudit: options.downloadSafetyAudit ?? downloadSafetyAudit,
     downloadQmkJson: options.downloadQmkJson ?? downloadQmkJson,
+    selectKeychronV5MaxDevice: options.selectKeychronV5MaxDevice ?? selectKeychronV5MaxBrowserDevice,
+    deviceSelection: { state: "idle" },
     now: options.now ?? (() => new Date().toISOString()),
     declineNoBackupConfirmed: false,
     declineResponsibilityConfirmed: false,
@@ -264,6 +275,20 @@ function createActions(
             state.downloadQmkJson(
               safeExportQmkJson(state.project, state.keyboard, issues),
               state.project,
+            );
+          },
+          selectKeychronV5MaxDevice: () => {
+            state.deviceSelection = { state: "selecting" };
+            actions.render();
+            state.selectKeychronV5MaxDevice().then(
+              (selection) => {
+                state.deviceSelection = selection;
+                actions.render();
+              },
+              () => {
+                state.deviceSelection = { state: "unavailable" };
+                actions.render();
+              },
             );
           },
           selectKeycodeCategory: (categoryId) => {
@@ -600,6 +625,7 @@ type RenderActions = {
   updateSelectedLighting: (color: string) => void;
   captureHostKey: (input: { code: string; key: string }) => void;
   downloadQmkJson: () => void;
+  selectKeychronV5MaxDevice: () => void;
   selectKeycodeCategory: (categoryId: string) => void;
   updateKeycodeSearch: (query: string) => void;
   updateCatalogSearch: (query: string) => void;
@@ -783,12 +809,16 @@ function editor(
     className: "editor workbench-editor",
     attrs: { "data-workbench-surface": "true" },
   }, [
-    editorWorkflow(issues, actions),
+    editorWorkflow(state, issues, actions),
     keyboardWorkspace(state, layout, actions),
   ]);
 }
 
-function editorWorkflow(issues: UiIssue[], actions: RenderActions): HTMLElement {
+function editorWorkflow(
+  state: EditorState,
+  issues: UiIssue[],
+  actions: RenderActions,
+): HTMLElement {
   const invalid = issues.some((issue) => issue.severity === "error");
   const download = uiButton({
     className: "secondary-action",
@@ -800,17 +830,56 @@ function editorWorkflow(issues: UiIssue[], actions: RenderActions): HTMLElement 
     },
   });
   download.addEventListener("click", actions.downloadQmkJson);
+  const connect = uiButton({
+    className: "secondary-action",
+    text:
+      state.deviceSelection.state === "selecting"
+        ? "Selecting Keychron V5 Max..."
+        : "Connect Keychron V5 Max",
+    type: "button",
+    attrs: {
+      "data-device-action": "connect",
+      ...(state.deviceSelection.state === "selecting" ? { disabled: "" } : {}),
+    },
+  });
+  connect.addEventListener("click", actions.selectKeychronV5MaxDevice);
   return element("section", {
     className: "editor-workflow",
     attrs: { "data-editor-workflow": "true" },
   }, [
     element("p", { text: "Edit the keymap, validate it, then download QMK JSON for your local build workflow." }),
     download,
+    connect,
     ...(invalid
       ? [element("small", { text: "Resolve keymap validation errors before downloading QMK JSON." })]
       : []),
-    element("small", { text: "A keyboard connection is not available in this editor." }),
+    element("small", {
+      attrs: { "data-device-state": "true" },
+      text: deviceSelectionLabel(state.deviceSelection),
+    }),
   ]);
+}
+
+function deviceSelectionLabel(selection: DeviceSelectionState): string {
+  if (selection.state === "idle") {
+    return "Connect the exact Keychron V5 Max ANSI Knob to identify it.";
+  }
+  if (selection.state === "selecting") {
+    return "Choose the exact Keychron V5 Max ANSI Knob in the browser prompt.";
+  }
+  if (selection.state === "unavailable") {
+    return "This browser cannot show the Keychron chooser. Use Chrome, Edge, or Opera.";
+  }
+  if (selection.state === "no-selection") {
+    return "No device selected.";
+  }
+  if ("contract" in selection) {
+    if (selection.contract.state === "unsupported") {
+      return "Selected device does not match the Keychron V5 Max ANSI Knob.";
+    }
+    return "Keychron V5 Max ANSI Knob recognized. Device access remains unavailable until its protocol is verified.";
+  }
+  return "No device selected.";
 }
 
 function keyboardWorkspace(

@@ -34,20 +34,18 @@ describe("lower workspace layout", () => {
     const page = await openPage({ width: 420, height: 700 });
 
     const layout = await page.locator("[data-editor-workflow]").evaluate((workflow) => {
-      const download = workflow.querySelector<HTMLElement>("[data-qmk-action=download]");
-      const warning = [...workflow.querySelectorAll<HTMLElement>("small")].find((element) =>
-        element.textContent?.includes("keyboard connection is not available"),
-      );
-      if (!download || !warning) throw new Error("Missing editor workflow content");
-      const downloadRect = download.getBoundingClientRect();
+      const connect = workflow.querySelector<HTMLElement>("[data-device-action=connect]");
+      const warning = workflow.querySelector<HTMLElement>("[data-device-state]");
+      if (!connect || !warning) throw new Error("Missing editor workflow content");
+      const connectRect = connect.getBoundingClientRect();
       const warningRect = warning.getBoundingClientRect();
       return {
-        download: { bottom: downloadRect.bottom, top: downloadRect.top },
+        connect: { bottom: connectRect.bottom, top: connectRect.top },
         warning: { bottom: warningRect.bottom, top: warningRect.top },
       };
     });
 
-    expect(layout.warning.top).toBeGreaterThanOrEqual(layout.download.bottom + 8);
+    expect(layout.warning.top).toBeGreaterThanOrEqual(layout.connect.bottom + 8);
   });
 
   it("keeps desktop layer tabs in a scroll strip and actions inside their tools", async () => {

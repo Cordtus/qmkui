@@ -13,6 +13,7 @@ import {
   type RecoveryBundle,
 } from "./safety";
 import { createSafetyLedgerStorage } from "./safetyStorage";
+import type { KeychronV5MaxBrowserSelection } from "./devices/keychronV5MaxBrowser";
 import { createApp } from "./ui";
 
 afterEach(() => {
@@ -48,18 +49,49 @@ describe("desktop preview layer controls", () => {
     expect(root.querySelector('[data-key="v5_001"]')).not.toBeNull();
   });
 
-  it("shows a software-only editing path without a hardware connect control", () => {
+  it("offers an exact Keychron V5 Max chooser instead of a generic device control", () => {
     const root = document.createElement("div");
 
     createApp(root);
 
     const workflow = root.querySelector<HTMLElement>("[data-editor-workflow]");
     expect(workflow?.textContent).toContain("Download QMK JSON");
-    expect(workflow?.textContent).toContain("keyboard connection is not available");
-    expect(root.querySelector('[data-device-action="connect"]')).toBeNull();
+    expect(root.querySelector('[data-device-action="connect"]')?.textContent).toBe(
+      "Connect Keychron V5 Max",
+    );
+    expect(root.querySelector('[data-device-action="read"]')).toBeNull();
+    expect(root.querySelector('[data-device-action="write"]')).toBeNull();
+    expect(root.querySelector('[data-device-action="flash"]')).toBeNull();
   });
 
-  it("keeps the hardware limitation explicit when validation blocks the editor workflow", () => {
+  it("shows the recognized V5 Max identity after the injected chooser returns the exact partial target", async () => {
+    const root = document.createElement("div");
+    const selection: KeychronV5MaxBrowserSelection = {
+      state: "selected",
+      identity: {
+        vendorId: 0x3434,
+        productId: 0x0950,
+        collections: [{ usagePage: 0xff60, usage: 0x0061 }],
+      },
+      contract: {
+        state: "partial",
+        capabilities: { open: false, read: false, write: false, flash: false },
+      },
+    };
+
+    createApp(root, { selectKeychronV5MaxDevice: async () => selection });
+    root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
+    await flushDeviceSelection();
+
+    expect(root.querySelector("[data-device-state]")?.textContent).toContain(
+      "Keychron V5 Max ANSI Knob recognized",
+    );
+    expect(root.querySelector('[data-device-action="read"]')).toBeNull();
+    expect(root.querySelector('[data-device-action="write"]')).toBeNull();
+    expect(root.querySelector('[data-device-action="flash"]')).toBeNull();
+  });
+
+  it("keeps the V5 Max chooser available when validation blocks QMK JSON download", () => {
     const root = document.createElement("div");
 
     createApp(root, {
@@ -69,8 +101,8 @@ describe("desktop preview layer controls", () => {
       },
     });
 
-    expect(root.querySelector("[data-editor-workflow]")?.textContent).toContain(
-      "keyboard connection is not available",
+    expect(root.querySelector('[data-device-action="connect"]')?.textContent).toBe(
+      "Connect Keychron V5 Max",
     );
   });
 
@@ -1147,6 +1179,11 @@ function deferred<T>(): {
 }
 
 async function flushDoctorLoad(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function flushDeviceSelection(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
 }

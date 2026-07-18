@@ -1,9 +1,10 @@
 # QMKUI
 
-QMKUI is an early, software-only keyboard project editor for QMK. The public
-app is a static browser application: it does not connect to a keyboard, open
-HID or serial devices, run a QMK compile, enter a bootloader, flash firmware,
-or write device state.
+QMKUI is an early QMK keyboard project editor. In Chrome, Edge, or Opera, the
+public app can ask you to select the exact wired **Keychron V5 Max ANSI Knob**
+and recognize its static HID identity. It does not open the device, read HID
+reports, write configuration, run a QMK compile, enter a bootloader, flash
+firmware, or write device state.
 
 The public instance is available at
 [https://cordtus.github.io/qmkui/](https://cordtus.github.io/qmkui/). GitHub
@@ -20,6 +21,8 @@ supported hardware target.
 - Configure local RGB Matrix preview profiles from the preset's capabilities.
 - Validate a project, then download its QMK JSON for handoff to your local QMK
   build workflow.
+- Select the exact wired Keychron V5 Max ANSI Knob in a supported browser to
+  verify its static identity. No device operations are available.
 - Inspect, edit, and import an app-native project JSON draft.
 - Download and restore an app-native project recovery export containing the
   project, its exact bundled catalog definition, and its safety history.
@@ -36,9 +39,10 @@ project recovery export yourself if you need it to survive browser-data removal.
 They do not read, back up, or restore keyboard firmware, EEPROM, wireless
 configuration, or other device state.
 
-Compilation, flashing, live keyboard mode, persistent native storage, and
-broad catalog ingestion are not implemented. The UI may show build planning or
-tool readiness, but it does not run a QMK compile or flash command.
+Compilation, device reads, flashing, live keyboard mode, persistent native
+storage, and broad catalog ingestion are not implemented. The UI may show
+build planning or tool readiness, but it does not run a QMK compile or flash
+command.
 
 ## Safety and recovery
 
