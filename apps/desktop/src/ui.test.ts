@@ -74,6 +74,32 @@ describe("desktop preview layer controls", () => {
     );
   });
 
+  it("downloads validated QMK JSON and disables download for an invalid project", () => {
+    const downloads: unknown[] = [];
+    const root = document.createElement("div");
+
+    createApp(root, { downloadQmkJson: (output) => downloads.push(output) });
+    root.querySelector<HTMLButtonElement>('[data-qmk-action="download"]')?.click();
+
+    expect(downloads).toEqual([exportQmkJson(keychronV5MaxProject, keychronV5MaxKeyboard)]);
+
+    const invalidRoot = document.createElement("div");
+    createApp(invalidRoot, {
+      project: {
+        ...structuredClone(keychronV5MaxProject),
+        build: { ...keychronV5MaxProject.build, keymapName: "invalid name" },
+      },
+      downloadQmkJson: (output) => downloads.push(output),
+    });
+
+    const invalidDownload = invalidRoot.querySelector<HTMLButtonElement>(
+      '[data-qmk-action="download"]',
+    );
+    expect(invalidDownload?.disabled).toBe(true);
+    invalidDownload?.click();
+    expect(downloads).toHaveLength(1);
+  });
+
   it("labels the computer keyboard capture tool as a host key test", () => {
     const root = document.createElement("div");
 
