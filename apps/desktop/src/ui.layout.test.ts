@@ -135,7 +135,7 @@ describe("lower workspace layout", () => {
     expect(layout.warning.top).toBeGreaterThanOrEqual(layout.connect.bottom + 8);
   });
 
-  it("keeps desktop layer tabs in a scroll strip and actions inside their tools", async () => {
+  it("wraps desktop layer tabs into their selection group and keeps actions inside their tools", async () => {
     const page = await openPage({ width: 1440, height: 1200 });
 
     for (let index = 0; index < 9; index += 1) {
@@ -181,8 +181,8 @@ describe("lower workspace layout", () => {
       };
     });
 
-    expect(layout.layerTabs.overflowX).toBe("auto");
-    expect(layout.layerTabs.scrollWidth).toBeGreaterThan(layout.layerTabs.clientWidth);
+    expect(layout.layerTabs.overflowX).toBe("visible");
+    expect(layout.layerTabs.scrollWidth).toBeLessThanOrEqual(layout.layerTabs.clientWidth);
     expect(isContained(layout.layerTabs, layout.layerStrip)).toBe(true);
     expect(isContained(layout.actions, layout.layerStrip)).toBe(true);
     expect(layout.actionButtons).toHaveLength(2);
@@ -267,6 +267,8 @@ describe("lower workspace layout", () => {
       if (!controls || !actions || !canvas) throw new Error("Missing editor controls");
       const workspaceRect = workspace.getBoundingClientRect();
       const actionsRect = actions.getBoundingClientRect();
+      canvas.scrollLeft = 1;
+      canvas.scrollTop = 1;
       return {
         actions: { top: actionsRect.top, bottom: actionsRect.bottom },
         controls: {
@@ -287,7 +289,11 @@ describe("lower workspace layout", () => {
           clientHeight: canvas.clientHeight,
           clientWidth: canvas.clientWidth,
           overflowX: getComputedStyle(canvas).overflowX,
+          overflowY: getComputedStyle(canvas).overflowY,
+          scrollLeft: canvas.scrollLeft,
+          scrollTop: canvas.scrollTop,
           scrollWidth: canvas.scrollWidth,
+          scrollHeight: canvas.scrollHeight,
         },
         pageWidth: document.documentElement.scrollWidth,
         viewportWidth: window.innerWidth,
@@ -300,10 +306,11 @@ describe("lower workspace layout", () => {
     expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
     expect(layout.keyboardCanvas.clientHeight).toBeGreaterThan(0);
     expect(layout.keyboardCanvas.clientWidth).toBeGreaterThan(0);
-    expect(layout.keyboardCanvas.overflowX).toBe("auto");
-    if (viewport.width < 900) {
-      expect(layout.keyboardCanvas.scrollWidth).toBeGreaterThan(layout.keyboardCanvas.clientWidth);
-    }
+    expect(layout.keyboardCanvas.overflowX).not.toBe("auto");
+    expect(layout.keyboardCanvas.overflowY).not.toBe("auto");
+    expect(layout.keyboardCanvas.scrollWidth).toBeLessThanOrEqual(layout.keyboardCanvas.clientWidth);
+    expect(layout.keyboardCanvas.scrollLeft).toBe(0);
+    expect(layout.keyboardCanvas.scrollTop).toBe(0);
     expect(layout.controls.overflowY).not.toBe("auto");
     expect(layout.controls.scrollTop).toBe(0);
     expect(layout.controls.scrollHeight).toBeLessThanOrEqual(layout.controls.clientHeight);
@@ -322,7 +329,7 @@ describe("lower workspace layout", () => {
       const inspectorStyle = getComputedStyle(inspector);
       return {
         canvas: {
-          borderTopWidth: Number.parseFloat(canvasStyle.borderTopWidth),
+          boxShadow: canvasStyle.boxShadow,
           overflowX: canvasStyle.overflowX,
         },
         inspector: {
@@ -332,8 +339,8 @@ describe("lower workspace layout", () => {
       };
     });
 
-    expect(layout.canvas.borderTopWidth).toBeGreaterThan(0);
-    expect(layout.canvas.overflowX).toBe("auto");
+    expect(layout.canvas.boxShadow).not.toBe("none");
+    expect(layout.canvas.overflowX).not.toBe("auto");
     expect(layout.inspector.borderLeftWidth).toBeGreaterThan(0);
     expect(["auto", "scroll"]).toContain(layout.inspector.overflowY);
   });
@@ -390,6 +397,69 @@ describe("lower workspace layout", () => {
       ...layout.nav.items,
     ].every((element) => element.borderRadius === "0px")).toBe(true);
   }, 10_000);
+
+  it.each([
+    { height: 700, width: 320 },
+    { height: 900, width: 1440 },
+  ])("keeps the complete keyboard map visible at $width×$height", async (viewport) => {
+    const page = await openPage(viewport);
+
+    const layout = await page.locator("[data-keyboard-canvas]").evaluate((canvas) => {
+      const board = canvas.querySelector<HTMLElement>(".board");
+      if (!board) throw new Error("Missing keyboard board");
+      canvas.scrollLeft = 1;
+      canvas.scrollTop = 1;
+      const canvasRect = canvas.getBoundingClientRect();
+      const boardRect = board.getBoundingClientRect();
+      const style = getComputedStyle(canvas);
+      return {
+        board: { bottom: boardRect.bottom, left: boardRect.left, right: boardRect.right, top: boardRect.top },
+        canvas: { bottom: canvasRect.bottom, left: canvasRect.left, right: canvasRect.right, top: canvasRect.top },
+        clientHeight: canvas.clientHeight,
+        clientWidth: canvas.clientWidth,
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        scrollLeft: canvas.scrollLeft,
+        scrollTop: canvas.scrollTop,
+        scrollHeight: canvas.scrollHeight,
+        scrollWidth: canvas.scrollWidth,
+        pageWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      };
+    });
+
+    expect(layout.overflowX).not.toBe("auto");
+    expect(layout.overflowY).not.toBe("auto");
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+    expect(layout.scrollLeft).toBe(0);
+    expect(layout.scrollTop).toBe(0);
+    expect(isContained(layout.board, layout.canvas)).toBe(true);
+    expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
+  });
+
+  it("groups layer and assignment controls by their task", async () => {
+    const page = await openPage({ width: 1440, height: 900 });
+
+    const groups = await page.locator("body").evaluate((app) =>
+      [...app.querySelectorAll<HTMLElement>("[data-control-group]")].map((group) => ({
+        content: group.querySelectorAll("button, input, select, textarea, wa-button, wa-details, dl, .parameter-block, .layer-functions, .condition-list, .relation-list").length,
+        label: group.getAttribute("data-control-group"),
+        title: group.querySelector<HTMLElement>("[data-control-group-title]")?.textContent,
+      })),
+    );
+
+    expect(groups.map((group) => group.label)).toEqual(expect.arrayContaining([
+      "layer-selection",
+      "layer-details",
+      "key-assignment",
+      "assignment-tools",
+      "key-context",
+      "key-functions",
+      "key-lighting",
+      "key-relations",
+    ]));
+    expect(groups.every((group) => group.title && group.content > 0)).toBe(true);
+  });
 });
 
 async function openPage(viewport: { width: number; height: number }): Promise<Page> {

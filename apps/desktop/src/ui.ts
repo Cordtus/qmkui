@@ -79,8 +79,8 @@ import type { KeychronV5MaxProtocolVersion } from "./devices/keychronV5MaxProtoc
 const fixtureKeyboard = catalog[0] as KeyboardDefinition;
 const fixtureProject = project as Project;
 const bundledKeyboards = [keychronV5MaxKeyboard, fixtureKeyboard];
-const KEY_UNIT = 58;
-const KEY_INSET = 6;
+const KEY_LABEL_UNIT = 58;
+const KEY_LABEL_INSET = 6;
 
 type AppView = "workspace" | "catalog" | "system";
 type ContextPanel = "assignment" | "lighting" | "test";
@@ -728,13 +728,13 @@ function detectionStrip(state: EditorState, reloadProbe: () => void): HTMLElemen
   refresh.addEventListener("click", reloadProbe);
 
   return element("section", { className: "probe-strip" }, [
-    element("div", {}, [
+    element("div", { className: "probe-summary" }, [
       element("h2", { text: "Keyboard" }),
       element("p", {
         text: keyboardName,
       }),
     ]),
-    element("div", { className: "probe-meta" }, [
+    element("div", { className: "probe-meta probe-actions" }, [
       element("strong", { text: statusText }),
       refresh,
     ]),
@@ -798,14 +798,12 @@ function editorWorkflow(
       })
     : undefined;
   protocolAction?.addEventListener("click", actions.verifyKeychronV5MaxProtocol);
-  return element("section", {
-    className: "editor-workflow",
-    attrs: { "data-editor-workflow": "true" },
-  }, [
-    element("p", { text: "Edit the keymap, validate it, then download QMK JSON for your local build workflow." }),
+  const actionGroup = element("div", { className: "workflow-actions", attrs: { "aria-label": "Editor actions" } }, [
     download,
     connect,
     ...(protocolAction ? [protocolAction] : []),
+  ]);
+  const notices = element("div", { className: "workflow-notices" }, [
     ...(invalid
       ? [element("small", { text: "Resolve keymap validation errors before downloading QMK JSON." })]
       : []),
@@ -813,6 +811,18 @@ function editorWorkflow(
       attrs: { "data-device-state": "true" },
       text: deviceSelectionLabel(state.deviceSelection, state.protocolVerification),
     }),
+  ]);
+
+  return element("section", {
+    className: "editor-workflow",
+    attrs: { "data-editor-workflow": "true" },
+  }, [
+    element("p", {
+      className: "workflow-summary",
+      text: "Edit the keymap, validate it, then download QMK JSON for your local build workflow.",
+    }),
+    actionGroup,
+    notices,
   ]);
 }
 
@@ -892,19 +902,12 @@ function keyboardWorkspace(
   layout: KeyboardDefinition["layouts"][number],
   actions: RenderActions,
 ): HTMLElement {
-  const bounds = layoutBounds(layout.keys);
-  const boardWidth = bounds.width * KEY_UNIT;
-  const boardHeight = bounds.height * KEY_UNIT;
-  const boardPixelWidth = `${boardWidth}px`;
-  const boardPixelHeight = `${boardHeight}px`;
   const canvas = element("div", {
     className: "keyboard-scroll keyboard-canvas",
     attrs: { "aria-label": "Keyboard layout", "data-keyboard-canvas": "true" },
   }, [
     board(state, layout, actions.selectKey),
   ]);
-  canvas.style.width = boardPixelWidth;
-  canvas.style.height = boardPixelHeight;
   const stage = element("section", {
     className: "keyboard-stage workbench-stage",
     attrs: { "data-keyboard-stage": "true" },
@@ -912,7 +915,6 @@ function keyboardWorkspace(
     canvas,
     selectedKeyInfoPanel(state, layout),
   ]);
-  stage.style.setProperty("--keyboard-board-height", boardPixelHeight);
   stage.style.width = "100%";
 
   return element("section", {
@@ -947,9 +949,11 @@ function selectedKeyInfoPanel(
       element("h2", { text: "Selected key" }),
       element("small", { text: context?.selectedAssignment?.label ?? fallbackKey.label ?? fallbackKey.id }),
     ]),
-    context
-      ? selectedKeySummary(context)
-      : element("dl", {}, selectedKeyRows(fallbackKey, currentLayer(state))),
+    controlGroup("key-context", "Key context", [
+      context
+        ? selectedKeySummary(context)
+        : element("dl", {}, selectedKeyRows(fallbackKey, currentLayer(state))),
+    ]),
     context ? selectedKeyDetails(context) : element("div"),
   ]);
 }
@@ -979,6 +983,25 @@ function settingsGroup(id: string, label: string, children: Array<Node | string>
   }, [
     element("h3", { className: "settings-group-title", text: label }),
     ...children,
+  ]);
+}
+
+function controlGroup(id: string, label: string, children: Array<Node | string>): HTMLElement {
+  return element("section", {
+    className: "control-group",
+    attrs: { "data-control-group": id },
+  }, [
+    element("div", { className: "control-group-heading" }, [
+      element("h3", { text: label, attrs: { "data-control-group-title": "true" } }),
+    ]),
+    element("div", { className: "control-group-body" }, children),
+  ]);
+}
+
+function parameterBlock(label: string, children: Array<Node | string>): HTMLElement {
+  return element("section", { className: "parameter-block" }, [
+    element("h4", { className: "parameter-block-title", text: label }),
+    element("div", { className: "parameter-block-body" }, children),
   ]);
 }
 
@@ -1348,25 +1371,29 @@ function lightingPanel(
       element("h2", { text: "Lighting" }),
       element("small", { text: profile.name }),
     ]),
-    modeButtons,
-    element("div", { className: "lighting-quick-row" }, [
-      fieldControl("Selected color", colorInput),
-      definitionList([
-        ["Mapped keys", String(Object.keys(profile.perKey).length)],
-        ["Conditions", String(profile.conditions?.length ?? 0)],
+    controlGroup("lighting-mode", "Mode", [modeButtons]),
+    controlGroup("selected-key-lighting", "Selected key", [
+      element("div", { className: "lighting-quick-row" }, [
+        fieldControl("Selected color", colorInput),
+        definitionList([
+          ["Mapped keys", String(Object.keys(profile.perKey).length)],
+          ["Conditions", String(profile.conditions?.length ?? 0)],
+        ]),
       ]),
     ]),
-    element("div", { className: "context-disclosures" }, [
-      contextDisclosure("Lighting capabilities", "lighting-capabilities", [
-        lightingCapabilityList(lightingSystems),
-      ]),
-      contextDisclosure("RGB Matrix", "rgb-matrix", [
-        supportedSystems.some((system) => system.id === "rgbMatrix")
-          ? rgbMatrixControls(profile, actions)
-          : element("p", { className: "empty muted", text: "Not supported" }),
-      ]),
-      contextDisclosure("Selected key lighting", "selected-key-lighting", [
-        context ? keyLightingDetails(context) : element("div"),
+    controlGroup("lighting-options", "Lighting options", [
+      element("div", { className: "context-disclosures" }, [
+        contextDisclosure("Lighting capabilities", "lighting-capabilities", [
+          lightingCapabilityList(lightingSystems),
+        ]),
+        contextDisclosure("RGB Matrix", "rgb-matrix", [
+          supportedSystems.some((system) => system.id === "rgbMatrix")
+            ? rgbMatrixControls(profile, actions)
+            : element("p", { className: "empty muted", text: "Not supported" }),
+        ]),
+        contextDisclosure("Selected key lighting", "selected-key-lighting", [
+          context ? keyLightingDetails(context) : element("div"),
+        ]),
       ]),
     ]),
   ]);
@@ -1503,9 +1530,11 @@ function testPanel(
         },
       }),
     ]),
-    captureArea,
-    contextDisclosure("Captured events", "test-events", [
-      testEventList(state.testEvents),
+    controlGroup("host-key-capture", "Capture", [captureArea]),
+    controlGroup("host-key-events", "Captured events", [
+      contextDisclosure("Captured events", "test-events", [
+        testEventList(state.testEvents),
+      ]),
     ]),
   ]);
 }
@@ -1810,8 +1839,8 @@ function requirementLabel(requirement: CommandStatus["requiredFor"]): string {
 
 function layerStrip(state: EditorState, actions: RenderActions): HTMLElement {
   return element("section", { className: "layer-strip", attrs: { "data-layer-strip": "true" } }, [
-    layerTabs(state, actions),
-    layerTools(state, actions),
+    controlGroup("layer-selection", "Layer selection", [layerTabs(state, actions)]),
+    controlGroup("layer-details", "Layer details", [layerTools(state, actions)]),
   ]);
 }
 
@@ -1910,16 +1939,20 @@ function layerTools(state: EditorState, actions: RenderActions): HTMLElement {
   }, [duplicate, remove]);
 
   return element("section", { className: "layer-tools", attrs: { "data-layer-tools": String(layer.index) } }, [
-    element("label", { className: "layer-name-field assignment-field" }, [
-      element("span", { text: "Layer name" }),
-      nameInput,
+    parameterBlock("Identity", [
+      element("label", { className: "layer-name-field assignment-field" }, [
+        element("span", { text: "Layer name" }),
+        nameInput,
+      ]),
     ]),
-    actionGroup,
-    definitionList([
-      ["Index", String(layer.index)],
-      ["Keys", String(layer.assignments.length)],
-      ["Refs", String(references.length)],
-      ["Delete", deleteStateLabel(deleteState)],
+    parameterBlock("Actions", [actionGroup]),
+    parameterBlock("Status", [
+      definitionList([
+        ["Index", String(layer.index)],
+        ["Keys", String(layer.assignments.length)],
+        ["Refs", String(references.length)],
+        ["Delete", deleteStateLabel(deleteState)],
+      ]),
     ]),
   ]);
 }
@@ -1983,8 +2016,7 @@ function board(
       role: "tabpanel",
     },
   });
-  panel.style.width = `${bounds.width * KEY_UNIT}px`;
-  panel.style.height = `${bounds.height * KEY_UNIT}px`;
+  panel.style.aspectRatio = `${bounds.width} / ${bounds.height}`;
 
   layout.keys.forEach((key) => {
     const assignment = selectedLayer?.assignments.find((item) => item.visualKeyId === key.id);
@@ -1995,6 +2027,7 @@ function board(
       light: profile.perKey[key.id] ?? "#5fb99a",
       selected,
       selectedLayer,
+      bounds,
     });
     keyButton.addEventListener("click", () => selectKey(key.id));
     panel.append(keyButton);
@@ -2044,16 +2077,20 @@ function inspector(
   });
 
   return element("section", { className: "context-section inspector", attrs: { "data-context-section": "assignment" } }, [
-    element("div", { className: "selected-command-row" }, [
-      fieldControl("QMK keycode", keycodeInput),
-      fieldControl("Light", colorInput),
-    ]),
-    element("div", { className: "context-disclosures" }, [
-      contextDisclosure("Assignment tools", "assignment-tools", [
-        assignmentEditor(state, assignment, actions),
+    controlGroup("key-assignment", "Key assignment", [
+      element("div", { className: "selected-command-row" }, [
+        fieldControl("QMK keycode", keycodeInput),
+        fieldControl("Light", colorInput),
       ]),
-      contextDisclosure("Keycode palette", "keycode-palette", [
-        keycodePalette(state, actions),
+    ]),
+    controlGroup("assignment-tools", "Assignment tools", [
+      element("div", { className: "context-disclosures" }, [
+        contextDisclosure("Assignment tools", "assignment-tools", [
+          assignmentEditor(state, assignment, actions),
+        ]),
+        contextDisclosure("Keycode palette", "keycode-palette", [
+          keycodePalette(state, actions),
+        ]),
       ]),
     ]),
   ]);
@@ -2280,8 +2317,7 @@ function keyLayerList(layers: KeyLayerDetail[]): HTMLElement {
     list.append(keyLayerRow(detail));
   });
 
-  return element("section", { className: "detail-section" }, [
-    element("h3", { text: "Functions" }),
+  return controlGroup("key-functions", "Layer functions", [
     list,
   ]);
 }
@@ -2336,14 +2372,15 @@ function keyLightingDetails(context: SelectedKeyContext): HTMLElement {
     conditionList.append(element("p", { className: "empty muted", text: "None" }));
   }
 
-  return element("section", { className: "detail-section" }, [
-    element("h3", { text: "Lighting" }),
-    element("dl", { attrs: { "data-selected-lighting": context.key.id } }, [
-      definitionRow("Profile", lighting.profileName),
-      definitionRow("Mode", lighting.mode),
-      definitionRow("Color", lighting.color),
+  return controlGroup("key-lighting", "Lighting", [
+    parameterBlock("Current profile", [
+      element("dl", { attrs: { "data-selected-lighting": context.key.id } }, [
+        definitionRow("Profile", lighting.profileName),
+        definitionRow("Mode", lighting.mode),
+        definitionRow("Color", lighting.color),
+      ]),
     ]),
-    conditionList,
+    parameterBlock("Conditions", [conditionList]),
   ]);
 }
 
@@ -2360,8 +2397,7 @@ function keyRelationList(relations: KeyRelation[], shortcuts: KeyShortcut[]): HT
     list.append(element("p", { className: "empty muted", text: "None" }));
   }
 
-  return element("section", { className: "detail-section" }, [
-    element("h3", { text: "Related" }),
+  return controlGroup("key-relations", "Relations", [
     list,
   ]);
 }
@@ -2889,12 +2925,14 @@ function keyboardKey({
   light,
   selected,
   selectedLayer,
+  bounds,
 }: {
   assignment: Assignment | undefined;
   key: VisualKey;
   light: string;
   selected: boolean;
   selectedLayer: ReturnType<typeof currentLayer>;
+  bounds: ReturnType<typeof layoutBounds>;
 }): HTMLElement {
   const keyButton = element("qmk-key", {
     className: `key ${selected ? "selected" : ""}`,
@@ -2906,10 +2944,10 @@ function keyboardKey({
       tabindex: "0",
     },
   });
-  keyButton.style.left = `${key.x * KEY_UNIT}px`;
-  keyButton.style.top = `${key.y * KEY_UNIT}px`;
-  keyButton.style.width = `${(key.w ?? 1) * KEY_UNIT - KEY_INSET}px`;
-  keyButton.style.height = `${(key.h ?? 1) * KEY_UNIT - KEY_INSET}px`;
+  keyButton.style.left = `${(key.x / bounds.width) * 100}%`;
+  keyButton.style.top = `${(key.y / bounds.height) * 100}%`;
+  keyButton.style.width = `calc(${((key.w ?? 1) / bounds.width) * 100}% - var(--key-gap))`;
+  keyButton.style.height = `calc(${((key.h ?? 1) / bounds.height) * 100}% - var(--key-gap))`;
   keyButton.style.setProperty("--key-light", light);
   const label = keycapLabel(assignment, { compact: true });
   keyButton.style.setProperty("--key-label-size", keyLabelSize(label, key));
@@ -2928,7 +2966,7 @@ function keyLabelSize(label: string, key: VisualKey): string {
   if (!label) {
     return "12px";
   }
-  const availableWidth = Math.max(1, (key.w ?? 1) * KEY_UNIT - KEY_INSET - 12);
+  const availableWidth = Math.max(1, (key.w ?? 1) * KEY_LABEL_UNIT - KEY_LABEL_INSET - 12);
   const widthPerCharacter = label.length <= 3 ? 0.78 : 0.7;
   const size = Math.min(12, Math.max(7, Math.floor(availableWidth / (label.length * widthPerCharacter))));
   return `${size}px`;

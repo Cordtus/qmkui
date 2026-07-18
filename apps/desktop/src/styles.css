@@ -68,7 +68,7 @@ h3 {
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(196px, 232px) minmax(0, 1fr);
+  grid-template-columns: minmax(148px, 168px) minmax(0, 1fr);
   height: 100svh;
   min-height: 0;
   overflow: hidden;
@@ -184,7 +184,7 @@ wa-button.nav-item.active::part(base) {
   min-height: 0;
   min-width: 0;
   overflow: auto;
-  padding: 24px clamp(18px, 2.5vw, 38px) 34px;
+  padding: 20px clamp(12px, 1.5vw, 24px) 28px;
 }
 
 .topbar {
@@ -207,11 +207,18 @@ wa-button.nav-item.active::part(base) {
 }
 
 .topbar-actions {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: auto auto minmax(190px, 1fr);
+  align-items: stretch;
   flex: 0 0 auto;
-  gap: 8px;
+  gap: 0;
   min-width: 0;
+  border: 1px solid var(--border);
+}
+
+.topbar-actions > wa-button {
+  border: 0;
+  border-right: 1px solid var(--border);
 }
 
 .eyebrow {
@@ -250,7 +257,9 @@ h3 {
 .status {
   min-width: 190px;
   max-width: 240px;
-  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+  border: 0;
   padding: 9px 14px;
   background: rgb(8 14 20 / 0.42);
   font-size: 0.8rem;
@@ -314,26 +323,54 @@ h3 {
 }
 
 .editor-workflow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0;
   min-width: 0;
+  border: 1px solid var(--border-muted);
+  background: rgb(16 25 35 / 0.72);
 }
 
-.editor-workflow p {
-  flex: 1 1 420px;
+.workflow-summary {
+  display: grid;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 14px;
 }
 
-.editor-workflow small {
-  flex: 1 1 260px;
+.workflow-actions {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-left: 1px solid var(--border-muted);
+}
+
+.workflow-actions > wa-button {
+  border: 0;
+  border-right: 1px solid var(--border-muted);
+}
+
+.workflow-actions > wa-button:last-child {
+  border-right: 0;
+}
+
+.workflow-notices {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 4px;
+  border-top: 1px solid var(--border-muted);
+  padding: 8px 14px;
+}
+
+.workflow-notices small {
+  color: var(--text-muted);
 }
 
 .probe-strip {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
+  gap: 0;
   border: 1px solid var(--border-muted);
   background: rgb(16 25 35 / 0.72);
   padding: 12px 14px;
@@ -345,10 +382,29 @@ h3 {
 }
 
 .probe-meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(100px, auto) auto;
   align-items: center;
-  gap: 12px;
+  align-self: stretch;
+  gap: 0;
   text-align: right;
+}
+
+.probe-actions {
+  border-left: 1px solid var(--border-muted);
+}
+
+.probe-actions strong,
+.probe-actions wa-button {
+  display: grid;
+  min-width: 0;
+  place-items: center;
+  padding-inline: 14px;
+}
+
+.probe-actions wa-button {
+  border: 0;
+  border-left: 1px solid var(--border-muted);
 }
 
 .secondary-action {
@@ -454,10 +510,11 @@ wa-button.keycode-option {
 }
 
 .layers {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(152px, 100%), 1fr));
   gap: 0;
   min-width: 0;
-  overflow-x: auto;
+  overflow: visible;
   border: 1px solid var(--border-muted);
   padding-bottom: 2px;
 }
@@ -474,7 +531,6 @@ wa-button.keycode-option {
 }
 
 .keyboard-stage {
-  --key-info-width: 248px;
   --keyboard-stage-gap: 12px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -485,19 +541,12 @@ wa-button.keycode-option {
   overflow: visible;
 }
 
-@media (min-width: 1680px) {
-  .keyboard-stage {
-    grid-template-columns: minmax(0, 1fr) var(--key-info-width);
-    overflow: hidden;
-  }
-}
-
 .key-info-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 12px 16px;
   align-content: start;
-  max-height: var(--keyboard-board-height);
+  max-height: none;
   min-height: 0;
   min-width: 0;
   overflow: auto;
@@ -577,10 +626,56 @@ wa-button.keycode-option {
   border-color: color-mix(in srgb, var(--accent) 68%, var(--border-muted));
 }
 
+.control-group {
+  display: grid;
+  min-width: 0;
+  border: 1px solid var(--border-muted);
+  background: var(--panel);
+}
+
+.control-group-heading {
+  border-bottom: 1px solid var(--border-muted);
+  background: color-mix(in srgb, var(--panel-strong) 94%, var(--accent));
+  padding: 8px 10px;
+}
+
+.control-group-heading h3 {
+  color: var(--text);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.control-group-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.parameter-block {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.parameter-block-title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.parameter-block-body {
+  min-width: 0;
+}
+
 .layer-strip {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 0;
+  gap: 12px;
   min-height: 0;
   min-width: 0;
 }
@@ -591,7 +686,7 @@ wa-button.keycode-option {
   gap: 10px;
   height: 50px;
   min-height: 50px;
-  flex: 0 0 auto;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   padding: 0 10px;
@@ -626,29 +721,26 @@ wa-button.keycode-option {
 }
 
 .layer-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: end;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, auto);
+  gap: 12px;
+  align-items: start;
   min-width: 0;
 }
 
 .layer-name-field {
-  flex: 1 1 220px;
   min-width: 0;
 }
 
 .layer-tools dl {
-  display: flex;
-  flex: 1 1 100%;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: end;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .layer-tools dl div {
-  grid-template-columns: auto auto;
-  gap: 6px;
+  grid-template-columns: 1fr;
+  gap: 2px;
 }
 
 .layer-tools dt,
@@ -660,6 +752,17 @@ wa-button.keycode-option {
 
 .layer-tools dd {
   text-align: left;
+}
+
+.layer-tools .parameter-block:last-child {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border-muted);
+  padding-top: 10px;
+}
+
+.layer-tools .parameter-block + .parameter-block:not(:last-child) {
+  border-left: 1px solid var(--border-muted);
+  padding-left: 12px;
 }
 
 .layer-actions {
@@ -687,34 +790,37 @@ wa-button.keycode-option {
 }
 
 .keyboard-scroll {
-  overflow: auto;
-  display: grid;
-  max-height: var(--keyboard-board-height);
-  max-width: 100%;
+  overflow: clip;
+  display: block;
+  width: 100%;
   min-height: 0;
-  border: 1px solid var(--border);
+  border: 0;
   background-color: #0e1821;
   background-image:
     linear-gradient(rgb(94 209 170 / 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgb(94 209 170 / 0.035) 1px, transparent 1px);
   background-size: 24px 24px;
-  box-shadow: inset 0 1px 0 rgb(237 244 242 / 0.035);
+  box-shadow:
+    inset 0 0 0 1px var(--border),
+    inset 0 1px 0 rgb(237 244 242 / 0.035);
   padding: 0;
-  place-items: start;
 }
 
 .board {
   position: relative;
-  max-width: none;
+  --key-gap: clamp(1px, 0.4cqw, 6px);
+  width: 100%;
+  height: auto;
+  container-type: inline-size;
 }
 
 .key {
   position: absolute;
   display: grid;
-  min-width: 30px;
-  min-height: 30px;
+  min-width: 0;
+  min-height: 0;
   place-items: center;
-  padding: 5px;
+  padding: clamp(1px, 0.38cqw, 5px);
   border-color: #324554;
   border-radius: 6px;
   color: var(--text);
@@ -753,7 +859,7 @@ wa-button.keycode-option {
   overflow: hidden;
   max-width: 100%;
   color: var(--text);
-  font-size: var(--key-label-size, 12px);
+  font-size: clamp(5px, var(--key-label-size, 12px), 12px);
   line-height: 1;
   letter-spacing: 0;
   text-overflow: clip;
@@ -763,7 +869,7 @@ wa-button.keycode-option {
 .context-dock {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 0;
+  gap: 12px;
   align-items: start;
   min-width: 0;
   overflow: visible;
@@ -816,11 +922,10 @@ wa-button.context-tab:last-child {
   align-content: start;
   min-height: 0;
   min-width: 0;
-  border: 1px solid var(--border-muted);
-  border-top: 0;
-  background: rgb(16 25 35 / 0.72);
-  overflow: hidden;
-  padding: 14px;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+  padding: 0;
 }
 
 .context-dock .panel-heading {
@@ -1577,9 +1682,18 @@ dd {
   }
 
   .editor-workflow {
-    display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
+  }
+
+  .workflow-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    border-top: 1px solid var(--border-muted);
+    border-left: 0;
+  }
+
+  .workflow-actions > wa-button {
+    border-bottom: 1px solid var(--border-muted);
   }
 
   .catalog-row {
@@ -1596,8 +1710,8 @@ dd {
   .app-rail nav,
   .layers {
     grid-auto-flow: initial;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    overflow: hidden;
+    grid-template-columns: repeat(auto-fit, minmax(min(132px, 100%), 1fr));
+    overflow: visible;
   }
 
   .layer-strip {
@@ -1606,6 +1720,11 @@ dd {
 
   .layer-tools {
     grid-template-columns: 1fr;
+  }
+
+  .layer-tools .parameter-block + .parameter-block:not(:last-child) {
+    border-left: 0;
+    padding-left: 0;
   }
 
   .layer-tools dl {
@@ -1638,20 +1757,31 @@ dd {
   }
 
   .topbar-actions {
-    flex-wrap: wrap;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
 
   .status {
+    grid-column: 1 / -1;
     width: 100%;
     max-width: none;
   }
 
   .probe-strip,
   .probe-meta {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: stretch;
+    grid-template-columns: 1fr;
     text-align: left;
+  }
+
+  .probe-actions {
+    border-top: 1px solid var(--border-muted);
+    border-left: 0;
+  }
+
+  .probe-actions wa-button {
+    border-left: 0;
+    border-top: 1px solid var(--border-muted);
   }
 
   .workspace {
