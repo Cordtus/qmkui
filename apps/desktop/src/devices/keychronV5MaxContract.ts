@@ -14,7 +14,7 @@ export type KeychronV5MaxIdentityContract =
   | {
       state: "partial";
       capabilities: {
-        open: false;
+        protocolVersion: true;
         read: false;
         write: false;
         flash: false;
@@ -39,7 +39,7 @@ export function classifyKeychronV5MaxIdentity(
   return {
     state: "partial",
     capabilities: {
-      open: false,
+      protocolVersion: true,
       read: false,
       write: false,
       flash: false,

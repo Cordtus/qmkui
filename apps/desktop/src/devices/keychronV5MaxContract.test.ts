@@ -8,11 +8,11 @@ const exactV5MaxAnsiKnob = {
 };
 
 describe("Keychron V5 Max identity contract", () => {
-  it("recognizes the exact ANSI Knob HID identity as partial and keeps every device operation unavailable", () => {
+  it("recognizes the exact ANSI Knob HID identity as partial and permits only the observed protocol-version check", () => {
     expect(classifyKeychronV5MaxIdentity(exactV5MaxAnsiKnob)).toEqual({
       state: "partial",
       capabilities: {
-        open: false,
+        protocolVersion: true,
         read: false,
         write: false,
         flash: false,

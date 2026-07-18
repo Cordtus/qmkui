@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { exportQmkJson, type DoctorReport } from "./domain";
 import { createMemoryProjectStorage } from "./projectStorage";
 import { keychronV5MaxKeyboard, keychronV5MaxProject } from "./presets";
@@ -78,8 +78,9 @@ describe("desktop preview layer controls", () => {
       },
       contract: {
         state: "partial",
-        capabilities: { open: false, read: false, write: false, flash: false },
+        capabilities: { protocolVersion: true, read: false, write: false, flash: false },
       },
+      session: { verifyProtocolVersion: async () => ({ version: 0x000c }) },
     };
 
     createApp(root, { selectKeychronV5MaxDevice: async () => selection });
@@ -87,11 +88,76 @@ describe("desktop preview layer controls", () => {
     await flushDeviceSelection();
 
     expect(root.querySelector("[data-device-state]")?.textContent).toContain(
-      "Keychron V5 Max ANSI Knob recognized. The app does not open it or grant configuration access.",
+      "Keychron V5 Max ANSI Knob recognized. Verify its observed protocol version before any future device work.",
+    );
+    expect(root.querySelector('[data-device-action="verify-protocol"]')?.textContent).toBe(
+      "Verify protocol",
     );
     expect(root.querySelector('[data-device-action="read"]')).toBeNull();
     expect(root.querySelector('[data-device-action="write"]')).toBeNull();
     expect(root.querySelector('[data-device-action="flash"]')).toBeNull();
+  });
+
+  it("reports the captured protocol version through an injected selected-device session without exposing device configuration controls", async () => {
+    const root = document.createElement("div");
+    const verifyProtocolVersion = vi.fn(async () => ({ version: 0x000c as const }));
+    const selection: KeychronV5MaxBrowserSelection = {
+      state: "selected",
+      identity: {
+        vendorId: 0x3434,
+        productId: 0x0950,
+        collections: [{ usagePage: 0xff60, usage: 0x0061 }],
+      },
+      contract: {
+        state: "partial",
+        capabilities: { protocolVersion: true, read: false, write: false, flash: false },
+      },
+      session: { verifyProtocolVersion },
+    };
+
+    createApp(root, { selectKeychronV5MaxDevice: async () => selection });
+    root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
+    await flushDeviceSelection();
+    root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
+    await flushDeviceSelection();
+
+    expect(verifyProtocolVersion).toHaveBeenCalledOnce();
+    expect(root.querySelector("[data-device-state]")?.textContent).toContain(
+      "Protocol version 0x000c verified.",
+    );
+    ["backup", "keymap", "lighting", "config", "read", "write", "flash"].forEach((action) => {
+      expect(root.querySelector(`[data-device-action="${action}"]`)).toBeNull();
+    });
+  });
+
+  it("keeps protocol verification retry-safe when the selected-device session rejects", async () => {
+    const root = document.createElement("div");
+    const selection: KeychronV5MaxBrowserSelection = {
+      state: "selected",
+      identity: {
+        vendorId: 0x3434,
+        productId: 0x0950,
+        collections: [{ usagePage: 0xff60, usage: 0x0061 }],
+      },
+      contract: {
+        state: "partial",
+        capabilities: { protocolVersion: true, read: false, write: false, flash: false },
+      },
+      session: { verifyProtocolVersion: async () => Promise.reject(new Error("no response")) },
+    };
+
+    createApp(root, { selectKeychronV5MaxDevice: async () => selection });
+    root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
+    await flushDeviceSelection();
+    root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
+    await flushDeviceSelection();
+
+    expect(root.querySelector("[data-device-state]")?.textContent).toBe(
+      "Could not verify the protocol. You can retry; no configuration was changed.",
+    );
+    expect(root.querySelector('[data-device-action="verify-protocol"]')?.textContent).toBe(
+      "Verify protocol",
+    );
   });
 
   it("reports a cancelled Keychron chooser without claiming the browser lacks WebHID", async () => {
