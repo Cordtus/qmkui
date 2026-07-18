@@ -72,6 +72,39 @@ describe("browser keyboard discovery", () => {
     expect(device.receiveFeatureReport).not.toHaveBeenCalled();
   });
 
+  it("identifies a cataloged V1 Max without creating a protocol session or device I/O", async () => {
+    const device = {
+      vendorId: 0x3434,
+      productId: 0x0913,
+      productName: "Keychron V1 Max",
+      collections: [{ usagePage: 0x0001, usage: 0x0006 }],
+      open: vi.fn(),
+      sendReport: vi.fn(),
+      receiveFeatureReport: vi.fn(),
+    };
+    const requestDevice = vi.fn(async () => []);
+
+    const result = await discoverAuthorizedBrowserKeyboard({
+      hid: { getDevices: async () => [device], requestDevice },
+    });
+
+    expect(result).toMatchObject({
+      state: "selected",
+      contract: { state: "unsupported" },
+      catalogKeyboard: {
+        displayName: "Keychron V1 Max ANSI Knob",
+        qmkKeyboard: "keychron/v1_max/ansi_encoder",
+        layout: { macro: "LAYOUT_ansi_82", keyCount: 82 },
+        deviceSupport: "identityOnly",
+      },
+    });
+    expect("session" in result).toBe(false);
+    expect(requestDevice).not.toHaveBeenCalled();
+    expect(device.open).not.toHaveBeenCalled();
+    expect(device.sendReport).not.toHaveBeenCalled();
+    expect(device.receiveFeatureReport).not.toHaveBeenCalled();
+  });
+
   it("uses a generic user chooser and prefers the exact supported keyboard among selected HID interfaces", async () => {
     const unsupported = {
       vendorId: 0xfeed,

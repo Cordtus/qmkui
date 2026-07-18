@@ -23,6 +23,7 @@
 /dev-docs/
 /docs/superpowers/
 /.agents/
+/skills-lock.json
 /.codex/
 /.superpowers/
 /.worktrees/

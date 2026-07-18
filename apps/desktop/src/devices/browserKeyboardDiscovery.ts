@@ -8,6 +8,7 @@ import {
   type KeychronV5MaxProtocolDevice,
   type KeychronV5MaxProtocolVersion,
 } from "./keychronV5MaxProtocol";
+import { findKeyboardByUsbIdentity, type KeyboardIdentityCatalogRecord } from "./keyboardCatalog";
 
 type BrowserHidDevice = BrowserKeyboardIdentity & Partial<KeychronV5MaxProtocolDevice>;
 
@@ -46,6 +47,7 @@ export type BrowserKeyboardSelection =
       state: "selected";
       identity: BrowserKeyboardIdentity;
       contract: Extract<KeychronV5MaxIdentityContract, { state: "unsupported" }>;
+      catalogKeyboard?: KeyboardIdentityCatalogRecord;
     };
 
 export type BrowserKeyboardDiscoveryDependencies = {
@@ -95,7 +97,12 @@ function classifySelection(
 
   const classified = devices.map((device) => {
     const identity = staticIdentity(device);
-    return { device, identity, contract: classifyKeychronV5MaxIdentity(identity) };
+    return {
+      device,
+      identity,
+      contract: classifyKeychronV5MaxIdentity(identity),
+      catalogKeyboard: findKeyboardByUsbIdentity(identity),
+    };
   });
   const selected = classified.find(({ contract }) => contract.state === "partial") ?? classified[0];
 
@@ -115,6 +122,7 @@ function classifySelection(
     state: "selected",
     identity: selected.identity,
     contract: selected.contract,
+    ...(selected.catalogKeyboard ? { catalogKeyboard: selected.catalogKeyboard } : {}),
   };
 }
 
