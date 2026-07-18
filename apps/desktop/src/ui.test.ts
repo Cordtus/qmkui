@@ -240,6 +240,56 @@ describe("desktop preview layer controls", () => {
     });
   });
 
+  it("labels a cataloged identity-only keyboard without exposing configuration controls", async () => {
+    const root = document.createElement("div");
+
+    createApp(root, {
+      discoverBrowserKeyboard: async () => ({ state: "no-authorized-device" }),
+      chooseBrowserKeyboard: async () => ({
+        state: "selected",
+        identity: {
+          vendorId: 0x3434,
+          productId: 0x0913,
+          productName: "Keychron V1 Max",
+          collections: [{ usagePage: 0x0001, usage: 0x0006 }],
+        },
+        contract: { state: "unsupported" },
+        catalogKeyboard: {
+          id: "keychron/v1_max/ansi_encoder",
+          displayName: "Keychron V1 Max ANSI Knob",
+          qmkKeyboard: "keychron/v1_max/ansi_encoder",
+          usb: { vendorId: 0x3434, productId: 0x0913 },
+          layout: { macro: "LAYOUT_ansi_82", keyCount: 82 },
+          deviceSupport: "identityOnly",
+          upstream: {
+            identity: {
+              repository: "Keychron/qmk_firmware",
+              commit: "bc1bdeb85f39cccd5e503f4d8f472078a8c1472a",
+              path: "keyboards/keychron/v1_max/ansi_encoder/keyboard.json",
+              blob: "4dc6a51cd6fe8813708c1b15e03b9161ed65bdc6",
+            },
+            layout: {
+              repository: "Keychron/qmk_firmware",
+              commit: "bc1bdeb85f39cccd5e503f4d8f472078a8c1472a",
+              path: "keyboards/keychron/v1_max/ansi_encoder/keyboard.json",
+              blob: "4dc6a51cd6fe8813708c1b15e03b9161ed65bdc6",
+            },
+          },
+        },
+      }),
+    });
+    await flushDeviceSelection();
+    root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
+    await flushDeviceSelection();
+
+    expect(root.querySelector("[data-device-state]")?.textContent).toBe(
+      "Keychron V1 Max ANSI Knob was identified by its USB identity. Configuration is not yet supported for this model.",
+    );
+    ["verify-protocol", "read", "write", "flash"].forEach((action) => {
+      expect(root.querySelector(`[data-device-action="${action}"]`)).toBeNull();
+    });
+  });
+
   it("keeps keyboard detection available when validation blocks QMK JSON download", () => {
     const root = document.createElement("div");
 

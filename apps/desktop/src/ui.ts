@@ -838,6 +838,9 @@ function deviceSelectionLabel(
   }
   if ("contract" in selection) {
     if (selection.contract.state === "unsupported") {
+      if ("catalogKeyboard" in selection && selection.catalogKeyboard) {
+        return `${selection.catalogKeyboard.displayName} was identified by its USB identity. Configuration is not yet supported for this model.`;
+      }
       return `${keyboardIdentityLabel(selection.identity)} was detected, but QMKUI does not currently support configuration for it.`;
     }
     if (protocolVerification.state === "verifying") {

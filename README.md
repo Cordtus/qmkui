@@ -32,6 +32,9 @@ not a supported hardware target.
   protocol version (`0x000c`). This sends one 32-byte version request and
   accepts only its matching 32-byte response; it does not read or change
   keyboard configuration.
+- Identify an initial pinned Keychron catalog batch by USB model identity. Other
+  cataloged models are identification-only until their full visual layouts,
+  default keymaps, and device protocols have been separately verified.
 - Save, reopen, rename, duplicate, delete, import, and export app project JSON
   in the current browser session.
 - Restore a valid app-native recovery bundle. Its prior safety history is
