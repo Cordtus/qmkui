@@ -836,8 +836,8 @@ function editorWorkflow(
     className: "secondary-action",
     text:
       state.deviceSelection.state === "selecting"
-        ? "Selecting Keychron V5 Max..."
-        : "Connect Keychron V5 Max",
+        ? "Identifying Keychron V5 Max..."
+        : "Identify Keychron V5 Max",
     type: "button",
     attrs: {
       "data-device-action": "connect",
@@ -864,7 +864,7 @@ function editorWorkflow(
 
 function deviceSelectionLabel(selection: DeviceSelectionState): string {
   if (selection.state === "idle") {
-    return "Connect the exact Keychron V5 Max ANSI Knob to identify it.";
+    return "Select the wired Keychron V5 Max ANSI Knob to identify it. The app does not open it or grant configuration access.";
   }
   if (selection.state === "selecting") {
     return "Choose the exact Keychron V5 Max ANSI Knob in the browser prompt.";
@@ -882,7 +882,7 @@ function deviceSelectionLabel(selection: DeviceSelectionState): string {
     if (selection.contract.state === "unsupported") {
       return "Selected device does not match the Keychron V5 Max ANSI Knob.";
     }
-    return "Keychron V5 Max ANSI Knob recognized. Device access remains unavailable until its protocol is verified.";
+    return "Keychron V5 Max ANSI Knob recognized. The app does not open it or grant configuration access.";
   }
   return "No device selected.";
 }
