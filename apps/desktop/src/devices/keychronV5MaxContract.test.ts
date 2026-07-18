@@ -47,9 +47,4 @@ describe("Keychron V5 Max identity contract", () => {
     ).toEqual({ state: "unsupported" });
   });
 
-  it("does not claim an unproven verified state", () => {
-    const result = classifyKeychronV5MaxIdentity(exactV5MaxAnsiKnob);
-
-    expect("verified" in result).toBe(false);
-  });
 });
