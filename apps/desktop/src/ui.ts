@@ -59,8 +59,13 @@ import {
   appendSafetyEvent,
   createRecoveryBundle,
   createSafetyAssessment,
+  createSafetyAuditReceipt,
   importRecoveryBundleJson,
+  mergeSafetyLedgers,
+  recoveryBundleMatchesKeyboard,
   serializeRecoveryBundle,
+  serializeSafetyAuditReceipt,
+  type SafetyAuditReceipt,
   type RecoveryBundle,
 } from "./safety";
 import {
@@ -84,6 +89,7 @@ type AppOptions = {
   projectStorage?: ProjectStorage;
   safetyLedgerStorage?: SafetyLedgerStorage;
   downloadRecoveryBundle?: (bundle: RecoveryBundle) => void;
+  downloadSafetyAudit?: (receipt: SafetyAuditReceipt) => void;
   now?: () => string;
   qmkDetected?: boolean;
   doctorReportLoader?: () => Promise<DoctorReport | null>;
@@ -105,7 +111,13 @@ type EditorState = {
   projectStorage: ProjectStorage;
   safetyLedgerStorage: SafetyLedgerStorage;
   downloadRecoveryBundle: (bundle: RecoveryBundle) => void;
+  downloadSafetyAudit: (receipt: SafetyAuditReceipt) => void;
   now: () => string;
+  pendingRecoveryBundle?: {
+    bundle: RecoveryBundle;
+    projectRevision: string;
+    deviceRevision: string;
+  };
   declineNoBackupConfirmed: boolean;
   declineResponsibilityConfirmed: boolean;
   projectStatus: string;
@@ -143,6 +155,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     projectStorage,
     safetyLedgerStorage,
     downloadRecoveryBundle: options.downloadRecoveryBundle ?? downloadRecoveryBundle,
+    downloadSafetyAudit: options.downloadSafetyAudit ?? downloadSafetyAudit,
     now: options.now ?? (() => new Date().toISOString()),
     declineNoBackupConfirmed: false,
     declineResponsibilityConfirmed: false,
@@ -295,14 +308,31 @@ function createActions(
           },
           importProjectDraft: () => {
             try {
-              const importedProject = projectFromDraft(state.projectJsonDraft);
+              const imported = projectFromDraft(state.projectJsonDraft);
+              const importedProject = imported.project;
               const keyboard = keyboardForProject(importedProject);
               if (!keyboard) {
                 state.projectStatus = `Imported project target ${importedProject.target.qmkKeyboard} is not bundled.`;
                 actions.render();
                 return;
               }
-              openProject(state, importedProject, keyboard, `Imported ${importedProject.name}.`);
+              let status = `Imported ${importedProject.name}.`;
+              if (imported.recoveryBundle) {
+                if (!recoveryBundleMatchesKeyboard(imported.recoveryBundle, keyboard)) {
+                  status = `Restored ${importedProject.name}; bundled catalog facts changed, so verification must be repeated.`;
+                } else if (state.safetyLedgerStorage.availability() !== "available") {
+                  status = `Restored ${importedProject.name}; private safety history could not be restored.`;
+                } else {
+                  state.safetyLedgerStorage.save(
+                    mergeSafetyLedgers(
+                      state.safetyLedgerStorage.load(),
+                      imported.recoveryBundle.ledger,
+                    ),
+                  );
+                  status = `Restored ${importedProject.name} with matching local safety history.`;
+                }
+              }
+              openProject(state, importedProject, keyboard, status);
             } catch (error) {
               state.projectStatus = `Import failed: ${error instanceof Error ? error.message : "Unknown error"}.`;
             }
@@ -310,27 +340,64 @@ function createActions(
           },
           createRecoveryBundle: () => {
             const createdAt = state.now();
-            const ledger = appendSafetyEvent(
-              state.safetyLedgerStorage.load(),
-              "backupCreated",
-              state.project,
-              state.keyboard,
-              createdAt,
-            );
             const bundle = createRecoveryBundle({
               project: state.project,
               keyboard: state.keyboard,
-              ledger,
+              ledger: state.safetyLedgerStorage.load(),
               createdAt,
             });
             try {
               state.downloadRecoveryBundle(bundle);
-              state.safetyLedgerStorage.save(ledger);
+              const assessment = createSafetyAssessment(
+                state.project,
+                state.keyboard,
+                validateProject(state.project, state.keyboard),
+                state.safetyLedgerStorage.load(),
+                state.safetyLedgerStorage.availability(),
+              );
+              state.pendingRecoveryBundle = {
+                bundle,
+                projectRevision: assessment.projectRevision,
+                deviceRevision: assessment.deviceRevision,
+              };
               state.declineNoBackupConfirmed = false;
               state.declineResponsibilityConfirmed = false;
-              state.projectStatus = `Downloaded recovery bundle for ${state.project.name}.`;
+              state.projectStatus = `Recovery export started for ${state.project.name}. Confirm that you saved the file.`;
             } catch (error) {
               state.projectStatus = `Recovery export failed: ${error instanceof Error ? error.message : "Unknown error"}.`;
+            }
+            actions.render();
+          },
+          confirmRecoveryBundle: () => {
+            const issues = validateProject(state.project, state.keyboard);
+            const assessment = createSafetyAssessment(
+              state.project,
+              state.keyboard,
+              issues,
+              state.safetyLedgerStorage.load(),
+              state.safetyLedgerStorage.availability(),
+            );
+            const pending = state.pendingRecoveryBundle;
+            if (
+              !pending ||
+              pending.projectRevision !== assessment.projectRevision ||
+              pending.deviceRevision !== assessment.deviceRevision
+            ) {
+              state.projectStatus = "Export a recovery bundle for the current project and device state first.";
+              actions.render();
+              return;
+            }
+            try {
+              state.safetyLedgerStorage.append(
+                "backupConfirmed",
+                state.project,
+                state.keyboard,
+                state.now(),
+              );
+              state.pendingRecoveryBundle = undefined;
+              state.projectStatus = `Recorded saved recovery bundle for ${state.project.name}.`;
+            } catch (error) {
+              state.projectStatus = `Recovery confirmation failed: ${error instanceof Error ? error.message : "Unknown error"}.`;
             }
             actions.render();
           },
@@ -347,13 +414,32 @@ function createActions(
               actions.render();
               return;
             }
-            state.safetyLedgerStorage.append(
+            const ledger = appendSafetyEvent(
+              state.safetyLedgerStorage.load(),
               "backupDeclined",
               state.project,
               state.keyboard,
               state.now(),
             );
-            state.projectStatus = "Recovery data declined for the current project and device state.";
+            const event = ledger.events.at(-1);
+            if (!event) {
+              state.projectStatus = "Backup decline could not be recorded.";
+              actions.render();
+              return;
+            }
+            try {
+              state.downloadSafetyAudit(
+                createSafetyAuditReceipt({
+                  project: state.project,
+                  keyboard: state.keyboard,
+                  event,
+                }),
+              );
+              state.safetyLedgerStorage.save(ledger);
+              state.projectStatus = "Recovery data declined for the current project and device state.";
+            } catch (error) {
+              state.projectStatus = `Backup decline could not be recorded: ${error instanceof Error ? error.message : "Unknown error"}.`;
+            }
             actions.render();
           },
           updateSelectedLayerName: (name) => {
@@ -421,6 +507,7 @@ type RenderActions = {
   updateProjectJsonDraft: (json: string) => void;
   importProjectDraft: () => void;
   createRecoveryBundle: () => void;
+  confirmRecoveryBundle: () => void;
   updateBackupDeclineConfirmation: (field: "noBackup" | "responsibility", checked: boolean) => void;
   declineRecoveryBundle: () => void;
   updateSelectedLayerName: (name: string) => void;
@@ -900,8 +987,12 @@ function safetyRecoveryPanel(
     state.keyboard,
     issues,
     state.safetyLedgerStorage.load(),
+    state.safetyLedgerStorage.availability(),
   );
   const status = safetyStatusLabel(assessment.state);
+  const pendingRecoveryMatchesCurrent =
+    state.pendingRecoveryBundle?.projectRevision === assessment.projectRevision &&
+    state.pendingRecoveryBundle.deviceRevision === assessment.deviceRevision;
   const card = element("section", {
     className: "project-card safety-recovery",
     attrs: { "data-safety-panel": "true" },
@@ -915,7 +1006,7 @@ function safetyRecoveryPanel(
     element("p", { className: "muted", text: assessment.reason }),
   ]);
 
-  if (assessment.state !== "declined") {
+  if (assessment.state !== "declined" && !pendingRecoveryMatchesCurrent) {
     const backup = uiButton({
       className: "secondary-action",
       text: "Download recovery bundle",
@@ -933,7 +1024,25 @@ function safetyRecoveryPanel(
     );
   }
 
-  if (assessment.state === "backupRequired") {
+  if (pendingRecoveryMatchesCurrent && assessment.state === "backupRequired") {
+    const confirm = uiButton({
+      className: "secondary-action",
+      text: "Confirm saved recovery bundle",
+      type: "button",
+      attrs: { "data-safety-action": "confirm-backup" },
+    });
+    confirm.addEventListener("click", actions.confirmRecoveryBundle);
+    card.append(
+      element("p", {
+        className: "muted",
+        text: "Confirm only after the downloaded file is present in a location you control.",
+        attrs: { "data-safety-recovery-guidance": "true" },
+      }),
+      element("div", { className: "project-actions" }, [confirm]),
+    );
+  }
+
+  if (assessment.state === "backupRequired" && !pendingRecoveryMatchesCurrent) {
     const noBackup = safetyConfirmation(
       "no-backup",
       "I choose not to create recovery data for this exact project and device state.",
@@ -961,7 +1070,9 @@ function safetyRecoveryPanel(
       element("h4", { text: "Device write" }),
       element("p", {
         className: "muted",
-        text: "Unavailable. QMKUI has no exact-device compile, bootloader, or flash adapter yet.",
+        text: assessment.requiresRunConfirmation
+          ? "Unavailable. A future exact-device write adapter must still require a fresh confirmation for this run."
+          : "Unavailable. QMKUI has no exact-device compile, bootloader, or flash adapter yet.",
       }),
     ]),
   );
@@ -2374,16 +2485,17 @@ function applyDoctorReport(state: EditorState, report: DoctorReport | null): voi
 function keyboardForProject(project: Project): KeyboardDefinition | undefined {
   return bundledKeyboards.find(
     (keyboard) =>
-      keyboard.id === project.target.keyboardId ||
+      keyboard.id === project.target.keyboardId &&
       keyboard.qmkKeyboard === project.target.qmkKeyboard,
   );
 }
 
-function projectFromDraft(json: string): Project {
+function projectFromDraft(json: string): { project: Project; recoveryBundle?: RecoveryBundle } {
   try {
-    return importRecoveryBundleJson(json).project;
+    const recoveryBundle = importRecoveryBundleJson(json);
+    return { project: recoveryBundle.project, recoveryBundle };
   } catch {
-    return importProjectJson(json);
+    return { project: importProjectJson(json) };
   }
 }
 
@@ -2397,11 +2509,25 @@ function defaultSafetyLedgerStorage(): SafetyLedgerStorage {
 }
 
 function downloadRecoveryBundle(bundle: RecoveryBundle): void {
-  const blob = new Blob([serializeRecoveryBundle(bundle)], { type: "application/json" });
+  downloadJson(
+    serializeRecoveryBundle(bundle),
+    `${bundle.project.name.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase()}-recovery.json`,
+  );
+}
+
+function downloadSafetyAudit(receipt: SafetyAuditReceipt): void {
+  downloadJson(
+    serializeSafetyAuditReceipt(receipt),
+    `${receipt.device.qmkKeyboard.replace(/[^a-z0-9_-]+/gi, "-")}-safety-audit.json`,
+  );
+}
+
+function downloadJson(contents: string, filename: string): void {
+  const blob = new Blob([contents], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${bundle.project.name.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase()}-recovery.json`;
+  link.download = filename;
   link.click();
   queueMicrotask(() => URL.revokeObjectURL(url));
 }

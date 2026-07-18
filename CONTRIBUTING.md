@@ -82,5 +82,13 @@ Recovery bundles and browser ledger data are intentionally local-only plain
 JSON. Do not add network upload, analytics, USB serial-number collection, or
 claims that user-controlled browser storage is tamper-proof.
 
+Do not treat a download click as a completed backup. A write workflow may use a
+backup only after the operator explicitly confirms that the exported file was
+saved. If local ledger storage is unavailable or corrupt, future write
+preparation must fail closed. Recovery imports may reuse safety history only
+when their complete catalog definition exactly matches the current bundled
+definition; otherwise import the project as unverified and require a new
+sequence.
+
 `scripts/probe-read-only.sh` is an explicit local action. It may read Linux USB
 descriptor metadata but must remain free of device-endpoint access and writes.

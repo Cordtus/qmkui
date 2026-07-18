@@ -22,7 +22,7 @@ describe("safety ledger storage", () => {
     const first = createSafetyLedgerStorage(storage);
 
     first.append(
-      "backupCreated",
+      "backupConfirmed",
       keychronV5MaxProject,
       keychronV5MaxKeyboard,
       "2026-07-17T20:00:00.000Z",
@@ -36,7 +36,7 @@ describe("safety ledger storage", () => {
     );
 
     expect(second.load().events).toEqual([
-      expect.objectContaining({ sequence: 1, kind: "backupCreated" }),
+      expect.objectContaining({ sequence: 1, kind: "backupConfirmed" }),
       expect.objectContaining({ sequence: 2, kind: "backupDeclined" }),
     ]);
   });
@@ -46,5 +46,24 @@ describe("safety ledger storage", () => {
     storage.setItem("qmkui.safety-ledger.v1", "not-json");
 
     expect(createSafetyLedgerStorage(storage).load()).toEqual({ version: 1, events: [] });
+  });
+
+  it("reports unavailable or corrupt storage so future write preparation can fail closed", () => {
+    const corruptStorage = createMemoryStorage();
+    corruptStorage.setItem("qmkui.safety-ledger.v1", "not-json");
+    const unavailableStorage: Storage = {
+      ...createMemoryStorage(),
+      getItem: () => {
+        throw new Error("storage disabled");
+      },
+    };
+
+    const corruptLedger = createSafetyLedgerStorage(corruptStorage);
+    const unavailableLedger = createSafetyLedgerStorage(unavailableStorage);
+    corruptLedger.load();
+    unavailableLedger.load();
+
+    expect(corruptLedger.availability()).toBe("corrupt");
+    expect(unavailableLedger.availability()).toBe("unavailable");
   });
 });

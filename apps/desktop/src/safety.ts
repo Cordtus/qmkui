@@ -3,10 +3,13 @@ import { importProjectJson } from "./projectStorage";
 
 const RECOVERY_BUNDLE_FORMAT = "qmkui.recovery-bundle";
 const RECOVERY_BUNDLE_VERSION = 1;
+const SAFETY_AUDIT_FORMAT = "qmkui.safety-audit";
+const SAFETY_AUDIT_VERSION = 1;
 const LOCAL_ONLY_NOTICE =
   "This bundle is local-only recovery data. QMKUI does not transmit it, and user-controlled storage cannot be tamper-proof.";
 
-export type SafetyEventKind = "backupCreated" | "backupDeclined";
+export type SafetyEventKind = "backupConfirmed" | "backupDeclined";
+export type SafetyLedgerAvailability = "available" | "unavailable" | "corrupt";
 
 export type SafetyEvent = {
   sequence: number;
@@ -27,6 +30,7 @@ export type SafetyAssessment = {
   state: SafetyState;
   projectRevision: string;
   deviceRevision: string;
+  requiresRunConfirmation: boolean;
   reason: string;
 };
 
@@ -48,7 +52,17 @@ export type RecoveryBundle = {
   notice: string;
   project: Project;
   device: RecoveryDevice;
+  keyboard: KeyboardDefinition;
   ledger: SafetyLedger;
+};
+
+export type SafetyAuditReceipt = {
+  format: typeof SAFETY_AUDIT_FORMAT;
+  version: typeof SAFETY_AUDIT_VERSION;
+  createdAt: string;
+  notice: string;
+  device: RecoveryDevice;
+  event: SafetyEvent;
 };
 
 export function createEmptySafetyLedger(): SafetyLedger {
@@ -85,15 +99,27 @@ export function createSafetyAssessment(
   keyboard: KeyboardDefinition,
   issues: UiIssue[],
   ledger: SafetyLedger,
+  ledgerAvailability: SafetyLedgerAvailability = "available",
 ): SafetyAssessment {
-  const deviceRevision = revisionFor(recoveryDeviceFor(project, keyboard));
+  const deviceRevision = revisionFor(keyboard);
   const projectRevision = revisionFor(project);
+
+  if (ledgerAvailability !== "available") {
+    return {
+      state: "blocked",
+      projectRevision,
+      deviceRevision,
+      requiresRunConfirmation: false,
+      reason: `The private safety ledger is ${ledgerAvailability} and cannot be used for future write preparation.`,
+    };
+  }
 
   if (!matchesProjectTarget(project, keyboard)) {
     return {
       state: "blocked",
       projectRevision,
       deviceRevision,
+      requiresRunConfirmation: false,
       reason: "The selected catalog definition does not match the project target.",
     };
   }
@@ -103,6 +129,7 @@ export function createSafetyAssessment(
       state: "blocked",
       projectRevision,
       deviceRevision,
+      requiresRunConfirmation: false,
       reason: "Resolve project validation errors before preparing a backup or future write.",
     };
   }
@@ -112,11 +139,12 @@ export function createSafetyAssessment(
       event.projectRevision === projectRevision && event.deviceRevision === deviceRevision,
   );
   const latestEvent = matchingEvents.at(-1);
-  if (latestEvent?.kind === "backupCreated") {
+  if (latestEvent?.kind === "backupConfirmed") {
     return {
       state: "backupRecorded",
       projectRevision,
       deviceRevision,
+      requiresRunConfirmation: true,
       reason: "A recovery bundle was recorded for this exact project and device state.",
     };
   }
@@ -125,6 +153,7 @@ export function createSafetyAssessment(
       state: "declined",
       projectRevision,
       deviceRevision,
+      requiresRunConfirmation: true,
       reason: "Recovery data was explicitly declined for this exact project and device state.",
     };
   }
@@ -133,6 +162,7 @@ export function createSafetyAssessment(
     state: "backupRequired",
     projectRevision,
     deviceRevision,
+    requiresRunConfirmation: false,
     reason: "Create a recovery bundle before any future write operation.",
   };
 }
@@ -154,12 +184,32 @@ export function createRecoveryBundle(input: {
     notice: LOCAL_ONLY_NOTICE,
     project: structuredClone(input.project),
     device: recoveryDeviceFor(input.project, input.keyboard),
+    keyboard: structuredClone(input.keyboard),
     ledger: structuredClone(input.ledger),
   };
 }
 
 export function serializeRecoveryBundle(bundle: RecoveryBundle): string {
   return `${JSON.stringify(bundle, null, 2)}\n`;
+}
+
+export function createSafetyAuditReceipt(input: {
+  project: Project;
+  keyboard: KeyboardDefinition;
+  event: SafetyEvent;
+}): SafetyAuditReceipt {
+  return {
+    format: SAFETY_AUDIT_FORMAT,
+    version: SAFETY_AUDIT_VERSION,
+    createdAt: input.event.occurredAt,
+    notice: LOCAL_ONLY_NOTICE,
+    device: recoveryDeviceFor(input.project, input.keyboard),
+    event: structuredClone(input.event),
+  };
+}
+
+export function serializeSafetyAuditReceipt(receipt: SafetyAuditReceipt): string {
+  return `${JSON.stringify(receipt, null, 2)}\n`;
 }
 
 export function importRecoveryBundleJson(json: string): RecoveryBundle {
@@ -184,6 +234,7 @@ export function importRecoveryBundleJson(json: string): RecoveryBundle {
     throw new Error("Recovery bundle project is invalid", { cause: error });
   }
   const device = parseRecoveryDevice(parsed.device);
+  const keyboard = parseRecoveryKeyboard(parsed.keyboard, device);
   const ledger = parseSafetyLedger(parsed.ledger);
 
   if (
@@ -202,8 +253,41 @@ export function importRecoveryBundleJson(json: string): RecoveryBundle {
     notice: parsed.notice,
     project,
     device,
+    keyboard,
     ledger,
   };
+}
+
+export function recoveryBundleMatchesKeyboard(
+  bundle: RecoveryBundle,
+  keyboard: KeyboardDefinition,
+): boolean {
+  return revisionFor(bundle.keyboard) === revisionFor(keyboard);
+}
+
+export function mergeSafetyLedgers(
+  localLedger: SafetyLedger,
+  importedLedger: SafetyLedger,
+): SafetyLedger {
+  const knownEvents = new Set<string>();
+  const events = [...localLedger.events, ...importedLedger.events]
+    .filter((event) => {
+      const signature = JSON.stringify({
+        occurredAt: event.occurredAt,
+        kind: event.kind,
+        projectRevision: event.projectRevision,
+        deviceRevision: event.deviceRevision,
+      });
+      if (knownEvents.has(signature)) {
+        return false;
+      }
+      knownEvents.add(signature);
+      return true;
+    })
+    .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
+    .map((event, index) => ({ ...event, sequence: index + 1 }));
+
+  return { version: 1, events };
 }
 
 export function recoveryDeviceFor(project: Project, keyboard: KeyboardDefinition): RecoveryDevice {
@@ -220,13 +304,7 @@ export function recoveryDeviceFor(project: Project, keyboard: KeyboardDefinition
 }
 
 function revisionFor(value: unknown): string {
-  const canonical = JSON.stringify(canonicalize(value));
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < canonical.length; index += 1) {
-    hash ^= canonical.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `fnv1a32-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  return JSON.stringify(canonicalize(value));
 }
 
 function matchesProjectTarget(project: Project, keyboard: KeyboardDefinition): boolean {
@@ -287,6 +365,21 @@ function parseRecoveryDevice(value: unknown): RecoveryDevice {
   };
 }
 
+function parseRecoveryKeyboard(value: unknown, device: RecoveryDevice): KeyboardDefinition {
+  if (!isRecord(value) || !Array.isArray(value.layouts)) {
+    throw new Error("Recovery bundle catalog definition is invalid");
+  }
+  if (
+    value.id !== device.keyboardId ||
+    value.qmkKeyboard !== device.qmkKeyboard ||
+    typeof value.displayName !== "string"
+  ) {
+    throw new Error("Recovery bundle catalog definition is invalid");
+  }
+
+  return structuredClone(value) as KeyboardDefinition;
+}
+
 export function parseSafetyLedger(value: unknown): SafetyLedger {
   if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.events)) {
     throw new Error("Recovery bundle safety ledger is invalid");
@@ -308,7 +401,7 @@ function isSafetyEvent(value: unknown): value is SafetyEvent {
     Number.isInteger(value.sequence) &&
     value.sequence > 0 &&
     typeof value.occurredAt === "string" &&
-    (value.kind === "backupCreated" || value.kind === "backupDeclined") &&
+    (value.kind === "backupConfirmed" || value.kind === "backupDeclined") &&
     typeof value.projectRevision === "string" &&
     typeof value.deviceRevision === "string"
   );

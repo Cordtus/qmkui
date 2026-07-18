@@ -7,6 +7,8 @@ import {
   createRecoveryBundle,
   createSafetyAssessment,
   importRecoveryBundleJson,
+  mergeSafetyLedgers,
+  recoveryBundleMatchesKeyboard,
   serializeRecoveryBundle,
 } from "./safety";
 
@@ -19,7 +21,7 @@ describe("safety foundation", () => {
     const beforeBackup = createSafetyAssessment(project, keychronV5MaxKeyboard, issues, emptyLedger);
     const ledger = appendSafetyEvent(
       emptyLedger,
-      "backupCreated",
+      "backupConfirmed",
       project,
       keychronV5MaxKeyboard,
       "2026-07-17T20:00:00.000Z",
@@ -28,6 +30,7 @@ describe("safety foundation", () => {
 
     expect(beforeBackup.state).toBe("backupRequired");
     expect(afterBackup.state).toBe("backupRecorded");
+    expect(afterBackup.requiresRunConfirmation).toBe(true);
     expect(afterBackup.projectRevision).toBe(beforeBackup.projectRevision);
     expect(afterBackup.deviceRevision).toBe(beforeBackup.deviceRevision);
   });
@@ -37,7 +40,7 @@ describe("safety foundation", () => {
     const issues = validateProject(project, keychronV5MaxKeyboard);
     const ledger = appendSafetyEvent(
       createEmptySafetyLedger(),
-      "backupCreated",
+      "backupConfirmed",
       project,
       keychronV5MaxKeyboard,
       "2026-07-17T20:00:00.000Z",
@@ -54,6 +57,12 @@ describe("safety foundation", () => {
       "backupRequired",
     );
     expect(createSafetyAssessment(project, updatedKeyboard, issues, ledger).state).toBe("backupRequired");
+
+    const layoutChangedKeyboard = structuredClone(keychronV5MaxKeyboard);
+    layoutChangedKeyboard.layouts[0].keys[0].matrix = { row: 9, col: 9 };
+    expect(
+      createSafetyAssessment(project, layoutChangedKeyboard, issues, ledger).state,
+    ).toBe("backupRequired");
   });
 
   it("blocks future write eligibility while project validation has errors", () => {
@@ -61,7 +70,7 @@ describe("safety foundation", () => {
     project.build.keymapName = "not a valid keymap";
     const ledger = appendSafetyEvent(
       createEmptySafetyLedger(),
-      "backupCreated",
+      "backupConfirmed",
       keychronV5MaxProject,
       keychronV5MaxKeyboard,
       "2026-07-17T20:00:00.000Z",
@@ -117,7 +126,7 @@ describe("safety foundation", () => {
     const project = structuredClone(keychronV5MaxProject);
     const ledger = appendSafetyEvent(
       createEmptySafetyLedger(),
-      "backupCreated",
+      "backupConfirmed",
       project,
       keychronV5MaxKeyboard,
       "2026-07-17T20:00:00.000Z",
@@ -139,6 +148,55 @@ describe("safety foundation", () => {
       usb: { vid: "3434", pid: "0950" },
     });
     expect(restored.ledger.events).toHaveLength(1);
+    expect(recoveryBundleMatchesKeyboard(restored, keychronV5MaxKeyboard)).toBe(true);
+  });
+
+  it("does not accept a recovery bundle’s prior verification for a changed catalog definition", () => {
+    const bundle = createRecoveryBundle({
+      project: keychronV5MaxProject,
+      keyboard: keychronV5MaxKeyboard,
+      ledger: createEmptySafetyLedger(),
+      createdAt: "2026-07-17T20:00:00.000Z",
+    });
+    const changedKeyboard = structuredClone(keychronV5MaxKeyboard);
+    changedKeyboard.layouts[0].keys[0].matrix = { row: 9, col: 9 };
+
+    expect(recoveryBundleMatchesKeyboard(bundle, changedKeyboard)).toBe(false);
+  });
+
+  it("merges imported safety history without reusing conflicting sequence numbers", () => {
+    const localLedger = appendSafetyEvent(
+      createEmptySafetyLedger(),
+      "backupConfirmed",
+      keychronV5MaxProject,
+      keychronV5MaxKeyboard,
+      "2026-07-17T20:00:00.000Z",
+    );
+    const importedLedger = appendSafetyEvent(
+      createEmptySafetyLedger(),
+      "backupDeclined",
+      keychronV5MaxProject,
+      keychronV5MaxKeyboard,
+      "2026-07-17T20:01:00.000Z",
+    );
+
+    expect(mergeSafetyLedgers(localLedger, importedLedger).events).toEqual([
+      expect.objectContaining({ sequence: 1, kind: "backupConfirmed" }),
+      expect.objectContaining({ sequence: 2, kind: "backupDeclined" }),
+    ]);
+  });
+
+  it("blocks future write preparation when the private ledger cannot be read safely", () => {
+    const assessment = createSafetyAssessment(
+      keychronV5MaxProject,
+      keychronV5MaxKeyboard,
+      validateProject(keychronV5MaxProject, keychronV5MaxKeyboard),
+      createEmptySafetyLedger(),
+      "corrupt",
+    );
+
+    expect(assessment.state).toBe("blocked");
+    expect(assessment.reason).toContain("ledger");
   });
 
   it("rejects a recovery bundle with an invalid project payload", () => {
