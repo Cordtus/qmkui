@@ -446,6 +446,7 @@ wa-button.keycode-option {
   align-items: start;
   min-height: 0;
   min-width: 0;
+  overflow: auto;
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
