@@ -124,6 +124,7 @@ type EditorState = {
   downloadQmkJson: (output: unknown, project: Project) => void;
   selectKeychronV5MaxDevice: () => Promise<KeychronV5MaxBrowserSelection>;
   deviceSelection: DeviceSelectionState;
+  deviceSelectionEpoch: number;
   protocolVerification: ProtocolVerificationState;
   now: () => string;
   pendingRecoveryBundle?: {
@@ -190,6 +191,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     downloadQmkJson: options.downloadQmkJson ?? downloadQmkJson,
     selectKeychronV5MaxDevice: options.selectKeychronV5MaxDevice ?? selectKeychronV5MaxBrowserDevice,
     deviceSelection: { state: "idle" },
+    deviceSelectionEpoch: 0,
     protocolVerification: { state: "idle" },
     now: options.now ?? (() => new Date().toISOString()),
     declineNoBackupConfirmed: false,
@@ -289,15 +291,23 @@ function createActions(
             );
           },
           selectKeychronV5MaxDevice: () => {
+            const selectionEpoch = ++state.deviceSelectionEpoch;
             state.deviceSelection = { state: "selecting" };
+            state.protocolVerification = { state: "idle" };
             actions.render();
             state.selectKeychronV5MaxDevice().then(
               (selection) => {
+                if (state.deviceSelectionEpoch !== selectionEpoch) {
+                  return;
+                }
                 state.deviceSelection = selection;
                 state.protocolVerification = { state: "idle" };
                 actions.render();
               },
               () => {
+                if (state.deviceSelectionEpoch !== selectionEpoch) {
+                  return;
+                }
                 state.deviceSelection = { state: "cancelled" };
                 actions.render();
               },
@@ -307,14 +317,22 @@ function createActions(
             if (!isProtocolVerifiableSelection(state.deviceSelection)) {
               return;
             }
+            const selectionEpoch = state.deviceSelectionEpoch;
+            const session = state.deviceSelection.session;
             state.protocolVerification = { state: "verifying" };
             actions.render();
-            state.deviceSelection.session.verifyProtocolVersion().then(
+            session.verifyProtocolVersion().then(
               ({ version }) => {
+                if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+                  return;
+                }
                 state.protocolVerification = { state: "verified", version };
                 actions.render();
               },
               () => {
+                if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+                  return;
+                }
                 state.protocolVerification = { state: "failed" };
                 actions.render();
               },
@@ -947,6 +965,18 @@ function isProtocolVerifiableSelection(
   selection: DeviceSelectionState,
 ): selection is Extract<KeychronV5MaxBrowserSelection, { state: "selected"; contract: { state: "partial" } }> {
   return selection.state === "selected" && selection.contract.state === "partial";
+}
+
+function isCurrentProtocolSession(
+  state: EditorState,
+  selectionEpoch: number,
+  session: Extract<KeychronV5MaxBrowserSelection, { state: "selected"; contract: { state: "partial" } }>['session'],
+): boolean {
+  return (
+    state.deviceSelectionEpoch === selectionEpoch &&
+    isProtocolVerifiableSelection(state.deviceSelection) &&
+    state.deviceSelection.session === session
+  );
 }
 
 function keyboardWorkspace(
