@@ -33,6 +33,19 @@ create_artifact "$safe_artifact"
 safe_output="$($auditor "$safe_artifact" 2>&1)" ||
   fail "safe artifact was rejected: $safe_output"
 
+fake_rg_dir="$work_dir/fake-rg-bin"
+mkdir "$fake_rg_dir"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'exit 99' >"$fake_rg_dir/rg"
+chmod +x "$fake_rg_dir/rg"
+if fake_rg_output="$(PATH="$fake_rg_dir:$PATH" "$auditor" "$safe_artifact" 2>&1)"; then
+  :
+else
+  fake_rg_status="$?"
+  fail "auditor invoked rg from PATH (exit $fake_rg_status): $fake_rg_output"
+fi
+
 leak_cases=(
   'linux-home-path|/home/'
   'macos-home-path|/Users/'
@@ -80,7 +93,7 @@ assert_operational_error() {
   local audit_status
 
   if audit_output="$(PATH="$fake_bin_dir:$PATH" "$auditor" "$artifact_dir" 2>&1)"; then
-    printf 'FAIL: rg operational error was accepted\n' >&2
+    printf 'FAIL: grep operational error was accepted\n' >&2
     failures="$((failures + 1))"
     return
   else
@@ -88,13 +101,13 @@ assert_operational_error() {
   fi
 
   if [[ "$audit_status" != 2 ]]; then
-    printf 'FAIL: rg operational error exited %s instead of 2: %s\n' \
+    printf 'FAIL: grep operational error exited %s instead of 2: %s\n' \
       "$audit_status" "$audit_output" >&2
     failures="$((failures + 1))"
   fi
 
   if ! grep -Fxq -- "$expected_diagnostic" <<<"$audit_output"; then
-    printf 'FAIL: rg operational error omitted diagnostic %s: %s\n' \
+    printf 'FAIL: grep operational error omitted diagnostic %s: %s\n' \
       "$expected_diagnostic" "$audit_output" >&2
     failures="$((failures + 1))"
   fi
@@ -196,18 +209,18 @@ printf 'Content-Security-Policy: default-src self\n' \
   >"$trailing_slash_headers_artifact/_headers"
 assert_rejected "$trailing_slash_headers_artifact/" '_headers'
 
-operational_error_artifact="$work_dir/reject-rg-error"
+operational_error_artifact="$work_dir/reject-grep-error"
 create_artifact "$operational_error_artifact"
-fake_rg_dir="$work_dir/fake-rg-bin"
-fake_rg_diagnostic='test rg failure: deterministic operational error'
-mkdir "$fake_rg_dir"
+fake_grep_dir="$work_dir/fake-grep-bin"
+fake_grep_diagnostic='test grep failure: deterministic operational error'
+mkdir "$fake_grep_dir"
 printf '%s\n' \
   '#!/usr/bin/env bash' \
-  "printf '%s\\n' '$fake_rg_diagnostic' >&2" \
-  'exit 2' >"$fake_rg_dir/rg"
-chmod +x "$fake_rg_dir/rg"
+  "printf '%s\\n' '$fake_grep_diagnostic' >&2" \
+  'exit 2' >"$fake_grep_dir/grep"
+chmod +x "$fake_grep_dir/grep"
 assert_operational_error \
-  "$operational_error_artifact" "$fake_rg_dir" "$fake_rg_diagnostic"
+  "$operational_error_artifact" "$fake_grep_dir" "$fake_grep_diagnostic"
 
 if (( failures != 0 )); then
   exit 1

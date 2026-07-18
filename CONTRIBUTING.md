@@ -5,9 +5,8 @@ inside the software-only safety boundary.
 
 ## Setup
 
-Install Node.js 24, npm, ripgrep (`rg`), and stable Rust with `rustfmt` and
-`clippy`. If Rust is managed by `rustup`, install the required toolchain and
-make it the default:
+Install Node.js 24, npm, and stable Rust with `rustfmt` and `clippy`. If Rust
+is managed by `rustup`, install the required toolchain and make it the default:
 
 ```bash
 rustup toolchain install stable --profile default --component rustfmt,clippy
