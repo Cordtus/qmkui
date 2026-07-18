@@ -55,6 +55,19 @@ import {
   type ProjectStorage,
   type ProjectSummary,
 } from "./projectStorage";
+import {
+  appendSafetyEvent,
+  createRecoveryBundle,
+  createSafetyAssessment,
+  importRecoveryBundleJson,
+  serializeRecoveryBundle,
+  type RecoveryBundle,
+} from "./safety";
+import {
+  createMemorySafetyLedgerStorage,
+  createSafetyLedgerStorage,
+  type SafetyLedgerStorage,
+} from "./safetyStorage";
 
 const fixtureKeyboard = catalog[0] as KeyboardDefinition;
 const fixtureProject = project as Project;
@@ -69,6 +82,9 @@ type AppOptions = {
   keyboard?: KeyboardDefinition;
   project?: Project;
   projectStorage?: ProjectStorage;
+  safetyLedgerStorage?: SafetyLedgerStorage;
+  downloadRecoveryBundle?: (bundle: RecoveryBundle) => void;
+  now?: () => string;
   qmkDetected?: boolean;
   doctorReportLoader?: () => Promise<DoctorReport | null>;
 };
@@ -87,6 +103,11 @@ type EditorState = {
   keycodeSearch: string;
   catalogSearch: string;
   projectStorage: ProjectStorage;
+  safetyLedgerStorage: SafetyLedgerStorage;
+  downloadRecoveryBundle: (bundle: RecoveryBundle) => void;
+  now: () => string;
+  declineNoBackupConfirmed: boolean;
+  declineResponsibilityConfirmed: boolean;
   projectStatus: string;
   projectJsonDraft: string;
   selectedSavedProjectId: string;
@@ -99,6 +120,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
   const keyboard = structuredClone(options.keyboard ?? keychronV5MaxKeyboard ?? fixtureKeyboard);
   const currentProject = structuredClone(options.project ?? keychronV5MaxProject ?? fixtureProject);
   const projectStorage = options.projectStorage ?? createMemoryProjectStorage();
+  const safetyLedgerStorage = options.safetyLedgerStorage ?? defaultSafetyLedgerStorage();
   const doctorReportLoader =
     options.doctorReportLoader ??
     (import.meta.env.DEV
@@ -119,6 +141,11 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     keycodeSearch: "",
     catalogSearch: "",
     projectStorage,
+    safetyLedgerStorage,
+    downloadRecoveryBundle: options.downloadRecoveryBundle ?? downloadRecoveryBundle,
+    now: options.now ?? (() => new Date().toISOString()),
+    declineNoBackupConfirmed: false,
+    declineResponsibilityConfirmed: false,
     projectStatus: "Project is not saved in this preview session.",
     projectJsonDraft: JSON.stringify(currentProject, null, 2),
     selectedSavedProjectId: projectStorage.list()[0]?.id ?? "",
@@ -268,7 +295,7 @@ function createActions(
           },
           importProjectDraft: () => {
             try {
-              const importedProject = importProjectJson(state.projectJsonDraft);
+              const importedProject = projectFromDraft(state.projectJsonDraft);
               const keyboard = keyboardForProject(importedProject);
               if (!keyboard) {
                 state.projectStatus = `Imported project target ${importedProject.target.qmkKeyboard} is not bundled.`;
@@ -279,6 +306,54 @@ function createActions(
             } catch (error) {
               state.projectStatus = `Import failed: ${error instanceof Error ? error.message : "Unknown error"}.`;
             }
+            actions.render();
+          },
+          createRecoveryBundle: () => {
+            const createdAt = state.now();
+            const ledger = appendSafetyEvent(
+              state.safetyLedgerStorage.load(),
+              "backupCreated",
+              state.project,
+              state.keyboard,
+              createdAt,
+            );
+            const bundle = createRecoveryBundle({
+              project: state.project,
+              keyboard: state.keyboard,
+              ledger,
+              createdAt,
+            });
+            try {
+              state.downloadRecoveryBundle(bundle);
+              state.safetyLedgerStorage.save(ledger);
+              state.declineNoBackupConfirmed = false;
+              state.declineResponsibilityConfirmed = false;
+              state.projectStatus = `Downloaded recovery bundle for ${state.project.name}.`;
+            } catch (error) {
+              state.projectStatus = `Recovery export failed: ${error instanceof Error ? error.message : "Unknown error"}.`;
+            }
+            actions.render();
+          },
+          updateBackupDeclineConfirmation: (field, checked) => {
+            if (field === "noBackup") {
+              state.declineNoBackupConfirmed = checked;
+            } else {
+              state.declineResponsibilityConfirmed = checked;
+            }
+          },
+          declineRecoveryBundle: () => {
+            if (!state.declineNoBackupConfirmed || !state.declineResponsibilityConfirmed) {
+              state.projectStatus = "Both decline confirmations are required.";
+              actions.render();
+              return;
+            }
+            state.safetyLedgerStorage.append(
+              "backupDeclined",
+              state.project,
+              state.keyboard,
+              state.now(),
+            );
+            state.projectStatus = "Recovery data declined for the current project and device state.";
             actions.render();
           },
           updateSelectedLayerName: (name) => {
@@ -345,6 +420,9 @@ type RenderActions = {
   openSavedProject: () => void;
   updateProjectJsonDraft: (json: string) => void;
   importProjectDraft: () => void;
+  createRecoveryBundle: () => void;
+  updateBackupDeclineConfirmation: (field: "noBackup" | "responsibility", checked: boolean) => void;
+  declineRecoveryBundle: () => void;
   updateSelectedLayerName: (name: string) => void;
   updateLightingMode: (mode: LightingProfile["mode"]) => void;
   updateLightingGlobal: (key: string, value: string | number | boolean) => void;
@@ -696,7 +774,11 @@ function contextPanelSection(
   return inspector(state, layout, actions);
 }
 
-function projectPanel(state: EditorState, actions: RenderActions): HTMLElement {
+function projectPanel(
+  state: EditorState,
+  actions: RenderActions,
+  issues: UiIssue[],
+): HTMLElement {
   const savedProjects = state.projectStorage.list();
   if (!state.selectedSavedProjectId && savedProjects[0]) {
     state.selectedSavedProjectId = savedProjects[0].id;
@@ -803,8 +885,117 @@ function projectPanel(state: EditorState, actions: RenderActions): HTMLElement {
         projectDraft,
         element("div", { className: "project-actions" }, [importDraft]),
       ]),
+      safetyRecoveryPanel(state, issues, actions),
     ]),
   ]);
+}
+
+function safetyRecoveryPanel(
+  state: EditorState,
+  issues: UiIssue[],
+  actions: RenderActions,
+): HTMLElement {
+  const assessment = createSafetyAssessment(
+    state.project,
+    state.keyboard,
+    issues,
+    state.safetyLedgerStorage.load(),
+  );
+  const status = safetyStatusLabel(assessment.state);
+  const card = element("section", {
+    className: "project-card safety-recovery",
+    attrs: { "data-safety-panel": "true" },
+  }, [
+    element("h3", { text: "Safety & recovery" }),
+    element("p", {
+      className: "project-status muted",
+      text: status,
+      attrs: { "data-safety-status": "true" },
+    }),
+    element("p", { className: "muted", text: assessment.reason }),
+  ]);
+
+  if (assessment.state !== "declined") {
+    const backup = uiButton({
+      className: "secondary-action",
+      text: "Download recovery bundle",
+      type: "button",
+      attrs: { "data-safety-action": "backup" },
+    });
+    backup.addEventListener("click", actions.createRecoveryBundle);
+    card.append(
+      element("p", {
+        className: "muted",
+        text: "This local JSON file restores the project without a connected keyboard. Keep it with any official recovery firmware for this exact device.",
+        attrs: { "data-safety-recovery-guidance": "true" },
+      }),
+      element("div", { className: "project-actions" }, [backup]),
+    );
+  }
+
+  if (assessment.state === "backupRequired") {
+    const noBackup = safetyConfirmation(
+      "no-backup",
+      "I choose not to create recovery data for this exact project and device state.",
+      state.declineNoBackupConfirmed,
+      (checked) => actions.updateBackupDeclineConfirmation("noBackup", checked),
+    );
+    const responsibility = safetyConfirmation(
+      "responsibility",
+      "I understand QMKUI will not provide recovery guidance for this run.",
+      state.declineResponsibilityConfirmed,
+      (checked) => actions.updateBackupDeclineConfirmation("responsibility", checked),
+    );
+    const decline = uiButton({
+      className: "secondary-action danger",
+      text: "Record backup decline",
+      type: "button",
+      attrs: { "data-safety-action": "decline" },
+    });
+    decline.addEventListener("click", actions.declineRecoveryBundle);
+    card.append(noBackup, responsibility, element("div", { className: "project-actions" }, [decline]));
+  }
+
+  card.append(
+    element("div", { className: "safety-write-gate", attrs: { "data-safety-write-gate": "true" } }, [
+      element("h4", { text: "Device write" }),
+      element("p", {
+        className: "muted",
+        text: "Unavailable. QMKUI has no exact-device compile, bootloader, or flash adapter yet.",
+      }),
+    ]),
+  );
+  return card;
+}
+
+function safetyConfirmation(
+  id: "no-backup" | "responsibility",
+  label: string,
+  checked: boolean,
+  onChange: (checked: boolean) => void,
+): HTMLElement {
+  const input = element("input", {
+    attrs: {
+      type: "checkbox",
+      "data-safety-confirmation": id,
+    },
+  }) as HTMLInputElement;
+  input.checked = checked;
+  input.addEventListener("change", () => onChange(input.checked));
+  return element("label", { className: "safety-confirmation" }, [input, document.createTextNode(label)]);
+}
+
+function safetyStatusLabel(state: ReturnType<typeof createSafetyAssessment>["state"]): string {
+  switch (state) {
+    case "blocked":
+      return "Safety checks blocked";
+    case "backupRecorded":
+      return "Backup recorded";
+    case "declined":
+      return "Backup declined";
+    default:
+      return "Backup required";
+  }
 }
 
 function savedProjectList(projects: ProjectSummary[]): HTMLElement {
@@ -860,7 +1051,7 @@ function diagnosticsDrawer(
   close.addEventListener("click", actions.closeDiagnostics);
 
   drawer.append(
-    projectPanel(state, actions),
+    projectPanel(state, actions, issues),
     element("section", { className: "drawer-section" }, [
       buildSection(buildPlan, layout.keys.length),
     ]),
@@ -2186,6 +2377,33 @@ function keyboardForProject(project: Project): KeyboardDefinition | undefined {
       keyboard.id === project.target.keyboardId ||
       keyboard.qmkKeyboard === project.target.qmkKeyboard,
   );
+}
+
+function projectFromDraft(json: string): Project {
+  try {
+    return importRecoveryBundleJson(json).project;
+  } catch {
+    return importProjectJson(json);
+  }
+}
+
+function defaultSafetyLedgerStorage(): SafetyLedgerStorage {
+  try {
+    const storage = window.localStorage;
+    return storage ? createSafetyLedgerStorage(storage) : createMemorySafetyLedgerStorage();
+  } catch {
+    return createMemorySafetyLedgerStorage();
+  }
+}
+
+function downloadRecoveryBundle(bundle: RecoveryBundle): void {
+  const blob = new Blob([serializeRecoveryBundle(bundle)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${bundle.project.name.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase()}-recovery.json`;
+  link.click();
+  queueMicrotask(() => URL.revokeObjectURL(url));
 }
 
 function openProject(

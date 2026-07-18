@@ -3,6 +3,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { exportQmkJson, type DoctorReport } from "./domain";
 import { createMemoryProjectStorage } from "./projectStorage";
 import { keychronV5MaxKeyboard, keychronV5MaxProject } from "./presets";
+import {
+  createEmptySafetyLedger,
+  createRecoveryBundle,
+  serializeRecoveryBundle,
+  type RecoveryBundle,
+} from "./safety";
+import { createSafetyLedgerStorage } from "./safetyStorage";
 import { createApp } from "./ui";
 
 afterEach(() => {
@@ -820,6 +827,32 @@ describe("desktop preview layer controls", () => {
     expect(root.querySelector("h1")?.textContent).toBe("Imported Keychron");
   });
 
+  it("restores a project from an app-native recovery bundle without a connected keyboard", () => {
+    const root = document.createElement("div");
+    const recoveredProject = {
+      ...structuredClone(keychronV5MaxProject),
+      name: "Recovered Keychron",
+    };
+    const bundle = createRecoveryBundle({
+      project: recoveredProject,
+      keyboard: keychronV5MaxKeyboard,
+      ledger: createEmptySafetyLedger(),
+      createdAt: "2026-07-17T20:00:00.000Z",
+    });
+
+    createApp(root);
+    const draft = root.querySelector<HTMLTextAreaElement>('[data-focus-id="project-json-draft"]');
+    expect(draft).not.toBeNull();
+    draft!.value = serializeRecoveryBundle(bundle);
+    draft!.dispatchEvent(new Event("input", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-project-action="import"]')?.click();
+
+    expect(root.querySelector("[data-project-status]")?.textContent).toContain(
+      "Imported Recovered Keychron",
+    );
+    expect(root.querySelector("h1")?.textContent).toBe("Recovered Keychron");
+  });
+
   it("rejects malformed nested project JSON without replacing the open project", () => {
     const root = document.createElement("div");
     createApp(root);
@@ -842,7 +875,92 @@ describe("desktop preview layer controls", () => {
     expect(root.querySelector("h1")?.textContent).toBe(originalName);
     expect(readQmkPreview(root).keyboard).toBe("keychron/v5_max/ansi_encoder");
   });
+
+  it("creates a local recovery bundle before future write preparation", () => {
+    const root = document.createElement("div");
+    const downloadedBundles: RecoveryBundle[] = [];
+    const safetyLedgerStorage = createSafetyLedgerStorage(createMemoryStorage());
+
+    createApp(root, {
+      safetyLedgerStorage,
+      downloadRecoveryBundle: (bundle) => downloadedBundles.push(bundle),
+      now: (() => {
+        const timestamps = ["2026-07-17T20:00:00.000Z", "2026-07-17T20:00:01.000Z"];
+        return () => timestamps.shift() ?? "2026-07-17T20:00:02.000Z";
+      })(),
+    });
+    root.querySelector<HTMLButtonElement>('[data-diagnostics-action="open"]')?.click();
+
+    expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup required");
+    root.querySelector<HTMLButtonElement>('[data-safety-action="backup"]')?.click();
+
+    expect(downloadedBundles).toHaveLength(1);
+    expect(downloadedBundles[0].project).toEqual(keychronV5MaxProject);
+    expect(downloadedBundles[0].createdAt).toBe(downloadedBundles[0].ledger.events.at(-1)?.occurredAt);
+    expect(safetyLedgerStorage.load().events.at(-1)?.kind).toBe("backupCreated");
+    expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup recorded");
+  });
+
+  it("requires two confirmations before recording a backup decline", () => {
+    const root = document.createElement("div");
+    const safetyLedgerStorage = createSafetyLedgerStorage(createMemoryStorage());
+
+    createApp(root, { safetyLedgerStorage });
+    root.querySelector<HTMLButtonElement>('[data-diagnostics-action="open"]')?.click();
+
+    const declineData = root.querySelector<HTMLInputElement>('[data-safety-confirmation="no-backup"]');
+    const responsibility = root.querySelector<HTMLInputElement>(
+      '[data-safety-confirmation="responsibility"]',
+    );
+    expect(declineData).not.toBeNull();
+    expect(responsibility).not.toBeNull();
+
+    declineData!.checked = true;
+    declineData!.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-safety-action="decline"]')?.click();
+    expect(safetyLedgerStorage.load().events).toHaveLength(0);
+
+    responsibility!.checked = true;
+    responsibility!.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-safety-action="decline"]')?.click();
+
+    expect(safetyLedgerStorage.load().events.at(-1)?.kind).toBe("backupDeclined");
+    expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup declined");
+    expect(root.querySelector('[data-safety-recovery-guidance]')).toBeNull();
+  });
+
+  it("requires a new backup when the edited project changes after a prior backup", () => {
+    const root = document.createElement("div");
+    const safetyLedgerStorage = createSafetyLedgerStorage(createMemoryStorage());
+
+    createApp(root, { safetyLedgerStorage, downloadRecoveryBundle: () => undefined });
+    root.querySelector<HTMLButtonElement>('[data-diagnostics-action="open"]')?.click();
+    root.querySelector<HTMLButtonElement>('[data-safety-action="backup"]')?.click();
+
+    root.querySelector<HTMLButtonElement>('[data-diagnostics-action="close"]')?.click();
+    root.querySelector<HTMLButtonElement>('[data-key="v5_001"]')?.click();
+    const keycode = root.querySelector<HTMLInputElement>('[data-focus-id="selected-keycode"]');
+    keycode!.value = "KC_F13";
+    keycode!.dispatchEvent(new Event("input", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-diagnostics-action="open"]')?.click();
+
+    expect(root.querySelector('[data-safety-status]')?.textContent).toContain("Backup required");
+  });
 });
+
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => values.delete(key),
+    setItem: (key, value) => values.set(key, value),
+  };
+}
 
 function readQmkPreview(root: HTMLElement): {
   keyboard: string;
