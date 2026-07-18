@@ -130,8 +130,8 @@ describe("lower workspace layout", () => {
     expect(layout.buttons.every((button) => button.width > 0 && button.height > 0 && isContained(button, layout.actions))).toBe(true);
     expect(layout.buttons.every((button) => button.scrollWidth <= button.clientWidth)).toBe(true);
     expect(layout.actions.top).toBeGreaterThanOrEqual(layout.layerName.bottom);
-    expect(layout.overflowY).toBe("auto");
-    expect(layout.scrollHeight).toBeGreaterThan(layout.clientHeight);
+    expect(layout.overflowY).toBe("visible");
+    expect(layout.scrollHeight).toBeLessThanOrEqual(layout.clientHeight);
 
     await page.locator("[data-context-dock]").scrollIntoViewIfNeeded();
     const contextAfterScroll = await page.locator("[data-context-dock]").evaluate((dock) => {
@@ -146,6 +146,64 @@ describe("lower workspace layout", () => {
     });
     expect(contextAfterScroll.dock.bottom).toBeGreaterThan(contextAfterScroll.controls.top);
     expect(contextAfterScroll.dock.top).toBeLessThan(contextAfterScroll.controls.bottom);
+  });
+
+  it.each([
+    { height: 700, width: 420 },
+    { height: 478, width: 1566 },
+  ])("keeps layer actions accessible through the main workspace at $width×$height", async (viewport) => {
+    const page = await openPage(viewport);
+
+    await page.locator("[data-layer-actions]").scrollIntoViewIfNeeded();
+    const layout = await page.locator(".workspace").evaluate((workspace) => {
+      const controls = workspace.querySelector<HTMLElement>("[data-workspace-controls]");
+      const actions = workspace.querySelector<HTMLElement>("[data-layer-actions]");
+      const canvas = workspace.querySelector<HTMLElement>("[data-keyboard-canvas]");
+      if (!controls || !actions || !canvas) throw new Error("Missing editor controls");
+      const workspaceRect = workspace.getBoundingClientRect();
+      const actionsRect = actions.getBoundingClientRect();
+      return {
+        actions: { top: actionsRect.top, bottom: actionsRect.bottom },
+        controls: {
+          clientHeight: controls.clientHeight,
+          scrollHeight: controls.scrollHeight,
+          scrollTop: controls.scrollTop,
+          overflowY: getComputedStyle(controls).overflowY,
+        },
+        workspace: {
+          clientHeight: workspace.clientHeight,
+          scrollHeight: workspace.scrollHeight,
+          scrollTop: workspace.scrollTop,
+          overflowY: getComputedStyle(workspace).overflowY,
+          top: workspaceRect.top,
+          bottom: workspaceRect.bottom,
+        },
+        keyboardCanvas: {
+          clientHeight: canvas.clientHeight,
+          clientWidth: canvas.clientWidth,
+          overflowX: getComputedStyle(canvas).overflowX,
+          scrollWidth: canvas.scrollWidth,
+        },
+        pageWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      };
+    });
+
+    expect(layout.workspace.overflowY).toBe("auto");
+    expect(layout.workspace.scrollHeight).toBeGreaterThan(layout.workspace.clientHeight);
+    expect(layout.workspace.scrollTop).toBeGreaterThan(0);
+    expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.keyboardCanvas.clientHeight).toBeGreaterThan(0);
+    expect(layout.keyboardCanvas.clientWidth).toBeGreaterThan(0);
+    expect(layout.keyboardCanvas.overflowX).toBe("auto");
+    if (viewport.width < 900) {
+      expect(layout.keyboardCanvas.scrollWidth).toBeGreaterThan(layout.keyboardCanvas.clientWidth);
+    }
+    expect(layout.controls.overflowY).not.toBe("auto");
+    expect(layout.controls.scrollTop).toBe(0);
+    expect(layout.controls.scrollHeight).toBeLessThanOrEqual(layout.controls.clientHeight);
+    expect(layout.actions.top).toBeGreaterThanOrEqual(layout.workspace.top);
+    expect(layout.actions.bottom).toBeLessThanOrEqual(layout.workspace.bottom);
   });
 });
 
