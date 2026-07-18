@@ -792,7 +792,8 @@ wa-button.keycode-option {
 .keyboard-scroll {
   overflow: clip;
   display: block;
-  width: 100%;
+  width: min(100%, clamp(760px, 70vw, 1120px));
+  justify-self: center;
   min-height: 0;
   border: 0;
   background-color: #0e1821;
@@ -1667,6 +1668,26 @@ dd {
   .lighting-systems,
   .system-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1240px) {
+  .keyboard-workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+    grid-template-rows: auto;
+    gap: 14px;
+  }
+
+  .keyboard-stage {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .workspace-controls {
+    grid-column: 2;
+    grid-row: 1;
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 0;
   }
 }
 
