@@ -550,6 +550,16 @@ describe("desktop preview layer controls", () => {
     expect(info?.querySelector("[data-selected-key-summary]")).not.toBeNull();
     expect(info?.querySelector('[data-key-detail-section="layers"]')).not.toBeNull();
     expect(info?.querySelector('[data-key-detail-section="relations"]')).not.toBeNull();
+    expect(
+      [...(info?.querySelectorAll<HTMLElement>("[data-control-group]") ?? [])].map(
+        (group) => group.dataset.controlGroup,
+      ),
+    ).toEqual(["key-context", "key-functions", "key-lighting", "key-relations"]);
+    expect(
+      [...(info?.querySelectorAll<HTMLElement>("[data-control-group-title]") ?? [])].every(
+        (title) => title.textContent?.trim(),
+      ),
+    ).toBe(true);
     expect(controls?.querySelector("[data-selected-key-summary]")).toBeNull();
   });
 
@@ -559,7 +569,8 @@ describe("desktop preview layer controls", () => {
     createApp(root);
 
     const firstKey = root.querySelector<HTMLElement>('qmk-key[data-key="v5_000"]');
-    expect(Number.parseFloat(firstKey?.style.width ?? "0")).toBeGreaterThanOrEqual(45);
+    expect(firstKey?.style.width).toContain("%");
+    expect(firstKey?.style.height).toContain("%");
   });
 
   it("selects the Fn layer", () => {
