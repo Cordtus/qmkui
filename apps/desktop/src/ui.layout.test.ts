@@ -30,6 +30,93 @@ afterAll(async () => {
 });
 
 describe("lower workspace layout", () => {
+  it.each([
+    { height: 700, width: 420 },
+    { height: 900, width: 1440 },
+  ])("keeps project details contained at $width×$height", async (viewport) => {
+    const page = await openPage(viewport);
+
+    await page.locator('[data-project-details-action="open"]').click();
+    await page.locator("[data-project-details-drawer]").evaluate((drawer) => {
+      if (drawer.hasAttribute("hidden")) throw new Error("Project details drawer did not open");
+    });
+
+    const layout = await page.locator("[data-project-details-drawer]").evaluate((drawer) => {
+      const dialog = drawer.shadowRoot?.querySelector<HTMLElement>("[part~='dialog']");
+      const current = drawer.querySelector<HTMLElement>('[data-project-section="current"]');
+      const saved = drawer.querySelector<HTMLElement>('[data-project-section="saved"]');
+      const buttons = [...drawer.querySelectorAll<HTMLElement>("wa-button")];
+      if (!dialog || !current || !saved) throw new Error("Missing project details content");
+      const bounds = (element: HTMLElement) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+      };
+      return {
+        dialog: bounds(dialog),
+        current: bounds(current),
+        saved: bounds(saved),
+        buttons: buttons.map((button) => ({
+          ...bounds(button),
+          clientWidth: button.clientWidth,
+          scrollWidth: button.scrollWidth,
+        })),
+        pageWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      };
+    });
+
+    expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(isContained(layout.current, layout.dialog)).toBe(true);
+    expect(isContained(layout.saved, layout.dialog)).toBe(true);
+    expect(layout.buttons).not.toHaveLength(0);
+    expect(layout.buttons.every((button) => button.clientWidth > 0 && button.scrollWidth <= button.clientWidth)).toBe(true);
+  });
+
+  it.each([
+    { height: 700, width: 420 },
+    { height: 900, width: 1440 },
+  ])("keeps expanded project transfer controls contained at $width×$height", async (viewport) => {
+    const page = await openPage(viewport);
+
+    await page.locator('[data-project-details-action="open"]').click();
+    const transfer = page.locator('[data-project-section="transfer"]');
+    await transfer.scrollIntoViewIfNeeded();
+    await transfer.click();
+    await transfer.evaluate((details) => {
+      if (!details.hasAttribute("open")) throw new Error("Project transfer did not open");
+    });
+
+    const layout = await page.locator("[data-project-details-drawer]").evaluate((drawer) => {
+      const dialog = drawer.shadowRoot?.querySelector<HTMLElement>("[part~='dialog']");
+      const transfer = drawer.querySelector<HTMLElement>('[data-project-section="transfer"]');
+      const textarea = transfer?.querySelector<HTMLElement>("textarea");
+      const buttons = [...(transfer?.querySelectorAll<HTMLElement>("wa-button") ?? [])];
+      if (!dialog || !transfer || !textarea) throw new Error("Missing expanded project transfer content");
+      const bounds = (element: HTMLElement) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+      };
+      return {
+        dialog: bounds(dialog),
+        transfer: bounds(transfer),
+        textarea: { ...bounds(textarea), clientWidth: textarea.clientWidth, scrollWidth: textarea.scrollWidth },
+        buttons: buttons.map((button) => ({
+          ...bounds(button),
+          clientWidth: button.clientWidth,
+          scrollWidth: button.scrollWidth,
+        })),
+        pageWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      };
+    });
+
+    expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(isHorizontallyContained(layout.transfer, layout.dialog)).toBe(true);
+    expect(isHorizontallyContained(layout.textarea, layout.dialog)).toBe(true);
+    expect(layout.textarea.scrollWidth).toBeLessThanOrEqual(layout.textarea.clientWidth);
+    expect(layout.buttons.every((button) => button.clientWidth > 0 && button.scrollWidth <= button.clientWidth)).toBe(true);
+  });
+
   it("stacks the editor workflow action above its connection warning at 420px", async () => {
     const page = await openPage({ width: 420, height: 700 });
 
