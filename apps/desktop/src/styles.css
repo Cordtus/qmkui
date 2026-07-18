@@ -267,6 +267,22 @@ h3 {
   align-items: stretch;
 }
 
+.editor-workflow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.editor-workflow p {
+  flex: 1 1 420px;
+}
+
+.editor-workflow small {
+  flex: 1 1 260px;
+}
+
 .probe-strip {
   display: flex;
   align-items: center;
@@ -1449,6 +1465,12 @@ dd {
   .editor {
     grid-template-columns: 1fr;
     justify-content: stretch;
+  }
+
+  .editor-workflow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
 
   .catalog-row {
