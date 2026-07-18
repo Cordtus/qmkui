@@ -345,7 +345,7 @@ describe("lower workspace layout", () => {
     expect(["auto", "scroll"]).toContain(layout.inspector.overflowY);
   });
 
-  it("uses sharp aligned control groups while giving the keymap priority", async () => {
+  it("uses sharp aligned control groups in the desktop workbench", async () => {
     const page = await openPage({ width: 1440, height: 900 });
 
     const layout = await page.locator("body").evaluate((app) => {
@@ -384,9 +384,10 @@ describe("lower workspace layout", () => {
       };
     });
 
-    expect(layout.canvas.width).toBeGreaterThan(1_000);
+    expect(layout.canvas.width).toBeGreaterThan(760);
+    expect(layout.canvas.width).toBeLessThanOrEqual(900);
     expect(layout.inspector.top).toBeGreaterThanOrEqual(layout.canvas.top + layout.canvas.height);
-    expect(layout.firstKey.width).toBeGreaterThan(50);
+    expect(layout.firstKey.width).toBeGreaterThan(38);
     expect(layout.nav.gap).toBe("0px");
     expect(layout.nav.items.every((item) => item.left === layout.nav.items[0].left && item.width === layout.nav.items[0].width)).toBe(true);
     expect([
@@ -397,6 +398,49 @@ describe("lower workspace layout", () => {
       ...layout.nav.items,
     ].every((element) => element.borderRadius === "0px")).toBe(true);
   }, 10_000);
+
+  it.each([
+    { height: 900, maxCanvasWidth: 900, minCanvasWidth: 760, width: 1440 },
+    { height: 1440, maxCanvasWidth: 1160, minCanvasWidth: 1080, width: 2560 },
+  ])("balances the complete map and menu rail at $width×$height", async (viewport) => {
+    const page = await openPage(viewport);
+
+    const layout = await page.locator("[data-keyboard-workspace]").evaluate((workspace) => {
+      const stage = workspace.querySelector<HTMLElement>("[data-keyboard-stage]");
+      const canvas = workspace.querySelector<HTMLElement>("[data-keyboard-canvas]");
+      const controls = workspace.querySelector<HTMLElement>("[data-workspace-controls]");
+      const board = canvas?.querySelector<HTMLElement>(".board");
+      if (!stage || !canvas || !controls || !board) throw new Error("Missing balanced workbench regions");
+      canvas.scrollLeft = 1;
+      canvas.scrollTop = 1;
+      const bounds = (element: HTMLElement) => {
+        const rect = element.getBoundingClientRect();
+        return { bottom: rect.bottom, height: rect.height, left: rect.left, right: rect.right, top: rect.top, width: rect.width };
+      };
+      return {
+        board: bounds(board),
+        canvas: {
+          ...bounds(canvas),
+          overflowX: getComputedStyle(canvas).overflowX,
+          overflowY: getComputedStyle(canvas).overflowY,
+          scrollLeft: canvas.scrollLeft,
+          scrollTop: canvas.scrollTop,
+        },
+        controls: bounds(controls),
+        stage: bounds(stage),
+      };
+    });
+
+    expect(layout.canvas.width).toBeGreaterThanOrEqual(viewport.minCanvasWidth);
+    expect(layout.canvas.width).toBeLessThanOrEqual(viewport.maxCanvasWidth);
+    expect(isContained(layout.board, layout.canvas)).toBe(true);
+    expect(layout.canvas.overflowX).not.toBe("auto");
+    expect(layout.canvas.overflowY).not.toBe("auto");
+    expect(layout.canvas.scrollLeft).toBe(0);
+    expect(layout.canvas.scrollTop).toBe(0);
+    expect(layout.controls.left).toBeGreaterThanOrEqual(layout.stage.right + 8);
+    expect(layout.controls.top).toBeLessThanOrEqual(layout.canvas.top + 1);
+  });
 
   it.each([
     { height: 700, width: 320 },
