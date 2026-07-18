@@ -409,6 +409,20 @@ describe("desktop preview layer controls", () => {
     );
   });
 
+  it("labels the keyboard canvas and selected-key inspector", () => {
+    const root = document.createElement("div");
+
+    createApp(root);
+
+    expect(root.querySelector("[data-keyboard-canvas]")?.getAttribute("aria-label")).toBe(
+      "Keyboard layout",
+    );
+    expect(root.querySelector("[data-key-info-panel]")?.getAttribute("aria-label")).toBe(
+      "Selected key inspector",
+    );
+    expect(root.querySelector('[data-key="v5_001"]')).not.toBeNull();
+  });
+
   it("uses the component layer for core controls and custom key elements", () => {
     const root = document.createElement("div");
 
