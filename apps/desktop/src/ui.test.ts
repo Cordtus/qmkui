@@ -57,7 +57,10 @@ describe("desktop preview layer controls", () => {
     const workflow = root.querySelector<HTMLElement>("[data-editor-workflow]");
     expect(workflow?.textContent).toContain("Download QMK JSON");
     expect(root.querySelector('[data-device-action="connect"]')?.textContent).toBe(
-      "Connect Keychron V5 Max",
+      "Identify Keychron V5 Max",
+    );
+    expect(root.querySelector("[data-device-state]")?.textContent).toBe(
+      "Select the wired Keychron V5 Max ANSI Knob to identify it. The app does not open it or grant configuration access.",
     );
     expect(root.querySelector('[data-device-action="read"]')).toBeNull();
     expect(root.querySelector('[data-device-action="write"]')).toBeNull();
@@ -84,7 +87,7 @@ describe("desktop preview layer controls", () => {
     await flushDeviceSelection();
 
     expect(root.querySelector("[data-device-state]")?.textContent).toContain(
-      "Keychron V5 Max ANSI Knob recognized",
+      "Keychron V5 Max ANSI Knob recognized. The app does not open it or grant configuration access.",
     );
     expect(root.querySelector('[data-device-action="read"]')).toBeNull();
     expect(root.querySelector('[data-device-action="write"]')).toBeNull();
@@ -118,7 +121,7 @@ describe("desktop preview layer controls", () => {
     });
 
     expect(root.querySelector('[data-device-action="connect"]')?.textContent).toBe(
-      "Connect Keychron V5 Max",
+      "Identify Keychron V5 Max",
     );
   });
 

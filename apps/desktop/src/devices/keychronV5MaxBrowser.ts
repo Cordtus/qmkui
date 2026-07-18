@@ -7,7 +7,12 @@ import {
 type BrowserHidDevice = HidIdentityMetadata;
 
 type BrowserHidRequestOptions = {
-  filters: ReadonlyArray<{ vendorId: number; productId: number }>;
+  filters: ReadonlyArray<{
+    vendorId: number;
+    productId: number;
+    usagePage: number;
+    usage: number;
+  }>;
 };
 
 type BrowserHid = {
@@ -34,14 +39,24 @@ export async function selectKeychronV5MaxBrowserDevice(
     return { state: "unavailable" };
   }
 
-  const [device] = await browser.hid.requestDevice({
-    filters: [{ vendorId: 0x3434, productId: 0x0950 }],
+  const devices = await browser.hid.requestDevice({
+    filters: [{ vendorId: 0x3434, productId: 0x0950, usagePage: 0xff60, usage: 0x0061 }],
   });
-  if (!device) {
+  if (devices.length === 0) {
     return { state: "no-selection" };
   }
 
-  const identity = staticIdentity(device);
+  const selected = devices
+    .map((device) => {
+      const identity = staticIdentity(device);
+      return { identity, contract: classifyKeychronV5MaxIdentity(identity) };
+    })
+    .find(({ contract }) => contract.state === "partial");
+  if (selected) {
+    return { state: "selected", ...selected };
+  }
+
+  const identity = staticIdentity(devices[0]);
   return {
     state: "selected",
     identity,
