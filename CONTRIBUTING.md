@@ -71,5 +71,16 @@ flash firmware, or write to a keyboard. Do not add or run hardware-write tests
 without an explicitly approved hardware test plan covering the exact device,
 target validation, recovery path, and operator steps.
 
+Future write-capable code must remain disabled until it has an authoritative
+device profile and must use the safety foundation: current client-side project
+validation, a recovery bundle or explicit two-step backup decline, and a final
+operator review of every pending action. A past safety record applies only to
+the unchanged project/device-source state. Never infer a bootloader, recovery
+artifact, firmware revision, or device protocol from a generic profile.
+
+Recovery bundles and browser ledger data are intentionally local-only plain
+JSON. Do not add network upload, analytics, USB serial-number collection, or
+claims that user-controlled browser storage is tamper-proof.
+
 `scripts/probe-read-only.sh` is an explicit local action. It may read Linux USB
 descriptor metadata but must remain free of device-endpoint access and writes.

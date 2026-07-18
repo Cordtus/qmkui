@@ -1177,6 +1177,38 @@ input[type="color"] {
   min-width: 0;
 }
 
+.safety-recovery {
+  grid-column: 1 / -1;
+}
+
+.safety-confirmation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.safety-confirmation input {
+  width: auto;
+  min-height: 0;
+  margin-top: 3px;
+}
+
+.safety-write-gate {
+  display: grid;
+  gap: 4px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+
+.safety-write-gate h4 {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
 .saved-projects {
   display: grid;
   gap: 8px;

@@ -20,13 +20,34 @@ supported hardware target.
 - Configure local RGB Matrix preview profiles from the preset's capabilities.
 - Validate a project and inspect its generated QMK JSON.
 - Inspect, edit, and import an app-native project JSON draft.
+- Download and restore an app-native recovery bundle containing the project,
+  its exact bundled catalog facts, and its safety history.
+- Keep a local-only browser safety ledger for recovery-bundle creation or an
+  explicit backup decline.
 - Test host key events without reading from or writing to the keyboard.
 - Inspect software and read-only Linux readiness with `qmkui-doctor`.
 
 Project saves currently live in memory and disappear when the page reloads.
+Recovery bundles are downloaded as plain local JSON; the separate safety ledger
+uses browser local storage. Neither is transmitted by QMKUI, encrypted, or
+tamper-proof against someone controlling the local browser/app data. Keep a
+recovery bundle yourself if you need it to survive browser-data removal.
+
 Compilation, flashing, live keyboard mode, persistent native storage, and
 broad catalog ingestion are not implemented. The UI may show build planning or
 tool readiness, but it does not run a QMK compile or flash command.
+
+## Safety and recovery
+
+Open **Project details** and use **Safety & recovery** before any future write
+workflow. A recovery bundle restores the project without a connected keyboard;
+paste its JSON into **Project JSON** and choose **Import draft**. Keep any
+vendor recovery firmware separately, matched to the exact model and firmware.
+
+Declining recovery data requires two confirmations and creates a local record
+for that exact project/device state. QMKUI then does not show recovery guidance
+for that run. Changing the project or bundled device source facts requires a
+new backup or acknowledgement. There is currently no device-write path.
 
 ## Requirements
 
