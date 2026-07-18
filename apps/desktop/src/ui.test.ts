@@ -48,6 +48,45 @@ describe("desktop preview layer controls", () => {
     expect(root.querySelector('[data-key="v5_001"]')).not.toBeNull();
   });
 
+  it("shows a software-only editing path without a hardware connect control", () => {
+    const root = document.createElement("div");
+
+    createApp(root);
+
+    const workflow = root.querySelector<HTMLElement>("[data-editor-workflow]");
+    expect(workflow?.textContent).toContain("Download QMK JSON");
+    expect(workflow?.textContent).toContain("keyboard connection is not available");
+    expect(root.querySelector('[data-device-action="connect"]')).toBeNull();
+  });
+
+  it("keeps the hardware limitation explicit when validation blocks the editor workflow", () => {
+    const root = document.createElement("div");
+
+    createApp(root, {
+      project: {
+        ...structuredClone(keychronV5MaxProject),
+        build: { ...keychronV5MaxProject.build, keymapName: "invalid name" },
+      },
+    });
+
+    expect(root.querySelector("[data-editor-workflow]")?.textContent).toContain(
+      "keyboard connection is not available",
+    );
+  });
+
+  it("labels the computer keyboard capture tool as a host key test", () => {
+    const root = document.createElement("div");
+
+    createApp(root);
+    root.querySelector<HTMLElement>('[data-context-tab="test"]')?.click();
+
+    expect(root.querySelector('[data-context-tab="test"]')?.textContent).toBe("Host key test");
+    expect(root.querySelector('[data-context-section="test"] h2')?.textContent).toBe("Host key test");
+    expect(root.querySelector("[data-test-capture]")?.textContent).toContain(
+      "Focus this area and press a key on this computer. QMKUI does not read from the keyboard.",
+    );
+  });
+
   it("keeps diagnostics out of the default workspace and opens them on demand", () => {
     const root = document.createElement("div");
 
