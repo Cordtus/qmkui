@@ -487,7 +487,7 @@ describe("desktop preview layer controls", () => {
     expect(root.querySelector("[data-workbench-surface] + .details")).toBeNull();
   });
 
-  it("uses full row width while keeping the keyboard canvas sized to the board", () => {
+  it("keeps the keyboard canvas dimensions in sync with the board", () => {
     const root = document.createElement("div");
 
     createApp(root);
@@ -501,9 +501,6 @@ describe("desktop preview layer controls", () => {
     expect(canvas?.style.width).toBe(board?.style.width);
     expect(canvas?.style.height).toBe(board?.style.height);
     expect(stage?.style.width).toBe("100%");
-    expect(stage?.style.maxWidth).toBe("");
-    expect(stage?.style.getPropertyValue("--keyboard-board-width")).toBe(board?.style.width);
-    expect(stage?.style.maxHeight).toBe(`calc(${board?.style.height} + var(--keyboard-canvas-pad-y))`);
   });
 
   it("keeps lower controls in their responsive containers", () => {

@@ -79,7 +79,7 @@ import type { KeychronV5MaxProtocolVersion } from "./devices/keychronV5MaxProtoc
 const fixtureKeyboard = catalog[0] as KeyboardDefinition;
 const fixtureProject = project as Project;
 const bundledKeyboards = [keychronV5MaxKeyboard, fixtureKeyboard];
-const KEY_UNIT = 51;
+const KEY_UNIT = 58;
 const KEY_INSET = 6;
 
 type AppView = "workspace" | "catalog" | "system";
@@ -912,10 +912,8 @@ function keyboardWorkspace(
     canvas,
     selectedKeyInfoPanel(state, layout),
   ]);
-  stage.style.setProperty("--keyboard-board-width", boardPixelWidth);
   stage.style.setProperty("--keyboard-board-height", boardPixelHeight);
   stage.style.width = "100%";
-  stage.style.maxHeight = `calc(${boardPixelHeight} + var(--keyboard-canvas-pad-y))`;
 
   return element("section", {
     className: "keyboard-workspace",
