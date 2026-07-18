@@ -721,14 +721,13 @@ function activePanel(
     return systemPanel(state, actions.reloadProbe);
   }
 
-  const buildPlan = createBuildPlan(state.project, issues, state.qmkDetected);
   return element("div", {
     className: "view-stack",
     attrs: {
       "data-panel": "workspace",
     },
   }, [
-    editor(state, layout, buildPlan, actions),
+    editor(state, layout, issues, actions),
   ]);
 }
 
@@ -763,14 +762,29 @@ function detectionStrip(state: EditorState, reloadProbe: () => void): HTMLElemen
 function editor(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
-  buildPlan: BuildPlan,
+  issues: UiIssue[],
   actions: RenderActions,
 ): HTMLElement {
   return element("section", {
     className: "editor workbench-editor",
     attrs: { "data-workbench-surface": "true" },
   }, [
+    editorWorkflow(issues),
     keyboardWorkspace(state, layout, actions),
+  ]);
+}
+
+function editorWorkflow(issues: UiIssue[]): HTMLElement {
+  const invalid = issues.some((issue) => issue.severity === "error");
+  return element("section", {
+    className: "editor-workflow",
+    attrs: { "data-editor-workflow": "true" },
+  }, [
+    element("p", { text: "Edit the keymap, validate it, then Download QMK JSON for your local build workflow." }),
+    ...(invalid
+      ? [element("small", { text: "Resolve keymap validation errors before downloading QMK JSON." })]
+      : []),
+    element("small", { text: "A keyboard connection is not available in this editor." }),
   ]);
 }
 
@@ -899,7 +913,7 @@ function contextTabs(activePanel: ContextPanel, actions: RenderActions): HTMLEle
   const panels: Array<{ id: ContextPanel; label: string }> = [
     { id: "assignment", label: "Assignment" },
     { id: "lighting", label: "Lighting" },
-    { id: "test", label: "Test" },
+    { id: "test", label: "Host key test" },
   ];
 
   panels.forEach((panel, position) => {
@@ -1470,7 +1484,10 @@ function testPanel(
       },
     },
     [
-      element("h2", { text: "Key Test" }),
+      element("h2", { text: "Host key test" }),
+      element("p", {
+        text: "Focus this area and press a key on this computer. QMKUI does not read from the keyboard.",
+      }),
       definitionList([
         ["Layer", String(state.selectedLayerIndex)],
         ["Host", last ? `${last.code}` : ""],
@@ -1489,7 +1506,7 @@ function testPanel(
 
   return element("section", { className: "context-section test-panel", attrs: { "data-context-section": "test" } }, [
     element("div", { className: "panel-heading" }, [
-      element("h2", { text: "Test" }),
+      element("h2", { text: "Host key test" }),
       element("small", {
         text: last?.qmk ?? "",
         attrs: {
