@@ -2,9 +2,10 @@
 
 QMKUI is an early QMK keyboard project editor. In Chrome, Edge, or Opera, the
 public app can ask you to select the exact wired **Keychron V5 Max ANSI Knob**
-and recognize its static HID identity. It does not open the device, read HID
-reports, write configuration, run a QMK compile, enter a bootloader, flash
-firmware, or write device state.
+and recognize its static HID identity. After recognition, it can perform only
+one bounded read-only check: verify the observed VIA protocol version
+(`0x000c`). It does not read keymaps or configuration, write configuration,
+run a QMK compile, enter a bootloader, flash firmware, or write device state.
 
 The public instance is available at
 [https://cordtus.github.io/qmkui/](https://cordtus.github.io/qmkui/). GitHub
@@ -21,8 +22,10 @@ supported hardware target.
 - Configure local RGB Matrix preview profiles from the preset's capabilities.
 - Validate a project, then download its QMK JSON for handoff to your local QMK
   build workflow.
-- Select the exact wired Keychron V5 Max ANSI Knob in a supported browser to
-  verify its static identity. No device operations are available.
+- Select the exact wired Keychron V5 Max ANSI Knob in a supported browser,
+  then verify its observed protocol version (`0x000c`). This sends one
+  32-byte version request and accepts only its matching 32-byte response; it
+  does not read or change keyboard configuration.
 - Inspect, edit, and import an app-native project JSON draft.
 - Download and restore an app-native project recovery export containing the
   project, its exact bundled catalog definition, and its safety history.

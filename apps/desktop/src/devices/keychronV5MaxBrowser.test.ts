@@ -8,7 +8,7 @@ const exactV5MaxAnsiKnob = {
 };
 
 describe("Keychron V5 Max browser selection", () => {
-  it("asks the browser for only the exact V5 Max and maps its static identity without opening it", async () => {
+  it("asks the browser for only the exact V5 Max and preserves the exact selected device only for protocol verification", async () => {
     const wrongDevice = {
       vendorId: 0x3434,
       productId: 0x0950,
@@ -21,22 +21,29 @@ describe("Keychron V5 Max browser selection", () => {
       receiveFeatureReport: vi.fn(),
     };
     const requestDevice = vi.fn(async () => [wrongDevice, device]);
+    const verifyProtocolVersion = vi.fn(async () => ({ version: 0x000c as const }));
 
     const result = await selectKeychronV5MaxBrowserDevice({
       hid: { requestDevice },
-    });
+    }, { verifyProtocolVersion });
 
     expect(requestDevice).toHaveBeenCalledWith({
       filters: [{ vendorId: 0x3434, productId: 0x0950, usagePage: 0xff60, usage: 0x0061 }],
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       state: "selected",
       identity: exactV5MaxAnsiKnob,
       contract: {
         state: "partial",
-        capabilities: { open: false, read: false, write: false, flash: false },
+        capabilities: { protocolVersion: true, read: false, write: false, flash: false },
       },
     });
+    if (result.state === "selected" && result.contract.state === "partial" && "session" in result) {
+      await expect(result.session.verifyProtocolVersion()).resolves.toEqual({ version: 0x000c });
+    } else {
+      throw new Error("expected the exact V5 Max selection");
+    }
+    expect(verifyProtocolVersion).toHaveBeenCalledWith(device);
     expect(device.open).not.toHaveBeenCalled();
     expect(device.sendReport).not.toHaveBeenCalled();
     expect(device.receiveFeatureReport).not.toHaveBeenCalled();

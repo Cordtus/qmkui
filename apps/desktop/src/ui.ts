@@ -79,6 +79,7 @@ import {
   selectKeychronV5MaxBrowserDevice,
   type KeychronV5MaxBrowserSelection,
 } from "./devices/keychronV5MaxBrowser";
+import type { KeychronV5MaxProtocolVersion } from "./devices/keychronV5MaxProtocol";
 
 const fixtureKeyboard = catalog[0] as KeyboardDefinition;
 const fixtureProject = project as Project;
@@ -123,6 +124,7 @@ type EditorState = {
   downloadQmkJson: (output: unknown, project: Project) => void;
   selectKeychronV5MaxDevice: () => Promise<KeychronV5MaxBrowserSelection>;
   deviceSelection: DeviceSelectionState;
+  protocolVerification: ProtocolVerificationState;
   now: () => string;
   pendingRecoveryBundle?: {
     bundle: RecoveryBundle;
@@ -150,6 +152,12 @@ type EditorState = {
 type DeviceSelectionState =
   | KeychronV5MaxBrowserSelection
   | { state: "idle" | "selecting" | "cancelled" };
+
+type ProtocolVerificationState =
+  | { state: "idle" }
+  | { state: "verifying" }
+  | { state: "verified"; version: KeychronV5MaxProtocolVersion["version"] }
+  | { state: "failed" };
 
 export function createApp(root: HTMLElement, options: AppOptions = {}): void {
   const keyboard = structuredClone(options.keyboard ?? keychronV5MaxKeyboard ?? fixtureKeyboard);
@@ -182,6 +190,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     downloadQmkJson: options.downloadQmkJson ?? downloadQmkJson,
     selectKeychronV5MaxDevice: options.selectKeychronV5MaxDevice ?? selectKeychronV5MaxBrowserDevice,
     deviceSelection: { state: "idle" },
+    protocolVerification: { state: "idle" },
     now: options.now ?? (() => new Date().toISOString()),
     declineNoBackupConfirmed: false,
     declineResponsibilityConfirmed: false,
@@ -285,10 +294,28 @@ function createActions(
             state.selectKeychronV5MaxDevice().then(
               (selection) => {
                 state.deviceSelection = selection;
+                state.protocolVerification = { state: "idle" };
                 actions.render();
               },
               () => {
                 state.deviceSelection = { state: "cancelled" };
+                actions.render();
+              },
+            );
+          },
+          verifyKeychronV5MaxProtocol: () => {
+            if (!isProtocolVerifiableSelection(state.deviceSelection)) {
+              return;
+            }
+            state.protocolVerification = { state: "verifying" };
+            actions.render();
+            state.deviceSelection.session.verifyProtocolVersion().then(
+              ({ version }) => {
+                state.protocolVerification = { state: "verified", version };
+                actions.render();
+              },
+              () => {
+                state.protocolVerification = { state: "failed" };
                 actions.render();
               },
             );
@@ -628,6 +655,7 @@ type RenderActions = {
   captureHostKey: (input: { code: string; key: string }) => void;
   downloadQmkJson: () => void;
   selectKeychronV5MaxDevice: () => void;
+  verifyKeychronV5MaxProtocol: () => void;
   selectKeycodeCategory: (categoryId: string) => void;
   updateKeycodeSearch: (query: string) => void;
   updateCatalogSearch: (query: string) => void;
@@ -845,6 +873,21 @@ function editorWorkflow(
     },
   });
   connect.addEventListener("click", actions.selectKeychronV5MaxDevice);
+  const protocolAction = isProtocolVerifiableSelection(state.deviceSelection)
+    ? uiButton({
+        className: "secondary-action",
+        text:
+          state.protocolVerification.state === "verifying"
+            ? "Verifying protocol..."
+            : "Verify protocol",
+        type: "button",
+        attrs: {
+          "data-device-action": "verify-protocol",
+          ...(state.protocolVerification.state === "verifying" ? { disabled: "" } : {}),
+        },
+      })
+    : undefined;
+  protocolAction?.addEventListener("click", actions.verifyKeychronV5MaxProtocol);
   return element("section", {
     className: "editor-workflow",
     attrs: { "data-editor-workflow": "true" },
@@ -852,17 +895,21 @@ function editorWorkflow(
     element("p", { text: "Edit the keymap, validate it, then download QMK JSON for your local build workflow." }),
     download,
     connect,
+    ...(protocolAction ? [protocolAction] : []),
     ...(invalid
       ? [element("small", { text: "Resolve keymap validation errors before downloading QMK JSON." })]
       : []),
     element("small", {
       attrs: { "data-device-state": "true" },
-      text: deviceSelectionLabel(state.deviceSelection),
+      text: deviceSelectionLabel(state.deviceSelection, state.protocolVerification),
     }),
   ]);
 }
 
-function deviceSelectionLabel(selection: DeviceSelectionState): string {
+function deviceSelectionLabel(
+  selection: DeviceSelectionState,
+  protocolVerification: ProtocolVerificationState,
+): string {
   if (selection.state === "idle") {
     return "Select the wired Keychron V5 Max ANSI Knob to identify it. The app does not open it or grant configuration access.";
   }
@@ -882,9 +929,24 @@ function deviceSelectionLabel(selection: DeviceSelectionState): string {
     if (selection.contract.state === "unsupported") {
       return "Selected device does not match the Keychron V5 Max ANSI Knob.";
     }
-    return "Keychron V5 Max ANSI Knob recognized. The app does not open it or grant configuration access.";
+    if (protocolVerification.state === "verifying") {
+      return "Checking the observed protocol version. No configuration is read or changed.";
+    }
+    if (protocolVerification.state === "verified") {
+      return `Protocol version 0x${protocolVerification.version.toString(16).padStart(4, "0")} verified. No configuration is read or changed.`;
+    }
+    if (protocolVerification.state === "failed") {
+      return "Could not verify the protocol. You can retry; no configuration was changed.";
+    }
+    return "Keychron V5 Max ANSI Knob recognized. Verify its observed protocol version before any future device work.";
   }
   return "No device selected.";
+}
+
+function isProtocolVerifiableSelection(
+  selection: DeviceSelectionState,
+): selection is Extract<KeychronV5MaxBrowserSelection, { state: "selected"; contract: { state: "partial" } }> {
+  return selection.state === "selected" && selection.contract.state === "partial";
 }
 
 function keyboardWorkspace(
