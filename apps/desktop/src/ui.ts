@@ -92,6 +92,7 @@ type AppOptions = {
   safetyLedgerStorage?: SafetyLedgerStorage;
   downloadRecoveryBundle?: (bundle: RecoveryBundle) => void;
   downloadSafetyAudit?: (receipt: SafetyAuditReceipt) => void;
+  downloadQmkJson?: (output: unknown, project: Project) => void;
   now?: () => string;
   qmkDetected?: boolean;
   doctorReportLoader?: () => Promise<DoctorReport | null>;
@@ -114,6 +115,7 @@ type EditorState = {
   safetyLedgerStorage: SafetyLedgerStorage;
   downloadRecoveryBundle: (bundle: RecoveryBundle) => void;
   downloadSafetyAudit: (receipt: SafetyAuditReceipt) => void;
+  downloadQmkJson: (output: unknown, project: Project) => void;
   now: () => string;
   pendingRecoveryBundle?: {
     bundle: RecoveryBundle;
@@ -166,6 +168,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     safetyLedgerStorage,
     downloadRecoveryBundle: options.downloadRecoveryBundle ?? downloadRecoveryBundle,
     downloadSafetyAudit: options.downloadSafetyAudit ?? downloadSafetyAudit,
+    downloadQmkJson: options.downloadQmkJson ?? downloadQmkJson,
     now: options.now ?? (() => new Date().toISOString()),
     declineNoBackupConfirmed: false,
     declineResponsibilityConfirmed: false,
@@ -252,6 +255,16 @@ function createActions(
             state.testEvents = [capture, ...state.testEvents].slice(0, 12);
             state.selectedKeyId = capture.matchedKeyIds[0] ?? state.selectedKeyId;
             actions.render();
+          },
+          downloadQmkJson: () => {
+            const issues = validateProject(state.project, state.keyboard);
+            if (issues.some((issue) => issue.severity === "error")) {
+              return;
+            }
+            state.downloadQmkJson(
+              safeExportQmkJson(state.project, state.keyboard, issues),
+              state.project,
+            );
           },
           selectKeycodeCategory: (categoryId) => {
             state.keycodeCategoryId = categoryId;
@@ -586,6 +599,7 @@ type RenderActions = {
   updateSelectedKeycode: (qmk: string) => void;
   updateSelectedLighting: (color: string) => void;
   captureHostKey: (input: { code: string; key: string }) => void;
+  downloadQmkJson: () => void;
   selectKeycodeCategory: (categoryId: string) => void;
   updateKeycodeSearch: (query: string) => void;
   updateCatalogSearch: (query: string) => void;
@@ -769,18 +783,29 @@ function editor(
     className: "editor workbench-editor",
     attrs: { "data-workbench-surface": "true" },
   }, [
-    editorWorkflow(issues),
+    editorWorkflow(issues, actions),
     keyboardWorkspace(state, layout, actions),
   ]);
 }
 
-function editorWorkflow(issues: UiIssue[]): HTMLElement {
+function editorWorkflow(issues: UiIssue[], actions: RenderActions): HTMLElement {
   const invalid = issues.some((issue) => issue.severity === "error");
+  const download = uiButton({
+    className: "secondary-action",
+    text: "Download QMK JSON",
+    type: "button",
+    attrs: {
+      "data-qmk-action": "download",
+      ...(invalid ? { disabled: "", title: "Resolve keymap validation errors first" } : {}),
+    },
+  });
+  download.addEventListener("click", actions.downloadQmkJson);
   return element("section", {
     className: "editor-workflow",
     attrs: { "data-editor-workflow": "true" },
   }, [
-    element("p", { text: "Edit the keymap, validate it, then Download QMK JSON for your local build workflow." }),
+    element("p", { text: "Edit the keymap, validate it, then download QMK JSON for your local build workflow." }),
+    download,
     ...(invalid
       ? [element("small", { text: "Resolve keymap validation errors before downloading QMK JSON." })]
       : []),
@@ -2667,6 +2692,17 @@ function downloadSafetyAudit(receipt: SafetyAuditReceipt): void {
     serializeSafetyAuditReceipt(receipt),
     `${receipt.device.qmkKeyboard.replace(/[^a-z0-9_-]+/gi, "-")}-safety-audit.json`,
   );
+}
+
+function downloadQmkJson(output: unknown, currentProject: Project): void {
+  const contents = JSON.stringify(output, null, 2);
+  if (typeof contents !== "string") {
+    return;
+  }
+  const filename = currentProject.build.keymapName
+    .replace(/[^a-z0-9_-]+/gi, "-")
+    .toLowerCase();
+  downloadJson(`${contents}\n`, `${filename}-qmk.json`);
 }
 
 function downloadJson(contents: string, filename: string): void {
