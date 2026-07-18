@@ -91,6 +91,22 @@ describe("desktop preview layer controls", () => {
     expect(root.querySelector('[data-device-action="flash"]')).toBeNull();
   });
 
+  it("reports a cancelled Keychron chooser without claiming the browser lacks WebHID", async () => {
+    const root = document.createElement("div");
+
+    createApp(root, {
+      selectKeychronV5MaxDevice: async () => {
+        throw new Error("chooser cancelled");
+      },
+    });
+    root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
+    await flushDeviceSelection();
+
+    expect(root.querySelector("[data-device-state]")?.textContent).toBe(
+      "Keychron chooser was cancelled or did not complete. Try again when you are ready.",
+    );
+  });
+
   it("keeps the V5 Max chooser available when validation blocks QMK JSON download", () => {
     const root = document.createElement("div");
 

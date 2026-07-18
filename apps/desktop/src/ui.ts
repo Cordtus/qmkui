@@ -147,7 +147,9 @@ type EditorState = {
   doctorStatus: "loading" | "ready" | "missing";
 };
 
-type DeviceSelectionState = KeychronV5MaxBrowserSelection | { state: "idle" | "selecting" };
+type DeviceSelectionState =
+  | KeychronV5MaxBrowserSelection
+  | { state: "idle" | "selecting" | "cancelled" };
 
 export function createApp(root: HTMLElement, options: AppOptions = {}): void {
   const keyboard = structuredClone(options.keyboard ?? keychronV5MaxKeyboard ?? fixtureKeyboard);
@@ -286,7 +288,7 @@ function createActions(
                 actions.render();
               },
               () => {
-                state.deviceSelection = { state: "unavailable" };
+                state.deviceSelection = { state: "cancelled" };
                 actions.render();
               },
             );
@@ -866,6 +868,9 @@ function deviceSelectionLabel(selection: DeviceSelectionState): string {
   }
   if (selection.state === "selecting") {
     return "Choose the exact Keychron V5 Max ANSI Knob in the browser prompt.";
+  }
+  if (selection.state === "cancelled") {
+    return "Keychron chooser was cancelled or did not complete. Try again when you are ready.";
   }
   if (selection.state === "unavailable") {
     return "This browser cannot show the Keychron chooser. Use Chrome, Edge, or Opera.";
