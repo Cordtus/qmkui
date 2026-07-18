@@ -242,18 +242,16 @@ describe("desktop preview layer controls", () => {
     expect(stage?.style.maxHeight).toBe(`calc(${board?.style.height} + var(--keyboard-canvas-pad-y))`);
   });
 
-  it("keeps duplicate and delete actions compact relative to the key map", () => {
+  it("keeps lower controls in their responsive containers", () => {
     const root = document.createElement("div");
 
     createApp(root);
 
-    const board = root.querySelector<HTMLElement>(".board");
     const actions = root.querySelector<HTMLElement>("[data-layer-actions]");
-    expect(board).not.toBeNull();
+    const contextDock = root.querySelector<HTMLElement>("[data-context-dock]");
     expect(actions).not.toBeNull();
-    expect(Number.parseFloat(actions?.style.maxWidth ?? "0")).toBeLessThanOrEqual(
-      Number.parseFloat(board?.style.width ?? "0") * 0.2,
-    );
+    expect(contextDock?.classList.contains("context-dock")).toBe(true);
+    expect(actions?.getAttribute("style")).toBeNull();
   });
 
   it("separates unrelated bottom controls into labeled setting groups", () => {

@@ -848,7 +848,7 @@ function keyboardWorkspace(
     attrs: { "data-keyboard-workspace": "true" },
   }, [
     stage,
-    workspaceControls(state, layout, actions, boardWidth),
+    workspaceControls(state, layout, actions),
   ]);
 }
 
@@ -886,14 +886,13 @@ function workspaceControls(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
   actions: RenderActions,
-  boardWidth: number,
 ): HTMLElement {
   return element("section", {
     className: "workspace-controls",
     attrs: { "data-workspace-controls": "true" },
   }, [
     settingsGroup("layers", "Layers", [
-      layerStrip(state, actions, boardWidth),
+      layerStrip(state, actions),
     ]),
     settingsGroup("selection", "Selection", [
       combinedWorkspacePanel(state, layout, actions),
@@ -1839,10 +1838,10 @@ function requirementLabel(requirement: CommandStatus["requiredFor"]): string {
   return "Flashing";
 }
 
-function layerStrip(state: EditorState, actions: RenderActions, boardWidth: number): HTMLElement {
+function layerStrip(state: EditorState, actions: RenderActions): HTMLElement {
   return element("section", { className: "layer-strip", attrs: { "data-layer-strip": "true" } }, [
     layerTabs(state, actions),
-    layerTools(state, actions, boardWidth),
+    layerTools(state, actions),
   ]);
 }
 
@@ -1897,7 +1896,7 @@ function layerTabs(state: EditorState, actions: RenderActions): HTMLElement {
   return tabs;
 }
 
-function layerTools(state: EditorState, actions: RenderActions, boardWidth: number): HTMLElement {
+function layerTools(state: EditorState, actions: RenderActions): HTMLElement {
   const layer = currentLayer(state);
   const references = scanLayerReferences(state.project, layer.index);
   const deleteState = canDeleteLayer(state.project, layer.index);
@@ -1939,7 +1938,6 @@ function layerTools(state: EditorState, actions: RenderActions, boardWidth: numb
     className: "layer-actions",
     attrs: { "data-layer-actions": "true" },
   }, [duplicate, remove]);
-  actionGroup.style.maxWidth = `${Math.floor(boardWidth * 0.2)}px`;
 
   return element("section", { className: "layer-tools", attrs: { "data-layer-tools": String(layer.index) } }, [
     element("label", { className: "layer-name-field assignment-field" }, [
