@@ -1,5 +1,6 @@
 import {
   classifyKeychronV5MaxIdentity,
+  keychronV5MaxReadDefinition,
   type HidIdentityMetadata,
   type KeychronV5MaxIdentityContract,
 } from "./keychronV5MaxContract";
@@ -11,6 +12,7 @@ import {
 import {
   readKeychronV5MaxSnapshot,
   type KeychronV5MaxReaderDevice,
+  type KeychronV5MaxReaderOptions,
   type KeychronV5MaxReadSnapshot,
 } from "./keychronV5MaxReader";
 
@@ -138,12 +140,15 @@ function classifySelection(
 function protocolSession(
   device: KeychronV5MaxReaderDevice,
   verifyProtocolVersion: (device: KeychronV5MaxProtocolDevice) => Promise<KeychronV5MaxProtocolVersion>,
-  readSnapshot: (device: KeychronV5MaxReaderDevice) => Promise<KeychronV5MaxReadSnapshot>,
+  readSnapshot: (
+    device: KeychronV5MaxReaderDevice,
+    options?: KeychronV5MaxReaderOptions,
+  ) => Promise<KeychronV5MaxReadSnapshot>,
 ): BrowserKeyboardSession {
   return {
     capabilities: { canRead: true, canWrite: false, canFlash: false },
     verifyProtocolVersion: () => verifyProtocolVersion(device as KeychronV5MaxProtocolDevice),
-    readSnapshot: () => readSnapshot(device),
+    readSnapshot: () => readSnapshot(device, { keymap: keychronV5MaxReadDefinition.keymap }),
   };
 }
 

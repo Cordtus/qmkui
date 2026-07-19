@@ -40,7 +40,7 @@ describe("browser keyboard discovery", () => {
     expect(requestDevice).not.toHaveBeenCalled();
   });
 
-  it("reads the current V5 state only when its explicit session method is invoked", async () => {
+  it("uses the verified V5 definition dimensions to read the current keymap only when its explicit session method is invoked", async () => {
     const device = createTranscriptDevice();
     const result = await discoverAuthorizedBrowserKeyboard({
       hid: { getDevices: async () => [device], requestDevice: async () => [] },
@@ -68,19 +68,26 @@ describe("browser keyboard discovery", () => {
       state: "available",
       value: { featureBitmap: [0x00, 0x81] },
     });
-    expect(snapshot.keymap).toEqual({
-      state: "unavailable",
-      reason: "No verified V5 Max matrix dimensions were supplied.",
-    });
+    expect(snapshot.keymap.state).toBe("available");
+    if (snapshot.keymap.state !== "available") throw new Error("expected an available keymap");
+    expect(snapshot.keymap.value.layerCount).toBe(4);
+    expect(snapshot.keymap.value.keycodes).toHaveLength(4);
+    expect(snapshot.keymap.value.keycodes[0]).toHaveLength(6);
+    expect(snapshot.keymap.value.keycodes[0]?.[0]).toHaveLength(19);
+    expect(snapshot.keymap.value.keycodes[3]?.[5]?.[18]).toBe(0x1234);
     expect(snapshot.lighting).toMatchObject({
       state: "available",
       value: { rgbProtocol: [0x01, 0x00], indicators: [0x11], ledCount: 0 },
     });
-    expect(sentCommands(device)).toEqual([
+    expect(sentCommands(device).slice(0, 5)).toEqual([
       [0xa0],
       [0xa1],
       [0xa3],
       [0xa2],
+      [0x11],
+    ]);
+    expect(sentCommands(device).filter(([command]) => command === 0x04)).toHaveLength(4 * 6 * 19);
+    expect(sentCommands(device).slice(-3)).toEqual([
       [0xa8, 0x01],
       [0xa8, 0x03],
       [0xa8, 0x05],
@@ -109,7 +116,9 @@ describe("browser keyboard discovery", () => {
     }
 
     await expect(result.session.readSnapshot()).resolves.toEqual(failedLiveRead);
-    expect(readSnapshot).toHaveBeenCalledWith(device);
+    expect(readSnapshot).toHaveBeenCalledWith(device, {
+      keymap: { layerCount: 4, rows: 6, columns: 19 },
+    });
   });
 
   it("returns a neutral unsupported selection without issuing model-specific I/O", async () => {
@@ -227,8 +236,12 @@ describe("browser keyboard discovery", () => {
     await result.session.readSnapshot();
 
     expect(readSnapshot).toHaveBeenCalledTimes(2);
-    expect(readSnapshot).toHaveBeenNthCalledWith(1, device);
-    expect(readSnapshot).toHaveBeenNthCalledWith(2, device);
+    expect(readSnapshot).toHaveBeenNthCalledWith(1, device, {
+      keymap: { layerCount: 4, rows: 6, columns: 19 },
+    });
+    expect(readSnapshot).toHaveBeenNthCalledWith(2, device, {
+      keymap: { layerCount: 4, rows: 6, columns: 19 },
+    });
     expect(device.sendReport).not.toHaveBeenCalled();
   });
 });
@@ -261,6 +274,10 @@ function responseFor(request: Uint8Array): Uint8Array | undefined {
   if (request[0] === 0xa1) return report([0xa1, ...ascii("v1.0.0")]);
   if (request[0] === 0xa2) return report([0xa2, 0x00, 0x81]);
   if (request[0] === 0xa3) return report([0xa3, 0x02]);
+  if (request[0] === 0x11) return report([0x11, 0x04]);
+  if (request[0] === 0x04) {
+    return report([0x04, request[1]!, request[2]!, request[3]!, 0x12, 0x34]);
+  }
   if (request[0] !== 0xa8) return undefined;
   if (request[1] === 0x01) return report([0xa8, 0x01, 0x01, 0x00]);
   if (request[1] === 0x03) return report([0xa8, 0x03, 0x11]);

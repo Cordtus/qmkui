@@ -170,6 +170,67 @@ h3 {
   gap: 12px;
 }
 
+.hardware-keymap {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-rows: auto auto;
+}
+
+.hardware-keymap-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hardware-keymap-heading h2 {
+  margin: 0;
+}
+
+.hardware-keymap-heading .snapshot-reason {
+  margin: 6px 0 0;
+}
+
+.hardware-layer-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-muted);
+}
+
+.hardware-layer-tab {
+  border: 0;
+  border-right: 1px solid var(--border-muted);
+}
+
+.hardware-layer-tab[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel-raised));
+  color: var(--accent);
+}
+
+.hardware-keymap-board {
+  position: relative;
+  width: auto;
+  height: min(22svh, 24vw);
+  max-width: 100%;
+  min-height: 0;
+  aspect-ratio: 19.5 / 6.5;
+  margin: 0 auto;
+}
+
+.hardware-keymap-key {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-muted);
+  background: var(--panel-strong);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: clamp(7px, 0.85vw, 12px);
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .snapshot-field.unavailable,
 .snapshot-field.unverified {
   border-left: 3px solid var(--accent-warn);

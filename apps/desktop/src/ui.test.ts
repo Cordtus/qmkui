@@ -61,10 +61,32 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector("[data-hardware-snapshot]")?.getAttribute("data-source")).toBe("hardware");
     expect(root.textContent).toContain("1.2.3");
     expect(root.textContent).toContain("0x0004");
+    expect(root.querySelector("[data-hardware-keymap]")).not.toBeNull();
+    expect(root.querySelector('[data-hardware-key="0:2"]')?.textContent).toContain("0x0005");
+    expect(root.textContent).not.toContain("KC_ESC");
     expect(root.textContent).toContain("HSV 12, 34, 56");
     expect(root.textContent).toContain("Effect 7 (configuration effect; not a live animation capture)");
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
     expect(root.querySelector("[data-default-comparison]")).not.toBeNull();
+  });
+
+  it("ignores a snapshot that resolves after another keyboard selection starts", async () => {
+    const root = document.createElement("div");
+    const pendingSnapshot = deferred<KeychronV5MaxReadSnapshot>();
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(() => pendingSnapshot.promise),
+      chooseBrowserKeyboard: async () => ({ state: "no-selection" }),
+    });
+    await flush();
+
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
+    await flush();
+    pendingSnapshot.resolve(availableSnapshot());
+    await flush();
+
+    expect(root.querySelector("[data-hardware-snapshot]")).toBeNull();
+    expect(root.querySelector("[data-connection-screen]")).not.toBeNull();
   });
 
   it("refreshes by reading again without applying a default, reset, write, or flash action", async () => {
@@ -151,7 +173,7 @@ function availableSnapshot(): KeychronV5MaxReadSnapshot {
       },
     },
     capabilities: { state: "available", value: { featureBitmap: [0x12, 0x34] } },
-    keymap: { state: "available", value: { layerCount: 1, keycodes: [[[4]]] } },
+    keymap: { state: "available", value: { layerCount: 1, keycodes: [[[4, 0, 5]]] } },
     lighting: {
       state: "available",
       value: {
@@ -180,4 +202,12 @@ function unavailableSnapshot(): KeychronV5MaxReadSnapshot {
 async function flush(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function deferred<Value>() {
+  let resolve!: (value: Value) => void;
+  const promise = new Promise<Value>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
 }

@@ -26,7 +26,10 @@ artifact built and previewed with the commands below.
 - Recognize the exact wired Keychron V5 Max ANSI Knob and expose **Read device**
   only after browser authorization.
 - Read and display the reported V5 identity, feature bitmap, VIA keymap values,
-  and RGB state without emitting any mutation packet.
+  and RGB state without emitting any mutation packet. The V5 keymap read uses
+  the verified definition's four-layer, six-row, 19-column matrix shape, then
+  renders the returned keycodes as the current read-only keyboard view; it does
+  not use the bundled keymap as device state.
 - Display reported per-LED HSV colors and effect types. Dynamic effects are
   labeled as configuration effects, not as a captured live animation.
 - Keep unavailable or unverified identity, capability, keymap, and lighting

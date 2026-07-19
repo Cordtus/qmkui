@@ -131,6 +131,7 @@ type EditorState = {
   deviceSelectionEpoch: number;
   protocolVerification: ProtocolVerificationState;
   hardwareSnapshot?: KeychronV5MaxReadSnapshot;
+  snapshotLayerIndex: number;
   snapshotReadStatus: "idle" | "reading" | "failed";
   now: () => string;
   projectStatus: string;
@@ -184,6 +185,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     deviceSelection: { state: "discovering" },
     deviceSelectionEpoch: 0,
     protocolVerification: { state: "idle" },
+    snapshotLayerIndex: 0,
     snapshotReadStatus: "idle",
     now: options.now ?? (() => new Date().toISOString()),
     projectStatus: "Project is not saved in this preview session.",
@@ -218,6 +220,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     state.deviceSelection = { state: "discovering" };
     state.protocolVerification = { state: "idle" };
     state.hardwareSnapshot = undefined;
+    state.snapshotLayerIndex = 0;
     state.snapshotReadStatus = "idle";
     actions.render();
     state.discoverBrowserKeyboard().then(
@@ -313,6 +316,7 @@ function createActions(
             state.deviceSelection = { state: "selecting" };
             state.protocolVerification = { state: "idle" };
             state.hardwareSnapshot = undefined;
+            state.snapshotLayerIndex = 0;
             state.snapshotReadStatus = "idle";
             actions.render();
             state.chooseBrowserKeyboard().then(
@@ -323,6 +327,7 @@ function createActions(
                 state.deviceSelection = selection;
                 state.protocolVerification = { state: "idle" };
                 state.hardwareSnapshot = undefined;
+                state.snapshotLayerIndex = 0;
                 state.snapshotReadStatus = "idle";
                 actions.render();
               },
@@ -374,6 +379,7 @@ function createActions(
                   return;
                 }
                 state.hardwareSnapshot = snapshot;
+                state.snapshotLayerIndex = 0;
                 state.snapshotReadStatus = "idle";
                 actions.render();
               },
@@ -390,6 +396,16 @@ function createActions(
           selectKeycodeCategory: (categoryId) => {
             state.keycodeCategoryId = categoryId;
             state.keycodeSearch = "";
+            actions.render();
+          },
+          selectSnapshotLayer: (layerIndex) => {
+            if (
+              state.hardwareSnapshot?.keymap.state !== "available" ||
+              !state.hardwareSnapshot.keymap.value.keycodes[layerIndex]
+            ) {
+              return;
+            }
+            state.snapshotLayerIndex = layerIndex;
             actions.render();
           },
           updateKeycodeSearch: (query) => {
@@ -612,6 +628,7 @@ type RenderActions = {
   chooseBrowserKeyboard: () => void;
   verifyKeychronV5MaxProtocol: () => void;
   readDevice: () => void;
+  selectSnapshotLayer: (layerIndex: number) => void;
   selectKeycodeCategory: (categoryId: string) => void;
   updateKeycodeSearch: (query: string) => void;
   updateCatalogSearch: (query: string) => void;
@@ -752,9 +769,9 @@ function snapshotScreen(state: EditorState, actions: RenderActions): HTMLElement
       text: "Reported device state is read-only. Refresh performs another read only; it never resets, loads defaults, stages, writes, or flashes.",
     }),
     element("section", { className: "snapshot-grid" }, [
+      snapshotKeymapField(snapshot.keymap, state.snapshotLayerIndex, actions.selectSnapshotLayer),
       snapshotField("Identity", snapshot.identity, identitySnapshotRows),
       snapshotField("Capabilities", snapshot.capabilities, capabilitySnapshotRows),
-      snapshotField("Keymap", snapshot.keymap, keymapSnapshotRows),
       snapshotField("Lighting", snapshot.lighting, lightingSnapshotRows),
     ]),
     element("wa-details", {
@@ -809,6 +826,79 @@ function keymapSnapshotRows(value: ViaKeymap): Array<[string, string]> {
     ["First reported keycode", firstKeycode === undefined ? "No keycodes returned" : `0x${firstKeycode.toString(16).padStart(4, "0")}`],
     ["State", "Reported configuration (read-only)"],
   ];
+}
+
+function snapshotKeymapField(
+  field: KeychronV5MaxReadSnapshot["keymap"],
+  selectedLayerIndex: number,
+  selectLayer: (layerIndex: number) => void,
+): HTMLElement {
+  if (field.state !== "available") {
+    return snapshotField("Keymap", field, keymapSnapshotRows);
+  }
+
+  const selectedLayer = field.value.keycodes[selectedLayerIndex] ?? field.value.keycodes[0] ?? [];
+  const layout = keychronV5MaxKeyboard.layouts[0];
+  const board = element("div", {
+    className: "hardware-keymap-board",
+    attrs: { "data-hardware-keymap-board": "true" },
+  });
+  const bounds = layoutBounds(layout.keys);
+  layout.keys.forEach((key) => {
+    if (!key.matrix) {
+      return;
+    }
+    const keycode = selectedLayer[key.matrix.row]?.[key.matrix.col];
+    const hardwareKey = element("div", {
+      className: "hardware-keymap-key",
+      attrs: {
+        "data-hardware-key": `${key.matrix.row}:${key.matrix.col}`,
+        "data-keycode-source": "hardware",
+      },
+      text: keycode === undefined ? "Unavailable" : formatHardwareKeycode(keycode),
+    });
+    hardwareKey.style.left = `${(key.x / bounds.width) * 100}%`;
+    hardwareKey.style.top = `${(key.y / bounds.height) * 100}%`;
+    hardwareKey.style.width = `${((key.w ?? 1) / bounds.width) * 100}%`;
+    hardwareKey.style.height = `${((key.h ?? 1) / bounds.height) * 100}%`;
+    board.append(hardwareKey);
+  });
+
+  const layerTabs = element("div", {
+    className: "hardware-layer-tabs",
+    attrs: { "data-hardware-layer-tabs": "true" },
+  });
+  field.value.keycodes.forEach((_layer, layerIndex) => {
+    const tab = uiButton({
+      className: "hardware-layer-tab",
+      text: `Layer ${layerIndex}`,
+      type: "button",
+      attrs: {
+        "data-hardware-layer": String(layerIndex),
+        "aria-pressed": String(layerIndex === selectedLayerIndex),
+      },
+    });
+    tab.addEventListener("click", () => selectLayer(layerIndex));
+    layerTabs.append(tab);
+  });
+
+  return element("section", {
+    className: "snapshot-field hardware-keymap available",
+    attrs: { "data-snapshot-field": "keymap", "data-snapshot-state": "available", "data-hardware-keymap": "true" },
+  }, [
+    element("div", { className: "hardware-keymap-heading" }, [
+      element("div", {}, [
+        element("h2", { text: "Keymap" }),
+        element("p", { className: "snapshot-reason", text: "Current hardware-reported keycodes, read-only." }),
+      ]),
+      layerTabs,
+    ]),
+    board,
+  ]);
+}
+
+function formatHardwareKeycode(keycode: number): string {
+  return `0x${keycode.toString(16).padStart(4, "0")}`;
 }
 
 function lightingSnapshotRows(value: KeychronV5MaxLighting): Array<[string, string]> {
