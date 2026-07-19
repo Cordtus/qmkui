@@ -40,8 +40,8 @@ describe("Keychron V5 Max reader", () => {
     expect(snapshot.lighting).toMatchObject({
       state: "available",
       value: {
-        rgbProtocol: [0x01, 0x01, 0x00],
-        indicators: [0x03, 0x11],
+        rgbProtocol: [0x01, 0x00],
+        indicators: [0x11],
         ledCount: 10,
       },
     });
@@ -54,7 +54,7 @@ describe("Keychron V5 Max reader", () => {
     expect(snapshot.lighting.value.colors).toContainEqual({ led: 0, hue: 12, saturation: 240, value: 255 });
     expect(snapshot.lighting.value.colors).toContainEqual({ led: 9, hue: 21, saturation: 249, value: 255 });
     expect(snapshot.readAt).toBe("2026-07-18T12:00:00.000Z");
-    expect(sent(device)).toEqual([
+    const expectedRequests = [
       [0xa0],
       [0xa1],
       [0xa3],
@@ -67,7 +67,8 @@ describe("Keychron V5 Max reader", () => {
       ...Array.from({ length: 10 }, (_, led) => [[0xa8, 0x06, led], [0xa8, 0x07, led]]).flat(),
       [0xa8, 0x09, 0, 9],
       [0xa8, 0x09, 9, 1],
-    ]);
+    ];
+    expect(sentFrames(device)).toEqual(expectedRequests.map((bytes) => [0, [...report(bytes)]]));
     expect(device.open).toHaveBeenCalledOnce();
     expect(device.close).toHaveBeenCalledOnce();
     expect(device.listenerCount()).toBe(0);
@@ -106,14 +107,15 @@ describe("Keychron V5 Max reader", () => {
     expect(device.sendReport).not.toHaveBeenCalled();
   });
 
-  it("ignores a cross-matched report until the exact vendor response arrives", async () => {
+  it("ignores wrong report IDs and cross-matched reports until the exact vendor response arrives", async () => {
     const device = createDevice();
     const pending = requestKeychronV5MaxRead(device, 0xa8, [0x09, 0, 1]);
 
-    device.emit(new Uint8Array(31));
-    device.emit(report([0xa8, 0x09, 1, 1, 10, 20, 30]));
+    device.emit({ reportId: 1, data: report([0xa8, 0x09, 0, 1, 10, 20, 30]) });
+    device.emit({ reportId: 0, data: new Uint8Array(31) });
+    device.emit({ reportId: 0, data: report([0xa8, 0x09, 1, 1, 10, 20, 30]) });
     expect(device.listenerCount()).toBe(1);
-    device.emit(report([0xa8, 0x09, 0, 1, 10, 20, 30]));
+    device.emit({ reportId: 0, data: report([0xa8, 0x09, 0, 1, 10, 20, 30]) });
 
     await expect(pending).resolves.toEqual(report([0xa8, 0x09, 0, 1, 10, 20, 30]));
     expect(device.listenerCount()).toBe(0);
@@ -150,13 +152,16 @@ describe("Keychron V5 Max reader", () => {
 
 function createTranscriptDevice(
   options: { firmware?: number[] } = {},
-): KeychronV5MaxReaderDevice & { emit: (data: Uint8Array) => void; listenerCount: () => number } {
+): KeychronV5MaxReaderDevice & {
+  emit: (event: { reportId: number; data: Uint8Array }) => void;
+  listenerCount: () => number;
+} {
   const device = createDevice();
   const firmware = options.firmware ?? ascii("v1.0.0 2026-07-18");
   device.sendReport = vi.fn(async (_reportId: number, data: BufferSource) => {
     const request = new Uint8Array(data as ArrayBuffer);
     const response = responseFor(request, firmware);
-    if (response) device.emit(response);
+    if (response) device.emit({ reportId: 0, data: response });
   });
   return device;
 }
@@ -183,7 +188,7 @@ function responseFor(request: Uint8Array, firmware: number[]): Uint8Array | unde
 }
 
 function createDevice(): KeychronV5MaxReaderDevice & {
-  emit: (data: Uint8Array) => void;
+  emit: (event: { reportId: number; data: Uint8Array }) => void;
   listenerCount: () => number;
 } {
   const listeners = new Set<(event: { reportId: number; data: Uint8Array }) => void>();
@@ -195,7 +200,7 @@ function createDevice(): KeychronV5MaxReaderDevice & {
     sendReport: vi.fn(async () => undefined),
     addEventListener: vi.fn((_type, listener) => listeners.add(listener)),
     removeEventListener: vi.fn((_type, listener) => listeners.delete(listener)),
-    emit: (data) => listeners.forEach((listener) => listener({ reportId: 0, data })),
+    emit: (event) => listeners.forEach((listener) => listener(event)),
     listenerCount: () => listeners.size,
   };
 }
@@ -210,17 +215,8 @@ function ascii(value: string): number[] {
   return [...value].map((character) => character.charCodeAt(0));
 }
 
-function sent(device: KeychronV5MaxReaderDevice): number[][] {
-  return (device.sendReport as ReturnType<typeof vi.fn>).mock.calls.map(([, data]) => {
-    const packet = new Uint8Array(data as ArrayBuffer);
-    if (packet[0] === 0x04) return [...packet.slice(0, 4)];
-    if (packet[0] === 0xa8) {
-      return packet[1] === 0x06 || packet[1] === 0x07
-        ? [...packet.slice(0, 3)]
-        : packet[1] === 0x09
-          ? [...packet.slice(0, 4)]
-          : [...packet.slice(0, 2)];
-    }
-    return [packet[0]!];
+function sentFrames(device: KeychronV5MaxReaderDevice): Array<[number, number[]]> {
+  return (device.sendReport as ReturnType<typeof vi.fn>).mock.calls.map(([reportId, data]) => {
+    return [reportId as number, [...new Uint8Array(data as ArrayBuffer)]];
   });
 }

@@ -43,7 +43,7 @@ export type KeychronV5MaxCapabilities = {
 };
 
 export type KeychronV5MaxLighting = {
-  rgbProtocol: readonly [number, number, number];
+  rgbProtocol: readonly [number, number];
   indicators: readonly number[];
   ledCount: number;
   ledIndices: readonly { led: number; matrix: { row: number; column: number } }[];
@@ -220,9 +220,9 @@ async function readLighting(
 async function readRgbProtocol(
   device: KeychronV5MaxReaderDevice,
   timeoutMs: number,
-): Promise<[number, number, number]> {
+): Promise<[number, number]> {
   const response = await requestKeychronV5MaxRead(device, 0xa8, [0x01], { timeoutMs });
-  return [response[1]!, response[2]!, response[3]!];
+  return [response[2]!, response[3]!];
 }
 
 async function readRgbIndicators(
@@ -230,7 +230,7 @@ async function readRgbIndicators(
   timeoutMs: number,
 ): Promise<number[]> {
   const response = await requestKeychronV5MaxRead(device, 0xa8, [0x03], { timeoutMs });
-  return Array.from(response.slice(1, 3));
+  return Array.from(response.slice(2, 3));
 }
 
 async function readLedCount(device: KeychronV5MaxReaderDevice, timeoutMs: number): Promise<number> {

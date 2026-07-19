@@ -30,7 +30,7 @@ describe("browser keyboard discovery", () => {
       identity: exactV5MaxAnsiKnob,
       contract: {
         state: "partial",
-        capabilities: { protocolVersion: true, read: false, write: false, flash: false },
+        capabilities: { protocolVersion: true, read: true, write: false, flash: false },
       },
     });
     expect(device.open).not.toHaveBeenCalled();
