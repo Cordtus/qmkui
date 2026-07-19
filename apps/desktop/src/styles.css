@@ -75,6 +75,133 @@ h3 {
   color: var(--text);
 }
 
+.connection-shell,
+.snapshot-shell {
+  width: 100%;
+  min-height: 100svh;
+  overflow: auto;
+  padding: clamp(16px, 3vw, 42px);
+}
+
+.connection-shell {
+  display: grid;
+  place-items: center;
+}
+
+.connection-panel,
+.snapshot-shell {
+  color: var(--text);
+}
+
+.connection-panel {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 760px);
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgb(28 43 55 / 0.94), rgb(18 29 39 / 0.94));
+  padding: clamp(18px, 3vw, 32px);
+}
+
+.connection-summary,
+.connection-state,
+.snapshot-boundary,
+.snapshot-timestamp,
+.snapshot-reason {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.connection-actions,
+.snapshot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border: 1px solid var(--border-muted);
+  width: max-content;
+  max-width: 100%;
+}
+
+.connection-actions wa-button,
+.snapshot-actions wa-button {
+  border: 0;
+  border-right: 1px solid var(--border-muted);
+}
+
+.connection-actions wa-button:last-child,
+.snapshot-actions wa-button:last-child {
+  border-right: 0;
+}
+
+.connection-capabilities,
+.snapshot-field,
+.default-comparison {
+  border: 1px solid var(--border-muted);
+  background: rgb(16 25 35 / 0.72);
+  padding: 14px;
+}
+
+.connection-capabilities h2,
+.snapshot-field h2 {
+  border-bottom: 1px solid var(--border-muted);
+  padding-bottom: 10px;
+}
+
+.snapshot-shell {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.snapshot-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgb(28 43 55 / 0.94), rgb(18 29 39 / 0.94));
+  padding: 18px;
+}
+
+.snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.snapshot-field.unavailable,
+.snapshot-field.unverified {
+  border-left: 3px solid var(--accent-warn);
+}
+
+.default-comparison::part(base) {
+  border: 0;
+  background: transparent;
+}
+
+@media (max-width: 680px) {
+  .connection-shell,
+  .snapshot-shell {
+    padding: 14px;
+  }
+
+  .snapshot-header,
+  .snapshot-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .connection-actions,
+  .snapshot-actions {
+    width: 100%;
+  }
+
+  .connection-actions wa-button,
+  .snapshot-actions wa-button {
+    flex: 1 1 150px;
+  }
+}
+
 .rail {
   display: flex;
   flex-direction: column;
@@ -1861,7 +1988,11 @@ dd {
 
 /* Grouping comes from shared rails and dividers, not softened card corners. */
 .shell,
-.shell * {
+.shell *,
+.connection-shell,
+.connection-shell *,
+.snapshot-shell,
+.snapshot-shell * {
   border-radius: 0 !important;
 }
 

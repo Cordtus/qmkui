@@ -77,6 +77,13 @@ import {
   type BrowserKeyboardSelection,
 } from "./devices/browserKeyboardDiscovery";
 import type { KeychronV5MaxProtocolVersion } from "./devices/keychronV5MaxProtocol";
+import type {
+  KeychronV5MaxCapabilities,
+  KeychronV5MaxIdentityFacts,
+  KeychronV5MaxLighting,
+  KeychronV5MaxReadSnapshot,
+} from "./devices/keychronV5MaxReader";
+import type { ViaKeymap } from "./devices/viaReadProtocol";
 
 const fixtureKeyboard = catalog[0] as KeyboardDefinition;
 const fixtureProject = project as Project;
@@ -123,6 +130,8 @@ type EditorState = {
   deviceSelection: DeviceSelectionState;
   deviceSelectionEpoch: number;
   protocolVerification: ProtocolVerificationState;
+  hardwareSnapshot?: KeychronV5MaxReadSnapshot;
+  snapshotReadStatus: "idle" | "reading" | "failed";
   now: () => string;
   projectStatus: string;
   projectJsonDraft: string;
@@ -175,6 +184,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     deviceSelection: { state: "discovering" },
     deviceSelectionEpoch: 0,
     protocolVerification: { state: "idle" },
+    snapshotReadStatus: "idle",
     now: options.now ?? (() => new Date().toISOString()),
     projectStatus: "Project is not saved in this preview session.",
     projectJsonDraft: JSON.stringify(currentProject, null, 2),
@@ -207,6 +217,8 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     const selectionEpoch = ++state.deviceSelectionEpoch;
     state.deviceSelection = { state: "discovering" };
     state.protocolVerification = { state: "idle" };
+    state.hardwareSnapshot = undefined;
+    state.snapshotReadStatus = "idle";
     actions.render();
     state.discoverBrowserKeyboard().then(
       (selection) => {
@@ -300,6 +312,8 @@ function createActions(
             const selectionEpoch = ++state.deviceSelectionEpoch;
             state.deviceSelection = { state: "selecting" };
             state.protocolVerification = { state: "idle" };
+            state.hardwareSnapshot = undefined;
+            state.snapshotReadStatus = "idle";
             actions.render();
             state.chooseBrowserKeyboard().then(
               (selection) => {
@@ -308,6 +322,8 @@ function createActions(
                 }
                 state.deviceSelection = selection;
                 state.protocolVerification = { state: "idle" };
+                state.hardwareSnapshot = undefined;
+                state.snapshotReadStatus = "idle";
                 actions.render();
               },
               () => {
@@ -340,6 +356,33 @@ function createActions(
                   return;
                 }
                 state.protocolVerification = { state: "failed" };
+                actions.render();
+              },
+            );
+          },
+          readDevice: () => {
+            if (!isProtocolVerifiableSelection(state.deviceSelection)) {
+              return;
+            }
+            const selectionEpoch = state.deviceSelectionEpoch;
+            const session = state.deviceSelection.session;
+            state.snapshotReadStatus = "reading";
+            actions.render();
+            session.readSnapshot().then(
+              (snapshot) => {
+                if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+                  return;
+                }
+                state.hardwareSnapshot = snapshot;
+                state.snapshotReadStatus = "idle";
+                actions.render();
+              },
+              () => {
+                if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+                  return;
+                }
+                state.hardwareSnapshot = undefined;
+                state.snapshotReadStatus = "failed";
                 actions.render();
               },
             );
@@ -568,6 +611,7 @@ type RenderActions = {
   downloadQmkJson: () => void;
   chooseBrowserKeyboard: () => void;
   verifyKeychronV5MaxProtocol: () => void;
+  readDevice: () => void;
   selectKeycodeCategory: (categoryId: string) => void;
   updateKeycodeSearch: (query: string) => void;
   updateCatalogSearch: (query: string) => void;
@@ -591,6 +635,197 @@ type RenderActions = {
 };
 
 function mainShell(
+  state: EditorState,
+  layout: KeyboardDefinition["layouts"][number],
+  issues: UiIssue[],
+  qmkJson: unknown,
+  buildPlan: BuildPlan,
+  actions: RenderActions,
+): HTMLElement {
+  if (!state.hardwareSnapshot) {
+    return connectionScreen(state, actions);
+  }
+
+  return snapshotScreen(state, actions);
+}
+
+function connectionScreen(state: EditorState, actions: RenderActions): HTMLElement {
+  const choosing = state.deviceSelection.state === "selecting";
+  const recognized = isProtocolVerifiableSelection(state.deviceSelection)
+    ? state.deviceSelection
+    : undefined;
+  const canRead = Boolean(recognized);
+  const connect = uiButton({
+    className: "secondary-action",
+    text: choosing ? "Choosing keyboard..." : "Connect keyboard",
+    type: "button",
+    attrs: {
+      "data-device-action": "connect",
+      ...(choosing ? { disabled: "" } : {}),
+    },
+  });
+  connect.addEventListener("click", actions.chooseBrowserKeyboard);
+
+  const read = canRead
+    ? uiButton({
+        className: "secondary-action",
+        text: state.snapshotReadStatus === "reading" ? "Reading device..." : "Read device",
+        type: "button",
+        attrs: {
+          "data-device-action": "read",
+          ...(state.snapshotReadStatus === "reading" ? { disabled: "" } : {}),
+        },
+      })
+    : undefined;
+  read?.addEventListener("click", actions.readDevice);
+
+  const detailRows: Array<[string, string]> = recognized
+    ? [
+        ["Identity", keyboardIdentityLabel(recognized.identity)],
+        ["Read access", recognized.session.capabilities.canRead ? "Available" : "Unavailable"],
+        ["Write access", "Not available"],
+        ["Flash access", "Not available"],
+      ]
+    : [];
+
+  return element("main", { className: "connection-shell", attrs: { "data-connection-screen": "true" } }, [
+    element("section", { className: "connection-panel" }, [
+      element("p", { className: "eyebrow", text: "QMKUI" }),
+      element("h1", { text: canRead ? "Recognized keyboard" : "Connect a keyboard" }),
+      element("p", {
+        className: "connection-summary",
+        text: canRead
+          ? "The browser authorized a recognized keyboard. Read device fetches a bounded, read-only snapshot; it never applies a preset, default, reset, write, or flash operation."
+          : "Authorize a keyboard in the browser before QMKUI identifies it. No model, project, layout, or configuration is loaded on this screen.",
+      }),
+      element("div", { className: "connection-actions" }, [connect, ...(read ? [read] : [])]),
+      element("p", {
+        className: "connection-state",
+        attrs: { "data-device-state": "true" },
+        text: state.snapshotReadStatus === "failed"
+          ? "Device read failed. No configuration was loaded or changed; retry when ready."
+          : deviceSelectionLabel(state.deviceSelection, state.protocolVerification),
+      }),
+      ...(detailRows.length > 0
+        ? [
+            element("section", { className: "connection-capabilities", attrs: { "data-recognized-device": "true" } }, [
+              element("h2", { text: "Recognized device capabilities" }),
+              definitionList(detailRows),
+            ]),
+          ]
+        : []),
+    ]),
+  ]);
+}
+
+function snapshotScreen(state: EditorState, actions: RenderActions): HTMLElement {
+  const snapshot = state.hardwareSnapshot!;
+  const refresh = uiButton({
+    className: "secondary-action",
+    text: state.snapshotReadStatus === "reading" ? "Refreshing device..." : "Refresh device",
+    type: "button",
+    attrs: {
+      "data-device-action": "refresh",
+      ...(state.snapshotReadStatus === "reading" ? { disabled: "" } : {}),
+    },
+  });
+  refresh.addEventListener("click", actions.readDevice);
+  const choose = uiButton({
+    className: "secondary-action",
+    text: "Choose another keyboard",
+    type: "button",
+    attrs: { "data-device-action": "connect" },
+  });
+  choose.addEventListener("click", actions.chooseBrowserKeyboard);
+
+  return element("main", { className: "snapshot-shell", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
+    element("header", { className: "snapshot-header" }, [
+      element("div", {}, [
+        element("p", { className: "eyebrow", text: "Hardware snapshot" }),
+        element("h1", { text: snapshot.identity.state === "available" ? snapshot.identity.value.model : "Recognized keyboard" }),
+        element("p", { className: "snapshot-timestamp", text: `Read ${snapshot.readAt}` }),
+      ]),
+      element("div", { className: "snapshot-actions" }, [refresh, choose]),
+    ]),
+    element("p", {
+      className: "snapshot-boundary",
+      text: "Reported device state is read-only. Refresh performs another read only; it never resets, loads defaults, stages, writes, or flashes.",
+    }),
+    element("section", { className: "snapshot-grid" }, [
+      snapshotField("Identity", snapshot.identity, identitySnapshotRows),
+      snapshotField("Capabilities", snapshot.capabilities, capabilitySnapshotRows),
+      snapshotField("Keymap", snapshot.keymap, keymapSnapshotRows),
+      snapshotField("Lighting", snapshot.lighting, lightingSnapshotRows),
+    ]),
+    element("wa-details", {
+      className: "default-comparison",
+      attrs: {
+        appearance: "outlined",
+        summary: "Compare with definition baseline",
+        "data-default-comparison": "true",
+      },
+    }, [
+      element("p", {
+        text: `Reference only: bundled ${keychronV5MaxKeyboard.displayName} definition (${keychronV5MaxKeyboard.source?.version ?? "unknown version"}). It is not active configuration and is never applied to this device.`,
+      }),
+    ]),
+  ]);
+}
+
+function snapshotField(
+  label: string,
+  field: { state: "available" | "unavailable" | "unverified"; value?: unknown; reason?: string },
+  rows: (value: any) => Array<[string, string]>,
+): HTMLElement {
+  const available = field.state === "available";
+  return element("section", {
+    className: `snapshot-field ${field.state}`,
+    attrs: { "data-snapshot-field": label.toLowerCase(), "data-snapshot-state": field.state },
+  }, [
+    element("h2", { text: label }),
+    available
+      ? definitionList(rows(field.value))
+      : element("p", { className: "snapshot-reason", text: `${field.state}: ${field.reason ?? "No reason was supplied."}` }),
+  ]);
+}
+
+function identitySnapshotRows(value: KeychronV5MaxIdentityFacts): Array<[string, string]> {
+  return [
+    ["Model", value.model],
+    ["Firmware", value.firmwareVersion],
+    ["Protocol", value.protocolVersion.map((part) => `0x${part.toString(16).padStart(2, "0")}`).join(" ")],
+    ["Default layer", String(value.defaultLayer)],
+  ];
+}
+
+function capabilitySnapshotRows(value: KeychronV5MaxCapabilities): Array<[string, string]> {
+  return [["Feature bitmap", value.featureBitmap.map((part) => `0x${part.toString(16).padStart(2, "0")}`).join(" ")]];
+}
+
+function keymapSnapshotRows(value: ViaKeymap): Array<[string, string]> {
+  const firstKeycode = value.keycodes[0]?.[0]?.[0];
+  return [
+    ["Layers", String(value.layerCount)],
+    ["First reported keycode", firstKeycode === undefined ? "No keycodes returned" : `0x${firstKeycode.toString(16).padStart(4, "0")}`],
+    ["State", "Reported configuration (read-only)"],
+  ];
+}
+
+function lightingSnapshotRows(value: KeychronV5MaxLighting): Array<[string, string]> {
+  const colors = value.colors.length
+    ? value.colors.map((color) => `LED ${color.led}: HSV ${color.hue}, ${color.saturation}, ${color.value}`).join("; ")
+    : "No per-key colors returned";
+  const effects = value.effects.length
+    ? value.effects.map((effect) => `LED ${effect.led}: Effect ${effect.effect} (configuration effect; not a live animation capture)`).join("; ")
+    : "No effect types returned";
+  return [
+    ["RGB protocol", value.rgbProtocol.map((part) => `0x${part.toString(16).padStart(2, "0")}`).join(" ")],
+    ["Reported colors", colors],
+    ["Reported effects", effects],
+  ];
+}
+
+function legacyMainShell(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
   issues: UiIssue[],
