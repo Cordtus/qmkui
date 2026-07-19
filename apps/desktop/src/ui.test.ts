@@ -12,7 +12,10 @@ import {
   serializeRecoveryBundle,
 } from "./safety";
 import { createSafetyLedgerStorage } from "./safetyStorage";
-import type { BrowserKeyboardSelection } from "./devices/browserKeyboardDiscovery";
+import type {
+  BrowserKeyboardSelection,
+  BrowserKeyboardSession,
+} from "./devices/browserKeyboardDiscovery";
 import { createApp } from "./ui";
 
 afterEach(() => {
@@ -84,7 +87,7 @@ describe("desktop preview layer controls", () => {
         state: "partial",
         capabilities: { protocolVersion: true, read: false, write: false, flash: false },
       },
-      session: { verifyProtocolVersion: async () => ({ version: 0x000c }) },
+      session: browserReadSession(async () => ({ version: 0x000c })),
     };
 
     createApp(root, { discoverBrowserKeyboard: async () => selection });
@@ -115,7 +118,7 @@ describe("desktop preview layer controls", () => {
         state: "partial",
         capabilities: { protocolVersion: true, read: false, write: false, flash: false },
       },
-      session: { verifyProtocolVersion },
+      session: browserReadSession(verifyProtocolVersion),
     };
 
     createApp(root, {
@@ -149,7 +152,7 @@ describe("desktop preview layer controls", () => {
         state: "partial",
         capabilities: { protocolVersion: true, read: false, write: false, flash: false },
       },
-      session: { verifyProtocolVersion: async () => Promise.reject(new Error("no response")) },
+      session: browserReadSession(async () => Promise.reject(new Error("no response"))),
     };
 
     createApp(root, {
@@ -240,7 +243,7 @@ describe("desktop preview layer controls", () => {
     });
   });
 
-  it("labels a cataloged identity-only keyboard without exposing configuration controls", async () => {
+  it("keeps unsupported catalog identities neutral without exposing configuration controls", async () => {
     const root = document.createElement("div");
 
     createApp(root, {
@@ -250,32 +253,9 @@ describe("desktop preview layer controls", () => {
         identity: {
           vendorId: 0x3434,
           productId: 0x0913,
-          productName: "Keychron V1 Max",
           collections: [{ usagePage: 0x0001, usage: 0x0006 }],
         },
         contract: { state: "unsupported" },
-        catalogKeyboard: {
-          id: "keychron/v1_max/ansi_encoder",
-          displayName: "Keychron V1 Max ANSI Knob",
-          qmkKeyboard: "keychron/v1_max/ansi_encoder",
-          usb: { vendorId: 0x3434, productId: 0x0913 },
-          layout: { macro: "LAYOUT_ansi_82", keyCount: 82 },
-          deviceSupport: "identityOnly",
-          upstream: {
-            identity: {
-              repository: "Keychron/qmk_firmware",
-              commit: "bc1bdeb85f39cccd5e503f4d8f472078a8c1472a",
-              path: "keyboards/keychron/v1_max/ansi_encoder/keyboard.json",
-              blob: "4dc6a51cd6fe8813708c1b15e03b9161ed65bdc6",
-            },
-            layout: {
-              repository: "Keychron/qmk_firmware",
-              commit: "bc1bdeb85f39cccd5e503f4d8f472078a8c1472a",
-              path: "keyboards/keychron/v1_max/ansi_encoder/keyboard.json",
-              blob: "4dc6a51cd6fe8813708c1b15e03b9161ed65bdc6",
-            },
-          },
-        },
       }),
     });
     await flushDeviceSelection();
@@ -283,7 +263,7 @@ describe("desktop preview layer controls", () => {
     await flushDeviceSelection();
 
     expect(root.querySelector("[data-device-state]")?.textContent).toBe(
-      "Keychron V1 Max ANSI Knob was identified by its USB identity. Configuration is not yet supported for this model.",
+      "Keyboard 3434:0913 was detected, but QMKUI does not currently support configuration for it.",
     );
     ["verify-protocol", "read", "write", "flash"].forEach((action) => {
       expect(root.querySelector(`[data-device-action="${action}"]`)).toBeNull();
@@ -1427,7 +1407,23 @@ function v5MaxProtocolSelection(
       state: "partial",
       capabilities: { protocolVersion: true, read: false, write: false, flash: false },
     },
-    session: { verifyProtocolVersion },
+    session: browserReadSession(verifyProtocolVersion),
+  };
+}
+
+function browserReadSession(
+  verifyProtocolVersion: () => Promise<{ version: 0x000c }>,
+): BrowserKeyboardSession {
+  return {
+    capabilities: { canRead: true, canWrite: false, canFlash: false },
+    verifyProtocolVersion,
+    readSnapshot: async () => ({
+      identity: { state: "unavailable", reason: "not read in UI tests" },
+      capabilities: { state: "unavailable", reason: "not read in UI tests" },
+      keymap: { state: "unavailable", reason: "not read in UI tests" },
+      lighting: { state: "unavailable", reason: "not read in UI tests" },
+      readAt: "2026-07-18T00:00:00.000Z",
+    }),
   };
 }
 

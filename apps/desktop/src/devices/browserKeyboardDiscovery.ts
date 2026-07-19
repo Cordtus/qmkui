@@ -8,9 +8,13 @@ import {
   type KeychronV5MaxProtocolDevice,
   type KeychronV5MaxProtocolVersion,
 } from "./keychronV5MaxProtocol";
-import { findKeyboardByUsbIdentity, type KeyboardIdentityCatalogRecord } from "./keyboardCatalog";
+import {
+  readKeychronV5MaxSnapshot,
+  type KeychronV5MaxReaderDevice,
+  type KeychronV5MaxReadSnapshot,
+} from "./keychronV5MaxReader";
 
-type BrowserHidDevice = BrowserKeyboardIdentity & Partial<KeychronV5MaxProtocolDevice>;
+type BrowserHidDevice = BrowserKeyboardIdentity & Partial<KeychronV5MaxReaderDevice>;
 
 type BrowserHidRequestOptions = {
   filters: ReadonlyArray<Record<string, never>>;
@@ -30,7 +34,13 @@ export type BrowserKeyboardIdentity = HidIdentityMetadata & {
 };
 
 export type BrowserKeyboardSession = {
+  capabilities: {
+    canRead: true;
+    canWrite: false;
+    canFlash: false;
+  };
   verifyProtocolVersion: () => Promise<KeychronV5MaxProtocolVersion>;
+  readSnapshot: () => Promise<KeychronV5MaxReadSnapshot>;
 };
 
 export type BrowserKeyboardSelection =
@@ -47,13 +57,13 @@ export type BrowserKeyboardSelection =
       state: "selected";
       identity: BrowserKeyboardIdentity;
       contract: Extract<KeychronV5MaxIdentityContract, { state: "unsupported" }>;
-      catalogKeyboard?: KeyboardIdentityCatalogRecord;
     };
 
 export type BrowserKeyboardDiscoveryDependencies = {
   verifyProtocolVersion?: (
     device: KeychronV5MaxProtocolDevice,
   ) => Promise<KeychronV5MaxProtocolVersion>;
+  readSnapshot?: (device: KeychronV5MaxReaderDevice) => Promise<KeychronV5MaxReadSnapshot>;
 };
 
 export async function discoverAuthorizedBrowserKeyboard(
@@ -101,7 +111,6 @@ function classifySelection(
       device,
       identity,
       contract: classifyKeychronV5MaxIdentity(identity),
-      catalogKeyboard: findKeyboardByUsbIdentity(identity),
     };
   });
   const selected = classified.find(({ contract }) => contract.state === "partial") ?? classified[0];
@@ -112,26 +121,29 @@ function classifySelection(
       identity: selected.identity,
       contract: selected.contract,
       session: protocolSession(
-        selected.device as KeychronV5MaxProtocolDevice,
+        selected.device as KeychronV5MaxReaderDevice,
         dependencies.verifyProtocolVersion ?? verifyKeychronV5MaxProtocolVersion,
+        dependencies.readSnapshot ?? readKeychronV5MaxSnapshot,
       ),
     };
   }
 
   return {
     state: "selected",
-    identity: selected.identity,
+    identity: neutralIdentity(selected.device),
     contract: selected.contract,
-    ...(selected.catalogKeyboard ? { catalogKeyboard: selected.catalogKeyboard } : {}),
   };
 }
 
 function protocolSession(
-  device: KeychronV5MaxProtocolDevice,
+  device: KeychronV5MaxReaderDevice,
   verifyProtocolVersion: (device: KeychronV5MaxProtocolDevice) => Promise<KeychronV5MaxProtocolVersion>,
+  readSnapshot: (device: KeychronV5MaxReaderDevice) => Promise<KeychronV5MaxReadSnapshot>,
 ): BrowserKeyboardSession {
   return {
-    verifyProtocolVersion: () => verifyProtocolVersion(device),
+    capabilities: { canRead: true, canWrite: false, canFlash: false },
+    verifyProtocolVersion: () => verifyProtocolVersion(device as KeychronV5MaxProtocolDevice),
+    readSnapshot: () => readSnapshot(device),
   };
 }
 
@@ -140,6 +152,14 @@ function staticIdentity(device: BrowserHidDevice): BrowserKeyboardIdentity {
     vendorId: device.vendorId,
     productId: device.productId,
     ...(device.productName ? { productName: device.productName } : {}),
+    collections: device.collections.map(({ usagePage, usage }) => ({ usagePage, usage })),
+  };
+}
+
+function neutralIdentity(device: BrowserHidDevice): BrowserKeyboardIdentity {
+  return {
+    vendorId: device.vendorId,
+    productId: device.productId,
     collections: device.collections.map(({ usagePage, usage }) => ({ usagePage, usage })),
   };
 }
