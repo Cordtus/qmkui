@@ -3,6 +3,8 @@ const VIA_REPORT_LENGTH = 32;
 const DYNAMIC_KEYMAP_GET_KEYCODE = 0x04;
 const DYNAMIC_KEYMAP_GET_LAYER_COUNT = 0x11;
 const DEFAULT_TIMEOUT_MS = 1_000;
+// A VIA read must always settle promptly; ten seconds is the largest supported wait.
+const MAX_TIMEOUT_MS = 10_000;
 
 const READ_ONLY_COMMANDS = new Set<number>([
   DYNAMIC_KEYMAP_GET_KEYCODE,
@@ -34,6 +36,7 @@ export class ViaReadProtocolError extends Error {
       | "command-not-allowed"
       | "concurrent-read"
       | "invalid-request"
+      | "invalid-timeout"
       | "invalid-dimensions"
       | "layer-count-mismatch"
       | "timeout"
@@ -61,9 +64,10 @@ export class ViaReadProtocol {
     if (!READ_ONLY_COMMANDS.has(command)) {
       throw new ViaReadProtocolError("command-not-allowed");
     }
-    if (!isByte(command) || payload.length > VIA_REPORT_LENGTH - 1 || !payload.every(isByte)) {
+    if (!isByte(command) || !hasExpectedPayloadShape(command, payload) || !payload.every(isByte)) {
       throw new ViaReadProtocolError("invalid-request");
     }
+    const timeoutMs = boundedTimeoutMs(this.options.timeoutMs);
     if (this.pending) {
       throw new ViaReadProtocolError("concurrent-read");
     }
@@ -74,7 +78,7 @@ export class ViaReadProtocol {
         this.transport,
         command,
         payload,
-        this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        timeoutMs,
       );
     } finally {
       this.pending = false;
@@ -175,6 +179,21 @@ function matchesRequest(response: Uint8Array, command: number, payload: readonly
     return false;
   }
   return command !== DYNAMIC_KEYMAP_GET_KEYCODE || payload.every((value, index) => response[index + 1] === value);
+}
+
+function hasExpectedPayloadShape(command: number, payload: readonly number[]): boolean {
+  if (command === DYNAMIC_KEYMAP_GET_LAYER_COUNT) {
+    return payload.length === 0;
+  }
+  return command === DYNAMIC_KEYMAP_GET_KEYCODE && payload.length === 3;
+}
+
+function boundedTimeoutMs(timeoutMs: number | undefined): number {
+  const value = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  if (!Number.isFinite(value) || value <= 0 || value > MAX_TIMEOUT_MS) {
+    throw new ViaReadProtocolError("invalid-timeout");
+  }
+  return value;
 }
 
 function normalizeReportData(data: ViaInputReportData): Uint8Array | undefined {

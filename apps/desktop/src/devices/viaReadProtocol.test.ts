@@ -29,6 +29,34 @@ describe("VIA read protocol", () => {
     expect(transport.listenerCount()).toBe(0);
   });
 
+  it.each([
+    ["a layer-count payload", 0x11, [0]],
+    ["an empty keycode payload", 0x04, []],
+    ["a short keycode payload", 0x04, [1, 2]],
+    ["a long keycode payload", 0x04, [1, 2, 3, 4]],
+  ])("rejects %s before transport I/O", async (_name, command, payload) => {
+    const transport = createTransport();
+    const protocol = new ViaReadProtocol(transport);
+
+    await expect(protocol.read(command, payload)).rejects.toMatchObject({ code: "invalid-request" });
+
+    expect(transport.sendReport).not.toHaveBeenCalled();
+    expect(transport.listenerCount()).toBe(0);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 10_001])(
+    "rejects timeout %s before transport I/O",
+    async (timeoutMs) => {
+      const transport = createTransport();
+      const protocol = new ViaReadProtocol(transport, { timeoutMs });
+
+      await expect(protocol.getLayerCount()).rejects.toMatchObject({ code: "invalid-timeout" });
+
+      expect(transport.sendReport).not.toHaveBeenCalled();
+      expect(transport.listenerCount()).toBe(0);
+    },
+  );
+
   it("ignores unrelated reports until the exact requested keycode response arrives", async () => {
     const transport = createTransport();
     const protocol = new ViaReadProtocol(transport);
@@ -40,10 +68,7 @@ describe("VIA read protocol", () => {
     transport.emit({ reportId: 0, data: report([0x04, 1, 2, 4, 0x12, 0x34]) });
     expect(transport.listenerCount()).toBe(1);
 
-    transport.emit({
-      reportId: 0,
-      data: new Uint8Array(report([0x04, 1, 2, 3, 0x12, 0x34]).buffer),
-    });
+    transport.emit({ reportId: 0, data: offsetReportView([0x04, 1, 2, 3, 0x12, 0x34]) });
 
     await expect(keycode).resolves.toBe(0x1234);
     expect(transport.listenerCount()).toBe(0);
@@ -153,6 +178,12 @@ function report(bytes: number[]): Uint8Array {
   const response = new Uint8Array(32);
   response.set(bytes);
   return response;
+}
+
+function offsetReportView(bytes: number[]): DataView {
+  const paddedResponse = new Uint8Array(34);
+  paddedResponse.set(report(bytes), 1);
+  return new DataView(paddedResponse.buffer, 1, 32);
 }
 
 function sentCommands(transport: ViaReadTransport): number[][] {
