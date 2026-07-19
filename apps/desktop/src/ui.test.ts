@@ -618,6 +618,41 @@ describe("desktop preview layer controls", () => {
     ).toBe("#ff0000");
   });
 
+  it("renders a key's configured color and lighting effects on the map", () => {
+    const root = document.createElement("div");
+    const project = structuredClone(keychronV5MaxProject);
+    const profile = project.lightingProfiles?.[0];
+    if (!profile) throw new Error("Missing fixture lighting profile");
+    profile.perKey.v5_039 = "#d94f70";
+    profile.conditions = [
+      ...(profile.conditions ?? []),
+      {
+        id: "r_breathing",
+        visualKeyId: "v5_039",
+        name: "Breathing",
+        color: "#8cc8ff",
+        when: "Idle",
+      },
+    ];
+
+    createApp(root, { project });
+
+    const key = root.querySelector<HTMLElement>('[data-key="v5_039"]');
+    expect(key?.style.getPropertyValue("--key-light")).toBe("#d94f70");
+    expect(key?.dataset.lightingColor).toBe("#d94f70");
+    expect(key?.dataset.lightingEffects).toBe("Breathing");
+    expect(key?.querySelector("[data-key-lighting-effect='r_breathing']")?.textContent).toBe("FX");
+
+    key?.click();
+
+    const details = root.querySelector<HTMLElement>('[data-selected-lighting="v5_039"]');
+    expect(details?.textContent).toContain("Configured color");
+    expect(details?.textContent).toContain("#d94f70");
+    expect(root.querySelector('[data-lighting-condition="r_breathing"]')?.textContent).toContain(
+      "Breathing",
+    );
+  });
+
   it("applies keycodes from the palette to the selected key", () => {
     const root = document.createElement("div");
 

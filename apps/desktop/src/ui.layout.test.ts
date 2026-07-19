@@ -30,6 +30,24 @@ afterAll(async () => {
 });
 
 describe("lower workspace layout", () => {
+  it("preserves workspace position when a context menu changes", async () => {
+    const page = await openPage({ width: 1440, height: 700 });
+    const workspace = page.locator(".workspace");
+
+    const initialScrollTop = await workspace.evaluate((element) => {
+      element.scrollTop = Math.min(220, element.scrollHeight - element.clientHeight);
+      return element.scrollTop;
+    });
+    expect(initialScrollTop).toBeGreaterThan(0);
+
+    await page.locator('[data-context-tab="lighting"]').evaluate((element) => {
+      (element as HTMLElement).click();
+    });
+
+    await page.locator('[data-context-section="lighting"]').waitFor();
+    expect(await workspace.evaluate((element) => element.scrollTop)).toBe(initialScrollTop);
+  });
+
   it.each([
     { height: 700, width: 420 },
     { height: 900, width: 1440 },
