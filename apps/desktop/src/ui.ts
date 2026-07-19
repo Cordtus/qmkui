@@ -31,7 +31,9 @@ import {
 } from "./domain";
 import {
   buildSelectedKeyContext,
+  lightingForKey,
   type KeyLayerDetail,
+  type KeyLightingDetail,
   type KeyRelation,
   type KeyShortcut,
   type SelectedKeyContext,
@@ -238,6 +240,7 @@ function createActions(
   const actions = {
     render: () => {
       const focusedInput = captureFocusedInput(root);
+      const workspaceScroll = captureWorkspaceScroll(root);
       const layout = selectedLayout(state.keyboard, state.project);
       const issues = validateProject(state.project, state.keyboard);
       const qmkJson = safeExportQmkJson(state.project, state.keyboard, issues);
@@ -544,6 +547,7 @@ function createActions(
           },
         }),
       );
+      restoreWorkspaceScroll(root, workspaceScroll);
       restoreFocusedInput(root, focusedInput);
     },
   };
@@ -1334,6 +1338,7 @@ function lightingPanel(
     state.selectedLayerIndex,
     state.selectedKeyId,
   );
+  const selectedLighting = context?.lighting ?? lightingForKey(profile, state.selectedKeyId);
   const modeButtons = element("div", {
     className: "segmented",
     attrs: { "aria-label": "Lighting mode" },
@@ -1353,7 +1358,7 @@ function lightingPanel(
     modeButtons.append(button);
   });
 
-  const color = profile.perKey[state.selectedKeyId] ?? "#5fb99a";
+  const color = selectedLighting.color;
   const colorInput = element("input", {
     attrs: {
       "aria-label": "Selected key color",
@@ -1376,8 +1381,10 @@ function lightingPanel(
       element("div", { className: "lighting-quick-row" }, [
         fieldControl("Selected color", colorInput),
         definitionList([
+          ["Configured", selectedLighting.color],
+          ["Effects", selectedLighting.conditions.map((condition) => condition.name).join(", ") || "None"],
           ["Mapped keys", String(Object.keys(profile.perKey).length)],
-          ["Conditions", String(profile.conditions?.length ?? 0)],
+          ["Profile effects", String(profile.conditions?.length ?? 0)],
         ]),
       ]),
     ]),
@@ -2024,7 +2031,7 @@ function board(
     const keyButton = keyboardKey({
       assignment,
       key,
-      light: profile.perKey[key.id] ?? "#5fb99a",
+      lighting: lightingForKey(profile, key.id),
       selected,
       selectedLayer,
       bounds,
@@ -2050,8 +2057,7 @@ function inspector(
   const key = context?.key ?? layout.keys[0];
   const layer = currentLayer(state);
   const assignment = layer?.assignments.find((item) => item.visualKeyId === key.id);
-  const profile = activeLightingProfile(state.project);
-  const color = profile.perKey[key.id] ?? "#5fb99a";
+  const color = context?.lighting.color ?? lightingForKey(activeLightingProfile(state.project), key.id).color;
 
   const keycodeInput = element("input", {
     attrs: {
@@ -2377,10 +2383,11 @@ function keyLightingDetails(context: SelectedKeyContext): HTMLElement {
       element("dl", { attrs: { "data-selected-lighting": context.key.id } }, [
         definitionRow("Profile", lighting.profileName),
         definitionRow("Mode", lighting.mode),
-        definitionRow("Color", lighting.color),
+        definitionRow("Configured color", lighting.color),
+        definitionRow("Map display", lighting.mode === "off" ? "Off" : "Illuminated"),
       ]),
     ]),
-    parameterBlock("Conditions", [conditionList]),
+    parameterBlock("Effects / conditions", [conditionList]),
   ]);
 }
 
@@ -2542,6 +2549,34 @@ type FocusedElement = {
   selectionStart: number | null;
 } | null;
 
+type WorkspaceScroll = {
+  left: number;
+  top: number;
+} | null;
+
+function captureWorkspaceScroll(root: HTMLElement): WorkspaceScroll {
+  const workspace = root.querySelector<HTMLElement>(".workspace");
+  if (!workspace) {
+    return null;
+  }
+
+  return { left: workspace.scrollLeft, top: workspace.scrollTop };
+}
+
+function restoreWorkspaceScroll(root: HTMLElement, scroll: WorkspaceScroll): void {
+  if (!scroll) {
+    return;
+  }
+
+  const workspace = root.querySelector<HTMLElement>(".workspace");
+  if (!workspace) {
+    return;
+  }
+
+  workspace.scrollLeft = scroll.left;
+  workspace.scrollTop = scroll.top;
+}
+
 function captureFocusedInput(root: HTMLElement): FocusedElement {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement) || !root.contains(active)) {
@@ -2572,7 +2607,7 @@ function restoreFocusedInput(root: HTMLElement, focusedInput: FocusedElement): v
     return;
   }
 
-  nextElement.focus();
+  nextElement.focus({ preventScroll: true });
   if (
     !(nextElement instanceof HTMLInputElement) ||
     focusedInput.selectionStart === null ||
@@ -2922,36 +2957,61 @@ function uiButton(options: UiButtonOptions = {}, children: Array<Node | string> 
 function keyboardKey({
   assignment,
   key,
-  light,
+  lighting,
   selected,
   selectedLayer,
   bounds,
 }: {
   assignment: Assignment | undefined;
   key: VisualKey;
-  light: string;
+  lighting: KeyLightingDetail;
   selected: boolean;
   selectedLayer: ReturnType<typeof currentLayer>;
   bounds: ReturnType<typeof layoutBounds>;
 }): HTMLElement {
+  const effectNames = lighting.conditions.map((condition) => condition.name);
+  const effectSummary = effectNames.join(", ");
+  const lightingSummary = [
+    `Configured color ${lighting.color}`,
+    lighting.mode === "off" ? "lighting off" : `${lighting.mode} lighting active`,
+    effectSummary ? `effects: ${effectSummary}` : "no effects",
+  ].join("; ");
   const keyButton = element("qmk-key", {
     className: `key ${selected ? "selected" : ""}`,
     attrs: {
-      "aria-label": keyAriaLabel(selectedLayer, key, assignment),
+      "aria-label": `${keyAriaLabel(selectedLayer, key, assignment)}. ${lightingSummary}.`,
       "aria-pressed": String(selected),
       "data-key": key.id,
+      "data-lighting-active": String(lighting.mode !== "off"),
+      "data-lighting-color": lighting.color,
+      "data-lighting-effects": effectSummary,
+      "data-lighting-mode": lighting.mode,
       role: "button",
       tabindex: "0",
+      title: lightingSummary,
     },
   });
   keyButton.style.left = `${(key.x / bounds.width) * 100}%`;
   keyButton.style.top = `${(key.y / bounds.height) * 100}%`;
   keyButton.style.width = `calc(${((key.w ?? 1) / bounds.width) * 100}% - var(--key-gap))`;
   keyButton.style.height = `calc(${((key.h ?? 1) / bounds.height) * 100}% - var(--key-gap))`;
-  keyButton.style.setProperty("--key-light", light);
+  keyButton.style.setProperty("--key-light", lighting.color);
   const label = keycapLabel(assignment, { compact: true });
   keyButton.style.setProperty("--key-label-size", keyLabelSize(label, key));
   keyButton.append(element("strong", { text: label }));
+  if (lighting.conditions.length > 0) {
+    keyButton.append(
+      element("span", {
+        className: "key-lighting-effect",
+        text: lighting.conditions.length > 1 ? `FX ${lighting.conditions.length}` : "FX",
+        attrs: {
+          "aria-hidden": "true",
+          "data-key-lighting-effect": lighting.conditions[0].id,
+          title: effectSummary,
+        },
+      }),
+    );
+  }
   keyButton.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") {
       return;

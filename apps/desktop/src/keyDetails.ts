@@ -283,7 +283,7 @@ function uniqueRelations(relations: KeyRelation[]): KeyRelation[] {
   });
 }
 
-function lightingForKey(profile: LightingProfile, visualKeyId: string): KeyLightingDetail {
+export function lightingForKey(profile: LightingProfile, visualKeyId: string): KeyLightingDetail {
   const color = profile.perKey[visualKeyId] ?? "#5fb99a";
   return {
     profileName: profile.name,
