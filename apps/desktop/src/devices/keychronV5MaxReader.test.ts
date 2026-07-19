@@ -107,6 +107,21 @@ describe("Keychron V5 Max reader", () => {
     expect(device.sendReport).not.toHaveBeenCalled();
   });
 
+  it("rejects a non-V5 identity before registering a listener or sending a report", async () => {
+    const device = createDevice();
+    device.productId = 0x0951;
+    device.sendReport = vi.fn((() => {
+      throw new Error("must not reach HID");
+    }) as unknown as KeychronV5MaxReaderDevice["sendReport"]);
+
+    await expect(requestKeychronV5MaxRead(device, 0xa0)).rejects.toMatchObject({ code: "identity" });
+
+    expect(device.addEventListener).not.toHaveBeenCalled();
+    expect(device.removeEventListener).not.toHaveBeenCalled();
+    expect(device.sendReport).not.toHaveBeenCalled();
+    expect(device.listenerCount()).toBe(0);
+  });
+
   it("ignores wrong report IDs and cross-matched reports until the exact vendor response arrives", async () => {
     const device = createDevice();
     const pending = requestKeychronV5MaxRead(device, 0xa8, [0x09, 0, 1]);

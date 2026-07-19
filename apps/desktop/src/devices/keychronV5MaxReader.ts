@@ -94,6 +94,9 @@ export async function requestKeychronV5MaxRead(
   payload: readonly number[] = [],
   options: { timeoutMs?: number } = {},
 ): Promise<Uint8Array> {
+  if (classifyKeychronV5MaxIdentity(device).state !== "partial") {
+    throw new KeychronV5MaxReaderError("identity");
+  }
   validateReadRequest(command, payload);
   const timeoutMs = boundedTimeoutMs(options.timeoutMs);
   if (pendingVendorReads.has(device)) {
