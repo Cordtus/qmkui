@@ -846,44 +846,36 @@ function genericViaSnapshotScreen(
     }),
     element("section", { className: "snapshot-grid" }, [
       snapshotField("Identity", snapshot.identity, () => []),
-      snapshotField("Protocol", snapshot.protocolVersion, (version) => [["VIA protocol", `0x${version.toString(16).padStart(4, "0")}`]]),
-      snapshotField("Keyboard values", snapshot.uptime, () => genericKeyboardValueRows(snapshot)),
+      genericValueField("Protocol version", snapshot.protocolVersion, (version) => `0x${version.toString(16).padStart(4, "0")}`),
+      genericValueField("Uptime", snapshot.uptime),
+      genericValueField("Layout options", snapshot.layoutOptions),
+      genericValueField("Firmware version", snapshot.firmwareVersion),
+      genericValueField("Keycodes version", snapshot.keycodesVersion),
+      genericValueField("Layer count", snapshot.layerCount),
       snapshotField("Keymap", snapshot.keymap, () => []),
       snapshotField("Switch matrix", snapshot.switchMatrix, () => []),
-      snapshotField("Lighting", snapshot.lighting.rgbMatrixEffect, () => genericLightingRows(snapshot)),
+      genericValueField("Backlight effect", snapshot.lighting.backlightEffect),
+      genericValueField("Backlight brightness", snapshot.lighting.backlightBrightness),
+      genericValueField("RGB light effect", snapshot.lighting.rgblightEffect),
+      genericValueField("RGB light hue", snapshot.lighting.rgblightHue),
+      genericValueField("RGB light saturation", snapshot.lighting.rgblightSaturation),
+      genericValueField("RGB light value", snapshot.lighting.rgblightValue),
+      genericValueField("RGB matrix effect", snapshot.lighting.rgbMatrixEffect),
+      genericValueField("RGB matrix hue", snapshot.lighting.rgbMatrixHue),
+      genericValueField("RGB matrix saturation", snapshot.lighting.rgbMatrixSaturation),
+      genericValueField("RGB matrix value", snapshot.lighting.rgbMatrixValue),
+      genericValueField("LED matrix effect", snapshot.lighting.ledMatrixEffect),
+      genericValueField("LED matrix brightness", snapshot.lighting.ledMatrixBrightness),
     ]),
   ]);
 }
 
-function genericKeyboardValueRows(snapshot: GenericViaStandardState): Array<[string, string]> {
-  return [
-    ["Uptime", genericValueLabel(snapshot.uptime)],
-    ["Layout options", genericValueLabel(snapshot.layoutOptions)],
-    ["Firmware version", genericValueLabel(snapshot.firmwareVersion)],
-    ["Keycodes version", genericValueLabel(snapshot.keycodesVersion)],
-    ["Layer count", genericValueLabel(snapshot.layerCount)],
-  ];
-}
-
-function genericLightingRows(snapshot: GenericViaStandardState): Array<[string, string]> {
-  return [
-    ["Backlight effect", genericValueLabel(snapshot.lighting.backlightEffect)],
-    ["Backlight brightness", genericValueLabel(snapshot.lighting.backlightBrightness)],
-    ["RGB light effect", genericValueLabel(snapshot.lighting.rgblightEffect)],
-    ["RGB light hue", genericValueLabel(snapshot.lighting.rgblightHue)],
-    ["RGB light saturation", genericValueLabel(snapshot.lighting.rgblightSaturation)],
-    ["RGB light value", genericValueLabel(snapshot.lighting.rgblightValue)],
-    ["RGB matrix effect", genericValueLabel(snapshot.lighting.rgbMatrixEffect)],
-    ["RGB matrix hue", genericValueLabel(snapshot.lighting.rgbMatrixHue)],
-    ["RGB matrix saturation", genericValueLabel(snapshot.lighting.rgbMatrixSaturation)],
-    ["RGB matrix value", genericValueLabel(snapshot.lighting.rgbMatrixValue)],
-    ["LED matrix effect", genericValueLabel(snapshot.lighting.ledMatrixEffect)],
-    ["LED matrix brightness", genericValueLabel(snapshot.lighting.ledMatrixBrightness)],
-  ];
-}
-
-function genericValueLabel(field: { state: "available" | "unavailable" | "unverified"; value?: number; reason?: string }): string {
-  return field.state === "available" ? String(field.value) : `${field.state}: ${field.reason ?? "No reason was supplied."}`;
+function genericValueField(
+  label: string,
+  field: { state: "available" | "unavailable" | "unverified"; value?: number; reason?: string },
+  format: (value: number) => string = String,
+): HTMLElement {
+  return snapshotField(label, field, (value) => [["Reported value", format(value)]]);
 }
 
 function snapshotField(
@@ -894,7 +886,7 @@ function snapshotField(
   const available = field.state === "available";
   return element("section", {
     className: `snapshot-field ${field.state}`,
-    attrs: { "data-snapshot-field": label.toLowerCase(), "data-snapshot-state": field.state },
+    attrs: { "data-snapshot-field": label.toLowerCase().replaceAll(" ", "-"), "data-snapshot-state": field.state },
   }, [
     element("h2", { text: label }),
     available

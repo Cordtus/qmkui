@@ -160,6 +160,27 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector("[data-default-comparison]")).toBeNull();
     expect(root.querySelector("[data-hardware-keymap]")).toBeNull();
   });
+
+  it("renders each generic standard field when neighboring keyboard or lighting reads are unavailable", async () => {
+    const root = document.createElement("div");
+    const snapshot = genericViaSnapshot();
+    snapshot.uptime = { state: "unavailable", reason: "Uptime read failed: timeout." };
+    snapshot.firmwareVersion = { state: "available", value: 9 };
+    snapshot.lighting.rgbMatrixEffect = { state: "unavailable", reason: "RGB matrix effect read failed: timeout." };
+    snapshot.lighting.rgbMatrixHue = { state: "available", value: 44 };
+
+    createApp(root, { discoverBrowserKeyboard: async () => genericViaSelection(async () => snapshot) });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+
+    expect(root.querySelector('[data-snapshot-field="uptime"]')?.textContent).toContain("Uptime read failed: timeout.");
+    expect(root.querySelector('[data-snapshot-field="firmware-version"]')?.textContent).toContain("9");
+    expect(root.querySelector('[data-snapshot-field="rgb-matrix-effect"]')?.textContent).toContain("RGB matrix effect read failed: timeout.");
+    expect(root.querySelector('[data-snapshot-field="rgb-matrix-hue"]')?.textContent).toContain("44");
+  });
 });
 
 function recognizedSelection(

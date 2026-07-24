@@ -138,7 +138,9 @@ function classifySelection(
       contract: classifyKeychronV5MaxIdentity(identity),
     };
   });
-  const selected = classified.find(({ contract }) => contract.state === "partial") ?? classified[0];
+  const selected = classified.find(({ contract }) => contract.state === "partial")
+    ?? classified.find(({ identity }) => isPossibleViaDevice(identity))
+    ?? classified[0];
 
   if (selected.contract.state === "partial") {
     return {

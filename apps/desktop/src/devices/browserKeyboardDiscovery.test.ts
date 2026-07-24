@@ -206,6 +206,36 @@ describe("browser keyboard discovery", () => {
     expect(sentCommands(device).every(([command]) => command !== 0xa0 && command !== 0xa8)).toBe(true);
   });
 
+  it("prefers a generic VIA raw-HID interface over an unrelated authorized HID device without probing either", async () => {
+    const unrelated = {
+      vendorId: 0xfeed,
+      productId: 0x1111,
+      collections: [{ usagePage: 0x0001, usage: 0x0006 }],
+      open: vi.fn(),
+      sendReport: vi.fn(),
+    };
+    const genericVia = createGenericViaDevice();
+
+    const result = await discoverAuthorizedBrowserKeyboard({
+      hid: { getDevices: async () => [unrelated, genericVia], requestDevice: async () => [] },
+    });
+
+    expect(result).toMatchObject({
+      state: "selected",
+      identity: {
+        vendorId: 0xfeed,
+        productId: 0xbeef,
+        collections: [{ usagePage: 0xff60, usage: 0x0061 }],
+      },
+      contract: { state: "unverified-via" },
+    });
+    expect("viaSession" in result).toBe(true);
+    expect(unrelated.open).not.toHaveBeenCalled();
+    expect(unrelated.sendReport).not.toHaveBeenCalled();
+    expect(genericVia.open).not.toHaveBeenCalled();
+    expect(genericVia.sendReport).not.toHaveBeenCalled();
+  });
+
   it("does not infer a catalog model for an unsupported keyboard", async () => {
     const device = {
       vendorId: 0x3434,
