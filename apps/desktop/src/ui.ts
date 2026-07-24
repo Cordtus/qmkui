@@ -1273,6 +1273,18 @@ function deviceSelectionLabel(
     if (selection.contract.state === "unsupported") {
       return `${keyboardIdentityLabel(selection.identity)} was detected, but QMKUI does not currently support configuration for it.`;
     }
+    if (selection.contract.state === "unverified-via") {
+      if (protocolVerification.state === "verifying") {
+        return "Checking the standard VIA protocol version. No configuration is read or changed.";
+      }
+      if (protocolVerification.state === "verified") {
+        return `VIA protocol version 0x${protocolVerification.version.toString(16).padStart(4, "0")} verified. No configuration is read or changed.`;
+      }
+      if (protocolVerification.state === "failed") {
+        return "VIA protocol verification did not complete. You can retry; no configuration was changed.";
+      }
+      return "VIA keyboard awaiting verification. Verify the standard VIA protocol before reading device state.";
+    }
     if (protocolVerification.state === "verifying") {
       return "Checking the observed protocol version. No configuration is read or changed.";
     }

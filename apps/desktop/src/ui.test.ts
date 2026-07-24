@@ -147,6 +147,8 @@ describe("device-first hardware workspace", () => {
 
     expect(root.querySelector('[data-device-action="verify-protocol"]')).not.toBeNull();
     expect(root.querySelector('[data-device-action="read"]')).toBeNull();
+    expect(root.querySelector("[data-device-state]")?.textContent).toContain("VIA keyboard awaiting verification");
+    expect(root.textContent).not.toContain("Keychron V5 Max");
 
     root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
     await flush();
