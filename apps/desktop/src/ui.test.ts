@@ -5,6 +5,7 @@ import type {
   BrowserKeyboardSession,
 } from "./devices/browserKeyboardDiscovery";
 import type { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
+import type { GenericViaStandardState } from "./devices/genericViaReader";
 import { createApp } from "./ui";
 
 afterEach(() => {
@@ -137,6 +138,28 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector("[data-hardware-snapshot]")).toBeNull();
     expect(root.querySelector("[data-device-state]")?.textContent).toContain("Device read failed");
   });
+
+  it("requires generic VIA protocol verification before rendering only standard state without a model baseline", async () => {
+    const root = document.createElement("div");
+    const readStandardState = vi.fn(async () => genericViaSnapshot());
+    createApp(root, { discoverBrowserKeyboard: async () => genericViaSelection(readStandardState) });
+    await flush();
+
+    expect(root.querySelector('[data-device-action="verify-protocol"]')).not.toBeNull();
+    expect(root.querySelector('[data-device-action="read"]')).toBeNull();
+
+    root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
+    await flush();
+    expect(root.querySelector('[data-device-action="read"]')).not.toBeNull();
+
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    expect(readStandardState).toHaveBeenCalledOnce();
+    expect(root.textContent).toContain("Confirmed VIA keyboard");
+    expect(root.textContent).toContain("No verified keyboard definition is available for this VIA device.");
+    expect(root.querySelector("[data-default-comparison]")).toBeNull();
+    expect(root.querySelector("[data-hardware-keymap]")).toBeNull();
+  });
 });
 
 function recognizedSelection(
@@ -196,6 +219,57 @@ function unavailableSnapshot(): KeychronV5MaxReadSnapshot {
     keymap: { state: "unavailable", reason: "No verified V5 Max matrix dimensions were supplied." },
     lighting: { state: "unverified", reason: "RGB state could not be verified." },
     readAt: "2026-07-18T00:00:00.000Z",
+  };
+}
+
+function genericViaSelection(
+  readStandardState: () => Promise<GenericViaStandardState>,
+): Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "unverified-via" } }> {
+  let verified = false;
+  return {
+    state: "selected",
+    identity: { vendorId: 0xfeed, productId: 0xbeef, collections: [{ usagePage: 0xff60, usage: 0x0061 }] },
+    contract: { state: "unverified-via" },
+    viaSession: {
+      get capabilities() {
+        return { canRead: verified, canWrite: false as const, canFlash: false as const };
+      },
+      verifyProtocolVersion: async () => {
+        verified = true;
+        return { version: 0x000c };
+      },
+      readStandardState,
+    },
+  };
+}
+
+function genericViaSnapshot(): GenericViaStandardState {
+  const unavailable = (reason: string) => ({ state: "unavailable" as const, reason });
+  return {
+    identity: { state: "unverified", reason: "No verified keyboard definition is available for this VIA device." },
+    protocolVersion: { state: "available", value: 0x000c },
+    uptime: { state: "available", value: 42 },
+    layoutOptions: unavailable("Layout options read failed: timeout."),
+    firmwareVersion: unavailable("Firmware version read failed: timeout."),
+    keycodesVersion: unavailable("Keycodes version read failed: timeout."),
+    layerCount: unavailable("Layer count read failed: timeout."),
+    keymap: { state: "unverified", reason: "No verified matrix dimensions are available for this VIA device." },
+    switchMatrix: { state: "unverified", reason: "No verified matrix dimensions are available for this VIA device." },
+    lighting: {
+      backlightEffect: unavailable("Backlight effect read failed: timeout."),
+      backlightBrightness: unavailable("Backlight brightness read failed: timeout."),
+      rgblightEffect: unavailable("RGB light effect read failed: timeout."),
+      rgblightHue: unavailable("RGB light hue read failed: timeout."),
+      rgblightSaturation: unavailable("RGB light saturation read failed: timeout."),
+      rgblightValue: unavailable("RGB light value read failed: timeout."),
+      rgbMatrixEffect: { state: "available", value: 7 },
+      rgbMatrixHue: unavailable("RGB matrix hue read failed: timeout."),
+      rgbMatrixSaturation: unavailable("RGB matrix saturation read failed: timeout."),
+      rgbMatrixValue: unavailable("RGB matrix value read failed: timeout."),
+      ledMatrixEffect: unavailable("LED matrix effect read failed: timeout."),
+      ledMatrixBrightness: unavailable("LED matrix brightness read failed: timeout."),
+    },
+    readAt: "2026-07-24T00:00:00.000Z",
   };
 }
 

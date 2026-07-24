@@ -153,6 +153,59 @@ describe("browser keyboard discovery", () => {
     expect(device.receiveFeatureReport).not.toHaveBeenCalled();
   });
 
+  it("confirms a generic VIA keyboard through standard protocol verification before standard-only reads", async () => {
+    const device = createGenericViaDevice();
+    const result = await discoverAuthorizedBrowserKeyboard({
+      hid: { getDevices: async () => [device], requestDevice: async () => [] },
+    });
+
+    expect(result).toMatchObject({
+      state: "selected",
+      identity: {
+        vendorId: 0xfeed,
+        productId: 0xbeef,
+        collections: [{ usagePage: 0xff60, usage: 0x0061 }],
+      },
+      contract: { state: "unverified-via" },
+    });
+    expect(sentCommands(device)).toEqual([]);
+
+    const generic = result as unknown as {
+      viaSession: {
+        capabilities: { canRead: boolean; canWrite: boolean; canFlash: boolean };
+        verifyProtocolVersion: () => Promise<{ version: number }>;
+        readStandardState: () => Promise<{
+          identity: { state: string; reason?: string };
+          protocolVersion: { state: string; value?: number };
+          uptime: { state: string; value?: number };
+          keymap: { state: string; reason?: string };
+          lighting: { rgbMatrixEffect: { state: string; value?: number } };
+        }>;
+      };
+    };
+
+    expect(generic.viaSession.capabilities).toEqual({ canRead: false, canWrite: false, canFlash: false });
+    await expect(generic.viaSession.verifyProtocolVersion()).resolves.toEqual({ version: 0x000c });
+    expect(sentCommands(device)).toEqual([[0x01]]);
+    expect(generic.viaSession.capabilities).toEqual({ canRead: true, canWrite: false, canFlash: false });
+
+    const snapshot = await generic.viaSession.readStandardState();
+
+    expect(snapshot.protocolVersion).toEqual({ state: "available", value: 0x000c });
+    expect(snapshot.uptime).toEqual({ state: "available", value: 0x12345678 });
+    expect(snapshot.lighting.rgbMatrixEffect).toEqual({ state: "available", value: 7 });
+    expect(snapshot.identity).toEqual({
+      state: "unverified",
+      reason: "No verified keyboard definition is available for this VIA device.",
+    });
+    expect(snapshot.keymap).toEqual({
+      state: "unverified",
+      reason: "No verified matrix dimensions are available for this VIA device.",
+    });
+    expect(sentCommands(device)).not.toContainEqual([0xa0]);
+    expect(sentCommands(device).every(([command]) => command !== 0xa0 && command !== 0xa8)).toBe(true);
+  });
+
   it("does not infer a catalog model for an unsupported keyboard", async () => {
     const device = {
       vendorId: 0x3434,
@@ -269,6 +322,31 @@ function createTranscriptDevice(): KeychronV5MaxReaderDevice & {
   return device;
 }
 
+function createGenericViaDevice(): KeychronV5MaxReaderDevice & {
+  emit: (event: { reportId: number; data: Uint8Array }) => void;
+} {
+  const listeners = new Set<(event: { reportId: number; data: Uint8Array }) => void>();
+  const device: KeychronV5MaxReaderDevice & {
+    emit: (event: { reportId: number; data: Uint8Array }) => void;
+  } = {
+    vendorId: 0xfeed,
+    productId: 0xbeef,
+    collections: [{ usagePage: 0xff60, usage: 0x0061 }],
+    opened: false,
+    open: vi.fn(async () => undefined),
+    close: vi.fn(async () => undefined),
+    sendReport: vi.fn(async (_reportId: number, data: BufferSource) => {
+      const request = new Uint8Array(data as ArrayBuffer);
+      const response = genericViaResponseFor(request);
+      if (response) device.emit({ reportId: 0, data: response });
+    }),
+    addEventListener: vi.fn((_type, listener) => listeners.add(listener)),
+    removeEventListener: vi.fn((_type, listener) => listeners.delete(listener)),
+    emit: (event) => listeners.forEach((listener) => listener(event)),
+  };
+  return device;
+}
+
 function responseFor(request: Uint8Array): Uint8Array | undefined {
   if (request[0] === 0xa0) return report([0xa0, 0x02, 0x00, 0x02]);
   if (request[0] === 0xa1) return report([0xa1, ...ascii("v1.0.0")]);
@@ -282,6 +360,21 @@ function responseFor(request: Uint8Array): Uint8Array | undefined {
   if (request[1] === 0x01) return report([0xa8, 0x01, 0x01, 0x00]);
   if (request[1] === 0x03) return report([0xa8, 0x03, 0x11]);
   if (request[1] === 0x05) return report([0xa8, 0x05, 0]);
+  return undefined;
+}
+
+function genericViaResponseFor(request: Uint8Array): Uint8Array | undefined {
+  if (request[0] === 0x01) return report([0x01, 0x00, 0x0c]);
+  if (request[0] === 0x02 && request[1] === 0x01) return report([0x02, 0x01, 0x12, 0x34, 0x56, 0x78]);
+  if (request[0] === 0x02 && request[1] === 0x02) return report([0x02, 0x02, 0, 0, 0, 3]);
+  if (request[0] === 0x02 && request[1] === 0x04) return report([0x02, 0x04, 0, 0, 0, 9]);
+  if (request[0] === 0x02 && request[1] === 0x06) return report([0x02, 0x06, 0, 0, 0, 2]);
+  if (request[0] === 0x11) return report([0x11, 3]);
+  if (request[0] === 0x08 && request[1] === 0x01 && request[2] === 0x01) return report([0x08, 0x01, 0x01, 4]);
+  if (request[0] === 0x08 && request[1] === 0x01 && request[2] === 0x02) return report([0x08, 0x01, 0x02, 20]);
+  if (request[0] === 0x08 && request[1] === 0x02) return report([0x08, 0x02, request[2]!, request[2]!]);
+  if (request[0] === 0x08 && request[1] === 0x03) return report([0x08, 0x03, request[2]!, request[2] === 1 ? 7 : request[2]!]);
+  if (request[0] === 0x08 && request[1] === 0x04) return report([0x08, 0x04, request[2]!, request[2]!]);
   return undefined;
 }
 

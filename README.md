@@ -3,9 +3,12 @@
 QMKUI is an early, device-first QMK hardware reader. It starts with no selected
 keyboard, model, project, key map, or editable workspace. In Chrome, Edge, or
 Opera, use **Connect keyboard** to authorize a device in the browser prompt.
-QMKUI identifies that device before showing a model-specific read action. For
-the exact wired **Keychron V5 Max ANSI Knob**, **Read device** performs a
-bounded read-only snapshot of the values the firmware reports.
+QMKUI identifies that device before showing a read action. For the exact wired
+**Keychron V5 Max ANSI Knob**, **Read device** performs a bounded read-only
+snapshot of the values the firmware reports. For another browser-authorized
+VIA raw-HID interface, first choose **Verify protocol**; QMKUI sends only the
+standard VIA `Get Protocol Version` request. A successful response enables a
+generic standard-state read with no inferred keyboard model or layout.
 
 Connection, Read device, and Refresh device are read-only. QMKUI never writes,
 resets, stages, loads defaults, applies a preset, enters a bootloader, or
@@ -25,6 +28,14 @@ artifact built and previewed with the commands below.
   accurately show unsupported hardware as unsupported.
 - Recognize the exact wired Keychron V5 Max ANSI Knob and expose **Read device**
   only after browser authorization.
+- Offer a neutral generic VIA candidate only for an authorized VIA raw-HID
+  interface. Verification sends only standard VIA command `0x01`; devices that
+  do not answer it remain neutral and never receive Keychron/vendor I/O.
+- After generic VIA verification, read the protocol value, standard keyboard
+  values, layer count, and standard QMK lighting custom values through the
+  read-only VIA surface. Unknown definitions, matrix dimensions, keymaps, and
+  switch-matrix geometry stay unavailable or unverified rather than becoming a
+  model, static project, layout, or default configuration.
 - Read and display the reported V5 identity, feature bitmap, VIA keymap values,
   and RGB state without emitting any mutation packet. The V5 keymap read uses
   the verified definition's four-layer, six-row, 19-column matrix shape, then
@@ -37,8 +48,9 @@ artifact built and previewed with the commands below.
   values. It rejects every set, save, reset, EEPROM, and bootloader command
   before HID I/O. Standard QMK custom channels are returned as verified raw
   protocol values; a vendor custom-channel result remains unverified until an
-  exact decoder is registered. This is protocol support only, not a generic
-  browser/UI read action.
+  exact decoder is registered. The generic browser read uses only the standard
+  `0x01`, `0x02`, `0x08`, and `0x11` read surfaces; it cannot send Keychron
+  `0xA0` or `0xA8` frames.
 - Display reported per-LED HSV colors and effect types. Dynamic effects are
   labeled as configuration effects, not as a captured live animation.
 - Keep unavailable or unverified identity, capability, keymap, and lighting
@@ -55,8 +67,9 @@ firmware, EEPROM, wireless configuration, or other device state.
 Compilation, device configuration writes, flashing, live keyboard mode,
 persistent native storage, and broad catalog ingestion are not implemented.
 The V5 adapter can read a bounded hardware snapshot only after a user clicks
-**Read device**. It has no device-memory backup, default/reset, write, or flash
-operation.
+**Read device**. A generic VIA session must first complete explicit protocol
+verification and can then read only standard state. Neither path has a
+device-memory backup, default/reset, write, or flash operation.
 
 ## Safety and recovery
 
@@ -111,9 +124,9 @@ npm --prefix apps/desktop run preview
 ```
 
 The preview URL is printed by Vite. The production build contains no local
-Doctor report; it includes only the user-triggered V5 Max read allowlist,
-including reported keymap and lighting state, and no backup, default/reset,
-write, or flash operation.
+Doctor report; it includes the user-triggered V5 Max read allowlist plus the
+generic standard-VIA read surface. The generic path has no model/layout/default
+fallback and no backup, default/reset, write, or flash operation.
 
 ## Doctor
 
