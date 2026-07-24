@@ -70,12 +70,110 @@ describe("device-first connection layout", () => {
     expect(position).toEqual({ left: 0, top: 0 });
     expect(await page.locator("[data-connection-screen]").count()).toBe(1);
   });
+
+  it("keeps a real hardware keymap read contained and its grouped controls aligned at a narrow desktop width", async () => {
+    const page = await openReadResultPage({ width: 900, height: 760 });
+    const layout = await page.locator("[data-hardware-snapshot]").evaluate((snapshot) => {
+      const keymap = snapshot.querySelector<HTMLElement>("[data-hardware-keymap]");
+      const board = snapshot.querySelector<HTMLElement>("[data-hardware-keymap-board]");
+      const layerTabs = snapshot.querySelector<HTMLElement>("[data-hardware-layer-tabs]");
+      const identity = snapshot.querySelector<HTMLElement>("[data-snapshot-field=identity]");
+      const capabilities = snapshot.querySelector<HTMLElement>("[data-snapshot-field=capabilities]");
+      const lighting = snapshot.querySelector<HTMLElement>("[data-snapshot-field=lighting]");
+      if (!keymap || !board || !layerTabs || !identity || !capabilities || !lighting) {
+        throw new Error("Expected a complete hardware snapshot workspace");
+      }
+
+      const bounds = (element: HTMLElement) => {
+        const rect = element.getBoundingClientRect();
+        return { bottom: rect.bottom, left: rect.left, right: rect.right, top: rect.top };
+      };
+      const styles = [identity, capabilities, lighting].map((panel) => getComputedStyle(panel));
+      return {
+        board: bounds(board),
+        keymap: bounds(keymap),
+        layerTabs: bounds(layerTabs),
+        menuBorders: styles.map((style) => style.borderTopWidth),
+        menuLeftEdges: [bounds(identity).left, bounds(capabilities).left, bounds(lighting).left],
+        pageWidth: document.documentElement.scrollWidth,
+        snapshot: bounds(snapshot as HTMLElement),
+        viewportWidth: window.innerWidth,
+      };
+    });
+
+    expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(isContained(layout.keymap, layout.snapshot)).toBe(true);
+    expect(isContained(layout.board, layout.keymap)).toBe(true);
+    expect(isContained(layout.layerTabs, layout.keymap)).toBe(true);
+    expect(layout.board.right - layout.board.left).toBeLessThanOrEqual(
+      layout.keymap.right - layout.keymap.left,
+    );
+    expect(layout.menuBorders).toEqual(["1px", "1px", "1px"]);
+    expect(layout.menuLeftEdges[0]).toBe(layout.menuLeftEdges[2]);
+    expect(layout.menuLeftEdges[1]).toBeGreaterThan(layout.menuLeftEdges[0]);
+  });
 });
 
 async function openPage(viewport: { width: number; height: number }): Promise<Page> {
   const page = await browser.newPage({ viewport });
   await page.goto(origin, { waitUntil: "networkidle" });
   await page.locator("[data-connection-screen]").waitFor();
+  return page;
+}
+
+async function openReadResultPage(viewport: { width: number; height: number }): Promise<Page> {
+  const page = await browser.newPage({ viewport });
+  await page.addInitScript(() => {
+    const listeners = new Set<(event: { reportId: number; data: Uint8Array }) => void>();
+    const report = (bytes: number[]) => {
+      const result = new Uint8Array(32);
+      result.set(bytes);
+      return result;
+    };
+    const responseFor = (request: Uint8Array) => {
+      if (request[0] === 0xa0) return report([0xa0, 0x02, 0x00, 0x02]);
+      if (request[0] === 0xa1) return report([0xa1, ...[..."v1.0.0"].map((character) => character.charCodeAt(0))]);
+      if (request[0] === 0xa2) return report([0xa2, 0x00, 0x81]);
+      if (request[0] === 0xa3) return report([0xa3, 0x02]);
+      if (request[0] === 0x11) return report([0x11, 0x04]);
+      if (request[0] === 0x04) return report([0x04, request[1]!, request[2]!, request[3]!, 0x12, 0x34]);
+      if (request[0] !== 0xa8) return undefined;
+      if (request[1] === 0x01) return report([0xa8, 0x01, 0x01, 0x00]);
+      if (request[1] === 0x03) return report([0xa8, 0x03, 0x11]);
+      if (request[1] === 0x05) return report([0xa8, 0x05, 0]);
+      return undefined;
+    };
+    const device = {
+      vendorId: 0x3434,
+      productId: 0x0950,
+      productName: "Keychron V5 Max",
+      collections: [{ usagePage: 0xff60, usage: 0x0061 }],
+      opened: false,
+      open: async () => {
+        device.opened = true;
+      },
+      close: async () => {
+        device.opened = false;
+      },
+      sendReport: async (_reportId: number, data: BufferSource) => {
+        const response = responseFor(new Uint8Array(data as ArrayBuffer));
+        if (response) listeners.forEach((listener) => listener({ reportId: 0, data: response }));
+      },
+      addEventListener: (_type: "inputreport", listener: (event: { reportId: number; data: Uint8Array }) => void) => {
+        listeners.add(listener);
+      },
+      removeEventListener: (_type: "inputreport", listener: (event: { reportId: number; data: Uint8Array }) => void) => {
+        listeners.delete(listener);
+      },
+    };
+    Object.defineProperty(navigator, "hid", {
+      configurable: true,
+      value: { getDevices: async () => [device], requestDevice: async () => [device] },
+    });
+  });
+  await page.goto(origin, { waitUntil: "networkidle" });
+  await page.locator('[data-device-action="read"]').click();
+  await page.locator("[data-hardware-snapshot]").waitFor();
   return page;
 }
 
