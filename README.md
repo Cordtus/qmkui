@@ -30,6 +30,15 @@ artifact built and previewed with the commands below.
   the verified definition's four-layer, six-row, 19-column matrix shape, then
   renders the returned keycodes as the current read-only keyboard view; it does
   not use the bundled keymap as device state.
+- The confirmed-VIA protocol layer permits only these standard state queries:
+  protocol version; uptime, layout options, switch-matrix state, firmware, and
+  keycodes versions; keycodes; macro count, size, and buffer; layer count;
+  dynamic-keymap buffer; encoder mappings; and explicitly selected custom-get
+  values. It rejects every set, save, reset, EEPROM, and bootloader command
+  before HID I/O. Standard QMK custom channels are returned as verified raw
+  protocol values; a vendor custom-channel result remains unverified until an
+  exact decoder is registered. This is protocol support only, not a generic
+  browser/UI read action.
 - Display reported per-LED HSV colors and effect types. Dynamic effects are
   labeled as configuration effects, not as a captured live animation.
 - Keep unavailable or unverified identity, capability, keymap, and lighting
