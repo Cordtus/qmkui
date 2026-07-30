@@ -1,47 +1,62 @@
 # QMKUI
 
-QMKUI is an early QMK keyboard project editor. In Chrome, Edge, or Opera, the
-public app checks at launch for HID devices you have already allowed this
-site to access; it does not assume the connected keyboard is a Keychron V5
-Max. Use **Choose keyboard** to identify a newly connected device in the
-browser prompt. QMKUI inspects only its static HID identity until it recognizes
-the exact wired **Keychron V5 Max ANSI Knob**. After recognition, it can
-perform one bounded read-only check: verify the observed VIA protocol version
-(`0x000c`). It does not read keymaps or configuration, write configuration,
-run a QMK compile, enter a bootloader, flash firmware, or write device state.
+QMKUI is an early, device-first QMK hardware reader. It starts with no selected
+keyboard, model, project, key map, or editable workspace. In Chrome, Edge, or
+Opera, use **Connect keyboard** to authorize a device in the browser prompt.
+QMKUI identifies that device before showing a read action. For the exact wired
+**Keychron V5 Max ANSI Knob**, **Read device** performs a bounded read-only
+snapshot of the values the firmware reports. For another browser-authorized
+VIA raw-HID interface, first choose **Verify protocol**; QMKUI sends only the
+standard VIA `Get Protocol Version` request. A successful response enables a
+generic standard-state read with no inferred keyboard model or layout.
+
+Connection, Read device, and Refresh device are read-only. QMKUI never writes,
+resets, stages, loads defaults, applies a preset, enters a bootloader, or
+flashes firmware. A capability is live only when the recognized device returned
+it. Unavailable or unverified fields remain visibly unavailable with their
+reason; QMKUI never substitutes a bundled default. The bundled V5 definition
+is available after a read only as an explicit, read-only comparison reference.
 
 The public instance is available at
 [https://cordtus.github.io/qmkui/](https://cordtus.github.io/qmkui/). GitHub
 Actions uses local self-hosted runners to deploy the same audited static
 artifact built and previewed with the commands below.
 
-The current real editing preset is the **Keychron V5 Max ANSI Knob**. It is an
-offline project template until its exact hardware identity is recognized. A
-small synthetic keyboard definition is also bundled for automated tests; it is
-not a supported hardware target.
-
 ## What works
 
-- Edit key assignments and layers for the Keychron V5 Max ANSI Knob preset.
-- Configure local RGB Matrix preview profiles from the preset's capabilities.
-- Validate a project, then download its QMK JSON for handoff to your local QMK
-  build workflow.
-- Detect a previously allowed HID device at launch, or choose a keyboard in
-  a supported browser, and accurately show unsupported hardware as unsupported.
-- Recognize the exact wired Keychron V5 Max ANSI Knob, then verify its observed
-  protocol version (`0x000c`). This sends one 32-byte version request and
-  accepts only its matching 32-byte response; it does not read or change
-  keyboard configuration.
-- Identify an initial pinned Keychron catalog batch by USB model identity. Other
-  cataloged models are identification-only until their full visual layouts,
-  default keymaps, and device protocols have been separately verified.
-- Save, reopen, rename, duplicate, delete, import, and export app project JSON
-  in the current browser session.
-- Restore a valid app-native recovery bundle. Its prior safety history is
-  reused only when its embedded catalog and device facts still match.
-- Apply an existing safety-audit receipt only to the exact current project and
-  bundled catalog definition.
-- Test host key events without reading from or writing to the keyboard.
+- Detect a previously authorized HID device or authorize one explicitly, and
+  accurately show unsupported hardware as unsupported.
+- Recognize the exact wired Keychron V5 Max ANSI Knob and expose **Read device**
+  only after browser authorization.
+- Offer a neutral generic VIA candidate only for an authorized VIA raw-HID
+  interface. Verification sends only standard VIA command `0x01`; devices that
+  do not answer it remain neutral and never receive Keychron/vendor I/O.
+- After generic VIA verification, read the protocol value, standard keyboard
+  values, layer count, and standard QMK lighting custom values through the
+  read-only VIA surface. Unknown definitions, matrix dimensions, keymaps, and
+  switch-matrix geometry stay unavailable or unverified rather than becoming a
+  model, static project, layout, or default configuration.
+- Read and display the reported V5 identity, feature bitmap, VIA keymap values,
+  and RGB state without emitting any mutation packet. The V5 keymap read uses
+  the verified definition's four-layer, six-row, 19-column matrix shape, then
+  renders the returned keycodes as the current read-only keyboard view; it does
+  not use the bundled keymap as device state.
+- The confirmed-VIA protocol layer permits only these standard state queries:
+  protocol version; uptime, layout options, switch-matrix state, firmware, and
+  keycodes versions; keycodes; macro count, size, and buffer; layer count;
+  dynamic-keymap buffer; encoder mappings; and explicitly selected custom-get
+  values. It rejects every set, save, reset, EEPROM, and bootloader command
+  before HID I/O. Standard QMK custom channels are returned as verified raw
+  protocol values; a vendor custom-channel result remains unverified until an
+  exact decoder is registered. The generic browser read uses only the standard
+  `0x01`, `0x02`, `0x08`, and `0x11` read surfaces; it cannot send Keychron
+  `0xA0` or `0xA8` frames.
+- Display reported per-LED HSV colors and effect types. Dynamic effects are
+  labeled as configuration effects, not as a captured live animation.
+- Keep unavailable or unverified identity, capability, keymap, and lighting
+  areas grouped with their device-provided reason.
+- Compare a successful V5 read with the bundled definition baseline without
+  applying that baseline to the device or treating it as current state.
 - Inspect software and read-only Linux readiness with `qmkui-doctor`.
 
 Project saves currently live in memory and disappear when the page reloads.
@@ -49,20 +64,18 @@ Project JSON exports are plain local files. QMKUI does not transmit, encrypt,
 or treat them as tamper-proof. They do not read, back up, or restore keyboard
 firmware, EEPROM, wireless configuration, or other device state.
 
-Compilation, device configuration or keymap reads, flashing, live keyboard
-mode, persistent native storage, and broad catalog ingestion are not
-implemented. The app's only device read is the user-triggered V5 Max protocol
-version check; it has no device-memory backup, configuration, keymap,
-lighting, write, or flash operation.
+Compilation, device configuration writes, flashing, live keyboard mode,
+persistent native storage, and broad catalog ingestion are not implemented.
+The V5 adapter can read a bounded hardware snapshot only after a user clicks
+**Read device**. A generic VIA session must first complete explicit protocol
+verification and can then read only standard state. Neither path has a
+device-memory backup, default/reset, write, or flash operation.
 
 ## Safety and recovery
 
-There is currently no device-write path, so Project details contains no device
-backup, recovery, or write controls. A normal project JSON export is not a
-device backup. Existing recovery bundles can restore a valid project, but their
-prior safety history is reused only when their embedded catalog and device facts
-still match. Safety-audit receipts apply only to the exact current project and
-bundled catalog definition.
+There is currently no device-write path and no active project editor, so the
+app contains no device backup, recovery, or write controls. A successful read
+is a transient display of observed hardware state, not a device backup.
 
 Any future exact-device write workflow must require a confirmed recovery record
 or an explicit two-step decline with a saved local audit receipt, followed by a
@@ -111,9 +124,9 @@ npm --prefix apps/desktop run preview
 ```
 
 The preview URL is printed by Vite. The production build contains no local
-Doctor report; it includes only the user-triggered V5 Max protocol-version
-check described above, not configuration, keymap, lighting, backup, write, or
-flash operations.
+Doctor report; it includes the user-triggered V5 Max read allowlist plus the
+generic standard-VIA read surface. The generic path has no model/layout/default
+fallback and no backup, default/reset, write, or flash operation.
 
 ## Doctor
 

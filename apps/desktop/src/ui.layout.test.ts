@@ -29,505 +29,151 @@ afterAll(async () => {
   await server?.close();
 });
 
-describe("lower workspace layout", () => {
-  it("preserves workspace position when a context menu changes", async () => {
-    const page = await openPage({ width: 1440, height: 700 });
-    const workspace = page.locator(".workspace");
-
-    const initialScrollTop = await workspace.evaluate((element) => {
-      element.scrollTop = Math.min(220, element.scrollHeight - element.clientHeight);
-      return element.scrollTop;
-    });
-    expect(initialScrollTop).toBeGreaterThan(0);
-
-    await page.locator('[data-context-tab="lighting"]').evaluate((element) => {
-      (element as HTMLElement).click();
-    });
-
-    await page.locator('[data-context-section="lighting"]').waitFor();
-    expect(await workspace.evaluate((element) => element.scrollTop)).toBe(initialScrollTop);
-  });
-
+describe("device-first connection layout", () => {
   it.each([
     { height: 700, width: 420 },
     { height: 900, width: 1440 },
-  ])("keeps project details contained at $width×$height", async (viewport) => {
+  ])("keeps the neutral connection screen contained at $width×$height", async (viewport) => {
     const page = await openPage(viewport);
-
-    await page.locator('[data-project-details-action="open"]').click();
-    await page.locator("[data-project-details-drawer]").evaluate((drawer) => {
-      if (drawer.hasAttribute("hidden")) throw new Error("Project details drawer did not open");
-    });
-
-    const layout = await page.locator("[data-project-details-drawer]").evaluate((drawer) => {
-      const dialog = drawer.shadowRoot?.querySelector<HTMLElement>("[part~='dialog']");
-      const current = drawer.querySelector<HTMLElement>('[data-project-section="current"]');
-      const saved = drawer.querySelector<HTMLElement>('[data-project-section="saved"]');
-      const buttons = [...drawer.querySelectorAll<HTMLElement>("wa-button")];
-      if (!dialog || !current || !saved) throw new Error("Missing project details content");
+    const layout = await page.locator("[data-connection-screen]").evaluate((screen) => {
+      const action = screen.querySelector<HTMLElement>("[data-device-action=connect]");
+      const panel = screen.querySelector<HTMLElement>(".connection-panel");
+      if (!action || !panel) throw new Error("Missing connection controls");
       const bounds = (element: HTMLElement) => {
         const rect = element.getBoundingClientRect();
-        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+        return { bottom: rect.bottom, left: rect.left, right: rect.right, top: rect.top };
       };
+      const actionStyle = getComputedStyle(action);
       return {
-        dialog: bounds(dialog),
-        current: bounds(current),
-        saved: bounds(saved),
-        buttons: buttons.map((button) => ({
-          ...bounds(button),
-          clientWidth: button.clientWidth,
-          scrollWidth: button.scrollWidth,
-        })),
+        action: bounds(action),
+        actionRadius: actionStyle.borderTopLeftRadius,
+        panel: bounds(panel),
+        pageHeight: document.documentElement.scrollHeight,
         pageWidth: document.documentElement.scrollWidth,
+        viewportHeight: window.innerHeight,
         viewportWidth: window.innerWidth,
       };
     });
 
     expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(isContained(layout.current, layout.dialog)).toBe(true);
-    expect(isContained(layout.saved, layout.dialog)).toBe(true);
-    expect(layout.buttons).not.toHaveLength(0);
-    expect(layout.buttons.every((button) => button.clientWidth > 0 && button.scrollWidth <= button.clientWidth)).toBe(true);
+    expect(layout.pageHeight).toBeLessThanOrEqual(layout.viewportHeight);
+    expect(layout.actionRadius).toBe("0px");
+    expect(isContained(layout.action, layout.panel)).toBe(true);
   });
 
-  it.each([
-    { height: 700, width: 420 },
-    { height: 900, width: 1440 },
-  ])("keeps expanded project transfer controls contained at $width×$height", async (viewport) => {
-    const page = await openPage(viewport);
-
-    await page.locator('[data-project-details-action="open"]').click();
-    const transfer = page.locator('[data-project-section="transfer"]');
-    await transfer.scrollIntoViewIfNeeded();
-    await transfer.click();
-    await transfer.evaluate((details) => {
-      if (!details.hasAttribute("open")) throw new Error("Project transfer did not open");
-    });
-
-    const layout = await page.locator("[data-project-details-drawer]").evaluate((drawer) => {
-      const dialog = drawer.shadowRoot?.querySelector<HTMLElement>("[part~='dialog']");
-      const transfer = drawer.querySelector<HTMLElement>('[data-project-section="transfer"]');
-      const textarea = transfer?.querySelector<HTMLElement>("textarea");
-      const buttons = [...(transfer?.querySelectorAll<HTMLElement>("wa-button") ?? [])];
-      if (!dialog || !transfer || !textarea) throw new Error("Missing expanded project transfer content");
-      const bounds = (element: HTMLElement) => {
-        const rect = element.getBoundingClientRect();
-        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-      };
-      return {
-        dialog: bounds(dialog),
-        transfer: bounds(transfer),
-        textarea: { ...bounds(textarea), clientWidth: textarea.clientWidth, scrollWidth: textarea.scrollWidth },
-        buttons: buttons.map((button) => ({
-          ...bounds(button),
-          clientWidth: button.clientWidth,
-          scrollWidth: button.scrollWidth,
-        })),
-        pageWidth: document.documentElement.scrollWidth,
-        viewportWidth: window.innerWidth,
-      };
-    });
-
-    expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(isHorizontallyContained(layout.transfer, layout.dialog)).toBe(true);
-    expect(isHorizontallyContained(layout.textarea, layout.dialog)).toBe(true);
-    expect(layout.textarea.scrollWidth).toBeLessThanOrEqual(layout.textarea.clientWidth);
-    expect(layout.buttons.every((button) => button.clientWidth > 0 && button.scrollWidth <= button.clientWidth)).toBe(true);
-  });
-
-  it("stacks the editor workflow action above its connection warning at 420px", async () => {
+  it("does not move the page when connection controls are clicked", async () => {
     const page = await openPage({ width: 420, height: 700 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.locator('[data-device-action="connect"]').click();
+    const position = await page.evaluate(() => ({ left: window.scrollX, top: window.scrollY }));
 
-    const layout = await page.locator("[data-editor-workflow]").evaluate((workflow) => {
-      const connect = workflow.querySelector<HTMLElement>("[data-device-action=connect]");
-      const warning = workflow.querySelector<HTMLElement>("[data-device-state]");
-      if (!connect || !warning) throw new Error("Missing editor workflow content");
-      const connectRect = connect.getBoundingClientRect();
-      const warningRect = warning.getBoundingClientRect();
-      return {
-        connect: { bottom: connectRect.bottom, top: connectRect.top },
-        warning: { bottom: warningRect.bottom, top: warningRect.top },
-      };
-    });
-
-    expect(layout.warning.top).toBeGreaterThanOrEqual(layout.connect.bottom + 8);
+    expect(position).toEqual({ left: 0, top: 0 });
+    expect(await page.locator("[data-connection-screen]").count()).toBe(1);
   });
 
-  it("wraps desktop layer tabs into their selection group and keeps actions inside their tools", async () => {
-    const page = await openPage({ width: 1440, height: 1200 });
-
-    for (let index = 0; index < 9; index += 1) {
-      await page.locator(".layer-tab.add").click();
-    }
-
-    const layout = await page.locator("[data-workspace-controls]").evaluate((controls) => {
-      const bounds = (selector: string) => {
-        const element = controls.querySelector<HTMLElement>(selector);
-        if (!element) throw new Error(`Missing ${selector}`);
-        const rect = element.getBoundingClientRect();
-        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
-      };
-      const layerTabs = controls.querySelector<HTMLElement>(".layers");
-      const actions = controls.querySelector<HTMLElement>("[data-layer-actions]");
-      if (!layerTabs || !actions) throw new Error("Missing lower controls");
-      return {
-        controls: (() => {
-          const rect = controls.getBoundingClientRect();
-          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
-        })(),
-        layerStrip: bounds("[data-layer-strip]"),
-        layerTabs: {
-          clientWidth: layerTabs.clientWidth,
-          overflowX: getComputedStyle(layerTabs).overflowX,
-          scrollWidth: layerTabs.scrollWidth,
-          ...bounds(".layers"),
-        },
-        actions: bounds("[data-layer-actions]"),
-        actionButtons: [...actions.querySelectorAll<HTMLElement>("[data-layer-action]")].map((button) => {
-          const rect = button.getBoundingClientRect();
-          return {
-            clientWidth: button.clientWidth,
-            scrollWidth: button.scrollWidth,
-            left: rect.left,
-            right: rect.right,
-            top: rect.top,
-            bottom: rect.bottom,
-            width: rect.width,
-            height: rect.height,
-          };
-        }),
-      };
-    });
-
-    expect(layout.layerTabs.overflowX).toBe("visible");
-    expect(layout.layerTabs.scrollWidth).toBeLessThanOrEqual(layout.layerTabs.clientWidth);
-    expect(isContained(layout.layerTabs, layout.layerStrip)).toBe(true);
-    expect(isContained(layout.actions, layout.layerStrip)).toBe(true);
-    expect(layout.actionButtons).toHaveLength(2);
-    expect(layout.actionButtons.every((button) => button.width > 0 && button.height > 0 && isContained(button, layout.actions))).toBe(true);
-    expect(layout.actionButtons.every((button) => button.scrollWidth <= button.clientWidth)).toBe(true);
-  });
-
-  it("stacks lower groups without horizontal page overflow on a narrow viewport", async () => {
-    const page = await openPage({ width: 420, height: 1200 });
-
-    const layout = await page.locator("[data-workspace-controls]").evaluate((controls) => {
-      const bounds = (element: Element) => {
-        const rect = element.getBoundingClientRect();
-        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
-      };
-      const groups = [...controls.querySelectorAll<HTMLElement>(":scope > [data-settings-group]")];
-      const layerTools = controls.querySelector<HTMLElement>("[data-layer-tools]");
-      const actions = controls.querySelector<HTMLElement>("[data-layer-actions]");
-      const layerName = controls.querySelector<HTMLElement>(".layer-name-field");
-      const contextDock = controls.querySelector<HTMLElement>("[data-context-dock]");
-      if (!layerTools || !actions || !layerName || !contextDock) {
-        throw new Error("Missing lower controls");
-      }
-      return {
-        controls: bounds(controls),
-        groups: groups.map(bounds),
-        layerTools: bounds(layerTools),
-        layerName: bounds(layerName),
-        actions: bounds(actions),
-        contextDock: bounds(contextDock),
-        buttons: [...actions.querySelectorAll<HTMLElement>("[data-layer-action]")].map((button) => ({
-          ...bounds(button),
-          clientWidth: button.clientWidth,
-          scrollWidth: button.scrollWidth,
-        })),
-        overflowY: getComputedStyle(controls).overflowY,
-        scrollHeight: controls.scrollHeight,
-        clientHeight: controls.clientHeight,
-        viewportWidth: window.innerWidth,
-        pageWidth: document.documentElement.scrollWidth,
-      };
-    });
-
-    expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(layout.groups).toHaveLength(2);
-    expect(layout.groups.every((group) => isHorizontallyContained(group, layout.controls))).toBe(true);
-    expect(layout.groups[1].top).toBeGreaterThanOrEqual(layout.groups[0].bottom);
-    expect(isContained(layout.layerName, layout.layerTools)).toBe(true);
-    expect(isContained(layout.actions, layout.layerTools)).toBe(true);
-    expect(layout.buttons.every((button) => button.width > 0 && button.height > 0 && isContained(button, layout.actions))).toBe(true);
-    expect(layout.buttons.every((button) => button.scrollWidth <= button.clientWidth)).toBe(true);
-    expect(layout.actions.top).toBeGreaterThanOrEqual(layout.layerName.bottom);
-    expect(layout.overflowY).toBe("visible");
-    expect(layout.scrollHeight).toBeLessThanOrEqual(layout.clientHeight);
-
-    await page.locator("[data-context-dock]").scrollIntoViewIfNeeded();
-    const contextAfterScroll = await page.locator("[data-context-dock]").evaluate((dock) => {
-      const controls = dock.closest<HTMLElement>("[data-workspace-controls]");
-      if (!controls) throw new Error("Missing workspace controls");
-      const dockRect = dock.getBoundingClientRect();
-      const controlsRect = controls.getBoundingClientRect();
-      return {
-        dock: { top: dockRect.top, bottom: dockRect.bottom },
-        controls: { top: controlsRect.top, bottom: controlsRect.bottom },
-      };
-    });
-    expect(contextAfterScroll.dock.bottom).toBeGreaterThan(contextAfterScroll.controls.top);
-    expect(contextAfterScroll.dock.top).toBeLessThan(contextAfterScroll.controls.bottom);
-  });
-
-  it.each([
-    { height: 700, width: 420 },
-    { height: 478, width: 1566 },
-  ])("keeps layer actions accessible through the main workspace at $width×$height", async (viewport) => {
-    const page = await openPage(viewport);
-
-    await page.locator("[data-layer-actions]").scrollIntoViewIfNeeded();
-    const layout = await page.locator(".workspace").evaluate((workspace) => {
-      const controls = workspace.querySelector<HTMLElement>("[data-workspace-controls]");
-      const actions = workspace.querySelector<HTMLElement>("[data-layer-actions]");
-      const canvas = workspace.querySelector<HTMLElement>("[data-keyboard-canvas]");
-      if (!controls || !actions || !canvas) throw new Error("Missing editor controls");
-      const workspaceRect = workspace.getBoundingClientRect();
-      const actionsRect = actions.getBoundingClientRect();
-      canvas.scrollLeft = 1;
-      canvas.scrollTop = 1;
-      return {
-        actions: { top: actionsRect.top, bottom: actionsRect.bottom },
-        controls: {
-          clientHeight: controls.clientHeight,
-          scrollHeight: controls.scrollHeight,
-          scrollTop: controls.scrollTop,
-          overflowY: getComputedStyle(controls).overflowY,
-        },
-        workspace: {
-          clientHeight: workspace.clientHeight,
-          scrollHeight: workspace.scrollHeight,
-          scrollTop: workspace.scrollTop,
-          overflowY: getComputedStyle(workspace).overflowY,
-          top: workspaceRect.top,
-          bottom: workspaceRect.bottom,
-        },
-        keyboardCanvas: {
-          clientHeight: canvas.clientHeight,
-          clientWidth: canvas.clientWidth,
-          overflowX: getComputedStyle(canvas).overflowX,
-          overflowY: getComputedStyle(canvas).overflowY,
-          scrollLeft: canvas.scrollLeft,
-          scrollTop: canvas.scrollTop,
-          scrollWidth: canvas.scrollWidth,
-          scrollHeight: canvas.scrollHeight,
-        },
-        pageWidth: document.documentElement.scrollWidth,
-        viewportWidth: window.innerWidth,
-      };
-    });
-
-    expect(layout.workspace.overflowY).toBe("auto");
-    expect(layout.workspace.scrollHeight).toBeGreaterThan(layout.workspace.clientHeight);
-    expect(layout.workspace.scrollTop).toBeGreaterThan(0);
-    expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(layout.keyboardCanvas.clientHeight).toBeGreaterThan(0);
-    expect(layout.keyboardCanvas.clientWidth).toBeGreaterThan(0);
-    expect(layout.keyboardCanvas.overflowX).not.toBe("auto");
-    expect(layout.keyboardCanvas.overflowY).not.toBe("auto");
-    expect(layout.keyboardCanvas.scrollWidth).toBeLessThanOrEqual(layout.keyboardCanvas.clientWidth);
-    expect(layout.keyboardCanvas.scrollLeft).toBe(0);
-    expect(layout.keyboardCanvas.scrollTop).toBe(0);
-    expect(layout.controls.overflowY).not.toBe("auto");
-    expect(layout.controls.scrollTop).toBe(0);
-    expect(layout.controls.scrollHeight).toBeLessThanOrEqual(layout.controls.clientHeight);
-    expect(layout.actions.top).toBeGreaterThanOrEqual(layout.workspace.top);
-    expect(layout.actions.bottom).toBeLessThanOrEqual(layout.workspace.bottom);
-  });
-
-  it("frames the keyboard canvas and preserves the inspector", async () => {
-    const page = await openPage({ width: 1440, height: 900 });
-
-    const layout = await page.locator("[data-workbench-surface]").evaluate((surface) => {
-      const canvas = surface.querySelector<HTMLElement>("[data-keyboard-canvas]");
-      const inspector = surface.querySelector<HTMLElement>("[data-key-info-panel]");
-      if (!canvas || !inspector) throw new Error("Missing workbench regions");
-      const canvasStyle = getComputedStyle(canvas);
-      const inspectorStyle = getComputedStyle(inspector);
-      return {
-        canvas: {
-          boxShadow: canvasStyle.boxShadow,
-          overflowX: canvasStyle.overflowX,
-        },
-        inspector: {
-          borderLeftWidth: Number.parseFloat(inspectorStyle.borderLeftWidth),
-          overflowY: inspectorStyle.overflowY,
-        },
-      };
-    });
-
-    expect(layout.canvas.boxShadow).not.toBe("none");
-    expect(layout.canvas.overflowX).not.toBe("auto");
-    expect(layout.inspector.borderLeftWidth).toBeGreaterThan(0);
-    expect(["auto", "scroll"]).toContain(layout.inspector.overflowY);
-  });
-
-  it("uses sharp aligned control groups in the desktop workbench", async () => {
-    const page = await openPage({ width: 1440, height: 900 });
-
-    const layout = await page.locator("body").evaluate((app) => {
-      const canvas = app.querySelector<HTMLElement>("[data-keyboard-canvas]");
-      const inspector = app.querySelector<HTMLElement>("[data-key-info-panel]");
-      const nav = app.querySelector<HTMLElement>(".app-rail nav");
-      const contextTabs = app.querySelector<HTMLElement>(".context-tabs");
-      const groups = [...app.querySelectorAll<HTMLElement>("[data-settings-group]")];
-      const firstKey = app.querySelector<HTMLElement>(".key");
-      if (!canvas || !inspector || !nav || !contextTabs || !firstKey || groups.length !== 2) {
-        throw new Error("Missing grouped editor controls");
+  it("keeps a real hardware keymap read contained and its grouped controls aligned at a narrow desktop width", async () => {
+    const page = await openReadResultPage({ width: 900, height: 760 });
+    const layout = await page.locator("[data-hardware-snapshot]").evaluate((snapshot) => {
+      const keymap = snapshot.querySelector<HTMLElement>("[data-hardware-keymap]");
+      const board = snapshot.querySelector<HTMLElement>("[data-hardware-keymap-board]");
+      const layerTabs = snapshot.querySelector<HTMLElement>("[data-hardware-layer-tabs]");
+      const identity = snapshot.querySelector<HTMLElement>("[data-snapshot-field=identity]");
+      const capabilities = snapshot.querySelector<HTMLElement>("[data-snapshot-field=capabilities]");
+      const lighting = snapshot.querySelector<HTMLElement>("[data-snapshot-field=lighting]");
+      if (!keymap || !board || !layerTabs || !identity || !capabilities || !lighting) {
+        throw new Error("Expected a complete hardware snapshot workspace");
       }
 
-      const metrics = (element: HTMLElement) => {
-        const rect = element.getBoundingClientRect();
-        const style = getComputedStyle(element);
-        return {
-          borderRadius: style.borderTopLeftRadius,
-          height: rect.height,
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-        };
-      };
-      const navItems = [...nav.querySelectorAll<HTMLElement>(".nav-item")].map(metrics);
-      return {
-        canvas: metrics(canvas),
-        contextTabs: metrics(contextTabs),
-        firstKey: metrics(firstKey),
-        groups: groups.map(metrics),
-        nav: {
-          gap: getComputedStyle(nav).gap,
-          items: navItems,
-        },
-        inspector: metrics(inspector),
-      };
-    });
-
-    expect(layout.canvas.width).toBeGreaterThan(760);
-    expect(layout.canvas.width).toBeLessThanOrEqual(900);
-    expect(layout.inspector.top).toBeGreaterThanOrEqual(layout.canvas.top + layout.canvas.height);
-    expect(layout.firstKey.width).toBeGreaterThan(38);
-    expect(layout.nav.gap).toBe("0px");
-    expect(layout.nav.items.every((item) => item.left === layout.nav.items[0].left && item.width === layout.nav.items[0].width)).toBe(true);
-    expect([
-      layout.canvas,
-      layout.contextTabs,
-      layout.inspector,
-      ...layout.groups,
-      ...layout.nav.items,
-    ].every((element) => element.borderRadius === "0px")).toBe(true);
-  }, 10_000);
-
-  it.each([
-    { height: 900, maxCanvasWidth: 900, minCanvasWidth: 760, width: 1440 },
-    { height: 1440, maxCanvasWidth: 1160, minCanvasWidth: 1080, width: 2560 },
-  ])("balances the complete map and menu rail at $width×$height", async (viewport) => {
-    const page = await openPage(viewport);
-
-    const layout = await page.locator("[data-keyboard-workspace]").evaluate((workspace) => {
-      const stage = workspace.querySelector<HTMLElement>("[data-keyboard-stage]");
-      const canvas = workspace.querySelector<HTMLElement>("[data-keyboard-canvas]");
-      const controls = workspace.querySelector<HTMLElement>("[data-workspace-controls]");
-      const board = canvas?.querySelector<HTMLElement>(".board");
-      if (!stage || !canvas || !controls || !board) throw new Error("Missing balanced workbench regions");
-      canvas.scrollLeft = 1;
-      canvas.scrollTop = 1;
       const bounds = (element: HTMLElement) => {
         const rect = element.getBoundingClientRect();
-        return { bottom: rect.bottom, height: rect.height, left: rect.left, right: rect.right, top: rect.top, width: rect.width };
+        return { bottom: rect.bottom, left: rect.left, right: rect.right, top: rect.top };
       };
+      const styles = [identity, capabilities, lighting].map((panel) => getComputedStyle(panel));
       return {
         board: bounds(board),
-        canvas: {
-          ...bounds(canvas),
-          overflowX: getComputedStyle(canvas).overflowX,
-          overflowY: getComputedStyle(canvas).overflowY,
-          scrollLeft: canvas.scrollLeft,
-          scrollTop: canvas.scrollTop,
-        },
-        controls: bounds(controls),
-        stage: bounds(stage),
-      };
-    });
-
-    expect(layout.canvas.width).toBeGreaterThanOrEqual(viewport.minCanvasWidth);
-    expect(layout.canvas.width).toBeLessThanOrEqual(viewport.maxCanvasWidth);
-    expect(isContained(layout.board, layout.canvas)).toBe(true);
-    expect(layout.canvas.overflowX).not.toBe("auto");
-    expect(layout.canvas.overflowY).not.toBe("auto");
-    expect(layout.canvas.scrollLeft).toBe(0);
-    expect(layout.canvas.scrollTop).toBe(0);
-    expect(layout.controls.left).toBeGreaterThanOrEqual(layout.stage.right + 8);
-    expect(layout.controls.top).toBeLessThanOrEqual(layout.canvas.top + 1);
-  });
-
-  it.each([
-    { height: 700, width: 320 },
-    { height: 900, width: 1440 },
-  ])("keeps the complete keyboard map visible at $width×$height", async (viewport) => {
-    const page = await openPage(viewport);
-
-    const layout = await page.locator("[data-keyboard-canvas]").evaluate((canvas) => {
-      const board = canvas.querySelector<HTMLElement>(".board");
-      if (!board) throw new Error("Missing keyboard board");
-      canvas.scrollLeft = 1;
-      canvas.scrollTop = 1;
-      const canvasRect = canvas.getBoundingClientRect();
-      const boardRect = board.getBoundingClientRect();
-      const style = getComputedStyle(canvas);
-      return {
-        board: { bottom: boardRect.bottom, left: boardRect.left, right: boardRect.right, top: boardRect.top },
-        canvas: { bottom: canvasRect.bottom, left: canvasRect.left, right: canvasRect.right, top: canvasRect.top },
-        clientHeight: canvas.clientHeight,
-        clientWidth: canvas.clientWidth,
-        overflowX: style.overflowX,
-        overflowY: style.overflowY,
-        scrollLeft: canvas.scrollLeft,
-        scrollTop: canvas.scrollTop,
-        scrollHeight: canvas.scrollHeight,
-        scrollWidth: canvas.scrollWidth,
+        keymap: bounds(keymap),
+        layerTabs: bounds(layerTabs),
+        menuBorders: styles.map((style) => style.borderTopWidth),
+        menuLeftEdges: [bounds(identity).left, bounds(capabilities).left, bounds(lighting).left],
         pageWidth: document.documentElement.scrollWidth,
+        snapshot: bounds(snapshot as HTMLElement),
         viewportWidth: window.innerWidth,
       };
     });
 
-    expect(layout.overflowX).not.toBe("auto");
-    expect(layout.overflowY).not.toBe("auto");
-    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
-    expect(layout.scrollLeft).toBe(0);
-    expect(layout.scrollTop).toBe(0);
-    expect(isContained(layout.board, layout.canvas)).toBe(true);
     expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
-  });
-
-  it("groups layer and assignment controls by their task", async () => {
-    const page = await openPage({ width: 1440, height: 900 });
-
-    const groups = await page.locator("body").evaluate((app) =>
-      [...app.querySelectorAll<HTMLElement>("[data-control-group]")].map((group) => ({
-        content: group.querySelectorAll("button, input, select, textarea, wa-button, wa-details, dl, .parameter-block, .layer-functions, .condition-list, .relation-list").length,
-        label: group.getAttribute("data-control-group"),
-        title: group.querySelector<HTMLElement>("[data-control-group-title]")?.textContent,
-      })),
+    expect(isContained(layout.keymap, layout.snapshot)).toBe(true);
+    expect(isContained(layout.board, layout.keymap)).toBe(true);
+    expect(isContained(layout.layerTabs, layout.keymap)).toBe(true);
+    expect(layout.board.right - layout.board.left).toBeLessThanOrEqual(
+      layout.keymap.right - layout.keymap.left,
     );
-
-    expect(groups.map((group) => group.label)).toEqual(expect.arrayContaining([
-      "layer-selection",
-      "layer-details",
-      "key-assignment",
-      "assignment-tools",
-      "key-context",
-      "key-functions",
-      "key-lighting",
-      "key-relations",
-    ]));
-    expect(groups.every((group) => group.title && group.content > 0)).toBe(true);
+    expect(layout.menuBorders).toEqual(["1px", "1px", "1px"]);
+    expect(layout.menuLeftEdges[0]).toBe(layout.menuLeftEdges[2]);
+    expect(layout.menuLeftEdges[1]).toBeGreaterThan(layout.menuLeftEdges[0]);
   });
 });
 
 async function openPage(viewport: { width: number; height: number }): Promise<Page> {
   const page = await browser.newPage({ viewport });
   await page.goto(origin, { waitUntil: "networkidle" });
-  await page.locator("[data-workspace-controls]").waitFor();
+  await page.locator("[data-connection-screen]").waitFor();
+  return page;
+}
+
+async function openReadResultPage(viewport: { width: number; height: number }): Promise<Page> {
+  const page = await browser.newPage({ viewport });
+  await page.addInitScript(() => {
+    const listeners = new Set<(event: { reportId: number; data: Uint8Array }) => void>();
+    const report = (bytes: number[]) => {
+      const result = new Uint8Array(32);
+      result.set(bytes);
+      return result;
+    };
+    const responseFor = (request: Uint8Array) => {
+      if (request[0] === 0xa0) return report([0xa0, 0x02, 0x00, 0x02]);
+      if (request[0] === 0xa1) return report([0xa1, ...[..."v1.0.0"].map((character) => character.charCodeAt(0))]);
+      if (request[0] === 0xa2) return report([0xa2, 0x00, 0x81]);
+      if (request[0] === 0xa3) return report([0xa3, 0x02]);
+      if (request[0] === 0x11) return report([0x11, 0x04]);
+      if (request[0] === 0x04) return report([0x04, request[1]!, request[2]!, request[3]!, 0x12, 0x34]);
+      if (request[0] !== 0xa8) return undefined;
+      if (request[1] === 0x01) return report([0xa8, 0x01, 0x01, 0x00]);
+      if (request[1] === 0x03) return report([0xa8, 0x03, 0x11]);
+      if (request[1] === 0x05) return report([0xa8, 0x05, 0]);
+      return undefined;
+    };
+    const device = {
+      vendorId: 0x3434,
+      productId: 0x0950,
+      productName: "Keychron V5 Max",
+      collections: [{ usagePage: 0xff60, usage: 0x0061 }],
+      opened: false,
+      open: async () => {
+        device.opened = true;
+      },
+      close: async () => {
+        device.opened = false;
+      },
+      sendReport: async (_reportId: number, data: BufferSource) => {
+        const response = responseFor(new Uint8Array(data as ArrayBuffer));
+        if (response) listeners.forEach((listener) => listener({ reportId: 0, data: response }));
+      },
+      addEventListener: (_type: "inputreport", listener: (event: { reportId: number; data: Uint8Array }) => void) => {
+        listeners.add(listener);
+      },
+      removeEventListener: (_type: "inputreport", listener: (event: { reportId: number; data: Uint8Array }) => void) => {
+        listeners.delete(listener);
+      },
+    };
+    Object.defineProperty(navigator, "hid", {
+      configurable: true,
+      value: { getDevices: async () => [device], requestDevice: async () => [device] },
+    });
+  });
+  await page.goto(origin, { waitUntil: "networkidle" });
+  await page.locator('[data-device-action="read"]').click();
+  await page.locator("[data-hardware-snapshot]").waitFor();
   return page;
 }
 
@@ -542,12 +188,4 @@ function isContained(
     child.top >= parent.top - tolerance &&
     child.bottom <= parent.bottom + tolerance
   );
-}
-
-function isHorizontallyContained(
-  child: { left: number; right: number },
-  parent: { left: number; right: number },
-): boolean {
-  const tolerance = 0.5;
-  return child.left >= parent.left - tolerance && child.right <= parent.right + tolerance;
 }
