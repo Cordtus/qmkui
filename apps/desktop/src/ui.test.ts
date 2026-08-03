@@ -40,7 +40,6 @@ describe("device-first hardware workspace", () => {
     root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
     await flush();
 
-    expect(root.querySelector("[data-recognized-device]")?.textContent).toContain("3434:0950");
     expect(root.querySelector('[data-device-action="read"]')?.textContent).toBe("Read device");
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
     expect(root.querySelector('[data-device-action="write"]')).toBeNull();
@@ -66,9 +65,7 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector('[data-hardware-key="0:2"]')?.textContent).toContain("0x0005");
     expect(root.textContent).not.toContain("KC_ESC");
     expect(root.textContent).toContain("HSV 12, 34, 56");
-    expect(root.textContent).toContain("Effect 7 (configuration effect; not a live animation capture)");
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
-    expect(root.querySelector("[data-default-comparison]")).not.toBeNull();
   });
 
   it("ignores a snapshot that resolves after another keyboard selection starts", async () => {
@@ -105,7 +102,6 @@ describe("device-first hardware workspace", () => {
     ["default", "reset", "stage", "write", "flash"].forEach((action) => {
       expect(root.querySelector(`[data-device-action="${action}"]`)).toBeNull();
     });
-    expect(root.textContent).toContain("never resets, loads defaults, stages, writes, or flashes");
   });
 
   it("keeps unavailable and unverified configuration reasons visible without substituting defaults", async () => {
@@ -147,7 +143,6 @@ describe("device-first hardware workspace", () => {
 
     expect(root.querySelector('[data-device-action="verify-protocol"]')).not.toBeNull();
     expect(root.querySelector('[data-device-action="read"]')).toBeNull();
-    expect(root.querySelector("[data-device-state]")?.textContent).toContain("VIA keyboard awaiting verification");
     expect(root.textContent).not.toContain("Keychron V5 Max");
 
     root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
@@ -157,9 +152,6 @@ describe("device-first hardware workspace", () => {
     root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
     await flush();
     expect(readStandardState).toHaveBeenCalledOnce();
-    expect(root.textContent).toContain("Confirmed VIA keyboard");
-    expect(root.textContent).toContain("No verified keyboard definition is available for this VIA device.");
-    expect(root.querySelector("[data-default-comparison]")).toBeNull();
     expect(root.querySelector("[data-hardware-keymap]")).toBeNull();
   });
 

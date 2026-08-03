@@ -670,9 +670,7 @@ function mainShell(
 
 function connectionScreen(state: EditorState, actions: RenderActions): HTMLElement {
   const choosing = state.deviceSelection.state === "selecting";
-  const recognized = isBrowserReadSelection(state.deviceSelection)
-    ? state.deviceSelection
-    : undefined;
+  const recognized = isBrowserReadSelection(state.deviceSelection) ? state.deviceSelection : undefined;
   const session = recognized ? browserReadSession(recognized) : undefined;
   const canRead = Boolean(session?.capabilities.canRead);
   const connect = uiButton({
@@ -712,40 +710,13 @@ function connectionScreen(state: EditorState, actions: RenderActions): HTMLEleme
     : undefined;
   verify?.addEventListener("click", actions.verifyKeychronV5MaxProtocol);
 
-  const detailRows: Array<[string, string]> = recognized
-    ? [
-        ["Identity", keyboardIdentityLabel(recognized.identity)],
-        ["Read access", session?.capabilities.canRead ? "Available" : "Verify standard VIA protocol first"],
-        ["Write access", "Not available"],
-        ["Flash access", "Not available"],
-      ]
-    : [];
+  const error = connectionError(state.deviceSelection, state.protocolVerification, state.snapshotReadStatus);
 
   return element("main", { className: "connection-shell", attrs: { "data-connection-screen": "true" } }, [
     element("section", { className: "connection-panel" }, [
-      element("p", { className: "eyebrow", text: "QMKUI" }),
-      element("h1", { text: recognized ? "Browser-authorized keyboard" : "Connect a keyboard" }),
-      element("p", {
-        className: "connection-summary",
-        text: recognized
-          ? "The browser authorized a recognized keyboard. Read device fetches a bounded, read-only snapshot; it never applies a preset, default, reset, write, or flash operation."
-          : "Authorize a keyboard in the browser before QMKUI identifies it. No model, project, layout, or configuration is loaded on this screen.",
-      }),
       element("div", { className: "connection-actions" }, [connect, ...(verify ? [verify] : []), ...(read ? [read] : [])]),
-      element("p", {
-        className: "connection-state",
-        attrs: { "data-device-state": "true" },
-        text: state.snapshotReadStatus === "failed"
-          ? "Device read failed. No configuration was loaded or changed; retry when ready."
-          : deviceSelectionLabel(state.deviceSelection, state.protocolVerification),
-      }),
-      ...(detailRows.length > 0
-        ? [
-            element("section", { className: "connection-capabilities", attrs: { "data-recognized-device": "true" } }, [
-              element("h2", { text: "Recognized device capabilities" }),
-              definitionList(detailRows),
-            ]),
-          ]
+      ...(error
+        ? [element("p", { className: "connection-state", attrs: { "data-device-state": "true" }, text: error })]
         : []),
     ]),
   ]);
@@ -776,34 +747,14 @@ function snapshotScreen(state: EditorState, actions: RenderActions): HTMLElement
 
   return element("main", { className: "snapshot-shell", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
     element("header", { className: "snapshot-header" }, [
-      element("div", {}, [
-        element("p", { className: "eyebrow", text: "Hardware snapshot" }),
-        element("h1", { text: snapshot.identity.state === "available" ? snapshot.identity.value.model : "Recognized keyboard" }),
-        element("p", { className: "snapshot-timestamp", text: `Read ${snapshot.readAt}` }),
-      ]),
+      element("h1", { text: snapshot.identity.state === "available" ? snapshot.identity.value.model : "Keyboard" }),
       element("div", { className: "snapshot-actions" }, [refresh, choose]),
     ]),
-    element("p", {
-      className: "snapshot-boundary",
-      text: "Reported device state is read-only. Refresh performs another read only; it never resets, loads defaults, stages, writes, or flashes.",
-    }),
     element("section", { className: "snapshot-grid" }, [
       snapshotKeymapField(snapshot.keymap, state.snapshotLayerIndex, actions.selectSnapshotLayer),
       snapshotField("Identity", snapshot.identity, identitySnapshotRows),
       snapshotField("Capabilities", snapshot.capabilities, capabilitySnapshotRows),
       snapshotField("Lighting", snapshot.lighting, lightingSnapshotRows),
-    ]),
-    element("wa-details", {
-      className: "default-comparison",
-      attrs: {
-        appearance: "outlined",
-        summary: "Compare with definition baseline",
-        "data-default-comparison": "true",
-      },
-    }, [
-      element("p", {
-        text: `Reference only: bundled ${keychronV5MaxKeyboard.displayName} definition (${keychronV5MaxKeyboard.source?.version ?? "unknown version"}). It is not active configuration and is never applied to this device.`,
-      }),
     ]),
   ]);
 }
@@ -833,17 +784,9 @@ function genericViaSnapshotScreen(
 
   return element("main", { className: "snapshot-shell", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
     element("header", { className: "snapshot-header" }, [
-      element("div", {}, [
-        element("p", { className: "eyebrow", text: "Hardware snapshot" }),
-        element("h1", { text: "Confirmed VIA keyboard" }),
-        element("p", { className: "snapshot-timestamp", text: `Read ${snapshot.readAt}` }),
-      ]),
+      element("h1", { text: "VIA" }),
       element("div", { className: "snapshot-actions" }, [refresh, choose]),
     ]),
-    element("p", {
-      className: "snapshot-boundary",
-      text: "Reported standard VIA state is read-only. No keyboard model, layout, keymap, default configuration, write, or flash operation is inferred.",
-    }),
     element("section", { className: "snapshot-grid" }, [
       snapshotField("Identity", snapshot.identity, () => []),
       genericValueField("Protocol version", snapshot.protocolVersion, (version) => `0x${version.toString(16).padStart(4, "0")}`),
@@ -875,7 +818,7 @@ function genericValueField(
   field: { state: "available" | "unavailable" | "unverified"; value?: number; reason?: string },
   format: (value: number) => string = String,
 ): HTMLElement {
-  return snapshotField(label, field, (value) => [["Reported value", format(value)]]);
+  return snapshotField(label, field, (value) => [["", format(value)]]);
 }
 
 function snapshotField(
@@ -891,7 +834,7 @@ function snapshotField(
     element("h2", { text: label }),
     available
       ? definitionList(rows(field.value))
-      : element("p", { className: "snapshot-reason", text: `${field.state}: ${field.reason ?? "No reason was supplied."}` }),
+      : element("p", { className: "snapshot-reason", text: field.reason ?? "Unavailable" }),
   ]);
 }
 
@@ -912,8 +855,7 @@ function keymapSnapshotRows(value: ViaKeymap): Array<[string, string]> {
   const firstKeycode = value.keycodes[0]?.[0]?.[0];
   return [
     ["Layers", String(value.layerCount)],
-    ["First reported keycode", firstKeycode === undefined ? "No keycodes returned" : `0x${firstKeycode.toString(16).padStart(4, "0")}`],
-    ["State", "Reported configuration (read-only)"],
+    ...(firstKeycode === undefined ? [] : [["First", `0x${firstKeycode.toString(16).padStart(4, "0")}`] as [string, string]]),
   ];
 }
 
@@ -978,7 +920,6 @@ function snapshotKeymapField(
     element("div", { className: "hardware-keymap-heading" }, [
       element("div", {}, [
         element("h2", { text: "Keymap" }),
-        element("p", { className: "snapshot-reason", text: "Current hardware-reported keycodes, read-only." }),
       ]),
       layerTabs,
     ]),
@@ -991,16 +932,12 @@ function formatHardwareKeycode(keycode: number): string {
 }
 
 function lightingSnapshotRows(value: KeychronV5MaxLighting): Array<[string, string]> {
-  const colors = value.colors.length
-    ? value.colors.map((color) => `LED ${color.led}: HSV ${color.hue}, ${color.saturation}, ${color.value}`).join("; ")
-    : "No per-key colors returned";
-  const effects = value.effects.length
-    ? value.effects.map((effect) => `LED ${effect.led}: Effect ${effect.effect} (configuration effect; not a live animation capture)`).join("; ")
-    : "No effect types returned";
+  const colors = value.colors.map((color) => `LED ${color.led}: HSV ${color.hue}, ${color.saturation}, ${color.value}`).join("; ");
+  const effects = value.effects.map((effect) => `LED ${effect.led}: ${effect.effect}`).join("; ");
   return [
     ["RGB protocol", value.rgbProtocol.map((part) => `0x${part.toString(16).padStart(2, "0")}`).join(" ")],
-    ["Reported colors", colors],
-    ["Reported effects", effects],
+    ...(colors ? [["Colors", colors] as [string, string]] : []),
+    ...(effects ? [["Effects", effects] as [string, string]] : []),
   ];
 }
 
@@ -1050,7 +987,6 @@ function rail(activeView: AppView, selectView: (view: AppView) => void): HTMLEle
       element("span", { className: "mark", text: "Q" }),
       element("div", {}, [
         element("strong", { text: "QMKUI" }),
-        element("small", { text: "Preview" }),
       ]),
     ]),
     nav,
@@ -1083,11 +1019,6 @@ function topbar(
     element("div", { className: "project-heading" }, [
       element("p", { className: "eyebrow", text: state.keyboard.displayName }),
       element("h1", { text: state.project.name }),
-      element("p", {
-        className: "preview-boundary",
-        text: "Software-only preview · no device connection",
-        attrs: { "data-preview-boundary": "true" },
-      }),
     ]),
     element("div", { className: "topbar-actions" }, [
       save,
@@ -1227,7 +1158,7 @@ function editorWorkflow(
       : []),
     element("small", {
       attrs: { "data-device-state": "true" },
-      text: deviceSelectionLabel(state.deviceSelection, state.protocolVerification),
+      text: connectionError(state.deviceSelection, state.protocolVerification, "idle"),
     }),
   ]);
 
@@ -1235,68 +1166,41 @@ function editorWorkflow(
     className: "editor-workflow",
     attrs: { "data-editor-workflow": "true" },
   }, [
-    element("p", {
-      className: "workflow-summary",
-      text: "Edit the keymap, validate it, then download QMK JSON for your local build workflow.",
-    }),
     actionGroup,
     notices,
   ]);
 }
 
-function deviceSelectionLabel(
+function connectionError(
   selection: DeviceSelectionState,
   protocolVerification: ProtocolVerificationState,
+  readStatus: EditorState["snapshotReadStatus"],
 ): string {
-  if (selection.state === "discovering") {
-    return "Checking for HID devices this browser already allows. No configuration is read or changed.";
-  }
-  if (selection.state === "selecting") {
-    return "Choose your keyboard in the browser prompt. QMKUI will only inspect its static identity.";
+  if (readStatus === "failed") {
+    return "Device read failed.";
   }
   if (selection.state === "cancelled") {
-    return "Keyboard chooser was cancelled or did not complete. Try again when you are ready.";
+    return "Selection cancelled.";
   }
   if (selection.state === "discovery-failed") {
-    return "Could not check previously allowed HID devices. Choose a keyboard to identify it.";
+    return "Device discovery failed.";
   }
   if (selection.state === "unavailable") {
-    return "Keyboard detection requires WebHID. Use Chrome, Edge, or Opera.";
-  }
-  if (selection.state === "no-authorized-device") {
-    return "No previously allowed HID device was found. Choose a keyboard to identify it; no configuration will be read or changed.";
-  }
-  if (selection.state === "no-selection") {
-    return "No keyboard selected.";
+    return "WebHID unavailable.";
   }
   if ("contract" in selection) {
     if (selection.contract.state === "unsupported") {
-      return `${keyboardIdentityLabel(selection.identity)} was detected, but QMKUI does not currently support configuration for it.`;
+      return "Unsupported keyboard.";
     }
     if (selection.contract.state === "unverified-via") {
-      if (protocolVerification.state === "verifying") {
-        return "Checking the standard VIA protocol version. No configuration is read or changed.";
-      }
-      if (protocolVerification.state === "verified") {
-        return `VIA protocol version 0x${protocolVerification.version.toString(16).padStart(4, "0")} verified. No configuration is read or changed.`;
-      }
       if (protocolVerification.state === "failed") {
-        return "VIA protocol verification did not complete. You can retry; no configuration was changed.";
+        return "Protocol verification failed.";
       }
-      return "VIA keyboard awaiting verification. Verify the standard VIA protocol before reading device state.";
+      return "";
     }
-    if (protocolVerification.state === "verifying") {
-      return "Checking the observed protocol version. No configuration is read or changed.";
-    }
-    if (protocolVerification.state === "verified") {
-      return `Protocol version 0x${protocolVerification.version.toString(16).padStart(4, "0")} verified. No configuration is read or changed.`;
-    }
-    if (protocolVerification.state === "failed") {
-      return "Could not verify the protocol. You can retry; no configuration was changed.";
-    }
-    return "Keychron V5 Max ANSI Knob recognized. Verify its observed protocol version before any future device work.";
+    return protocolVerification.state === "failed" ? "Protocol verification failed." : "";
   }
-  return "No device selected.";
+  return "";
 }
 
 function isProtocolVerifiableSelection(
@@ -1337,13 +1241,6 @@ function isKeychronV5MaxSnapshot(
   snapshot: EditorState["hardwareSnapshot"],
 ): snapshot is KeychronV5MaxReadSnapshot {
   return Boolean(snapshot && "capabilities" in snapshot);
-}
-
-function keyboardIdentityLabel(identity: Extract<BrowserKeyboardSelection, { state: "selected" }>['identity']): string {
-  if (identity.productName) {
-    return identity.productName;
-  }
-  return `Keyboard ${identity.vendorId.toString(16).padStart(4, "0")}:${identity.productId.toString(16).padStart(4, "0")}`;
 }
 
 function keyboardWorkspace(
@@ -1663,10 +1560,6 @@ function projectPanel(
     },
   }, [
     element("div", { className: "project-transfer-content" }, [
-      element("p", {
-        className: "muted",
-        text: "Export a project file for editing or transfer. This is not a device recovery backup.",
-      }),
       element("div", { className: "project-actions" }, [exportProject]),
       projectDraft,
       element("div", { className: "project-actions" }, [refreshDraft, importDraft]),
@@ -1698,7 +1591,7 @@ function projectPanel(
         attrs: { "data-project-section": "saved" },
       }, [
         element("h2", { text: "Saved projects" }),
-        element("small", { text: `${savedProjects.length} saved in this browser` }),
+        element("small", { text: String(savedProjects.length) }),
         savedSelect,
         savedProjectList(savedProjects),
         ...(savedProjects.length > 0
@@ -1722,7 +1615,6 @@ function savedProjectList(projects: ProjectSummary[]): HTMLElement {
     attrs: { "data-saved-project-count": String(projects.length) },
   });
   if (projects.length === 0) {
-    list.append(element("p", { className: "empty muted", text: "Save the current project first." }));
     return list;
   }
 
@@ -1952,9 +1844,6 @@ function testPanel(
     },
     [
       element("h2", { text: "Host key test" }),
-      element("p", {
-        text: "Focus this area and press a key on this computer. QMKUI does not read from the keyboard.",
-      }),
       definitionList([
         ["Layer", String(state.selectedLayerIndex)],
         ["Host", last ? `${last.code}` : ""],
@@ -2008,7 +1897,6 @@ function testEventList(events: HostKeyCapture[]): HTMLElement {
     );
   });
   if (events.length === 0) {
-    list.append(element("p", { className: "empty muted", text: "Focus and press a key" }));
   }
   return list;
 }
@@ -2032,13 +1920,12 @@ function catalogPanel(state: EditorState, actions: RenderActions): HTMLElement {
     list.append(catalogRow(keyboard, state, actions.selectKeyboardFromCatalog));
   });
   if (results.length === 0) {
-    list.append(element("p", { className: "empty muted", text: "No matches" }));
   }
 
   return element("section", { className: "tab-panel catalog-panel", attrs: { "data-panel": "catalog" } }, [
     element("div", { className: "panel-heading" }, [
       element("h2", { text: "Catalog" }),
-      element("small", { text: `${bundledKeyboards.length} bundled keyboards` }),
+      element("small", { text: String(bundledKeyboards.length) }),
     ]),
     searchInput,
     list,
@@ -2103,7 +1990,6 @@ function systemPanel(
     commandList.append(commandRow(command));
   });
   if (commands.length === 0) {
-    commandList.append(element("p", { className: "empty muted", text: "No report loaded" }));
   }
 
   const findings = report?.findings ?? [];
@@ -2120,7 +2006,6 @@ function systemPanel(
     );
   });
   if (findings.length === 0) {
-    findingList.append(element("li", { className: "empty muted", text: "No findings" }));
   }
 
   const refresh = uiButton({ className: "secondary-action", text: "Refresh", type: "button" });
@@ -2164,7 +2049,6 @@ function buildSection(plan: BuildPlan, keyCount: number): HTMLElement {
     );
   });
   if (plan.blockers.length === 0) {
-    blockers.append(element("li", { className: "empty muted", text: "Ready" }));
   }
 
   return element(
@@ -2819,10 +2703,6 @@ function keyLightingDetails(context: SelectedKeyContext): HTMLElement {
     );
   });
 
-  if (lighting.conditions.length === 0) {
-    conditionList.append(element("p", { className: "empty muted", text: "None" }));
-  }
-
   return controlGroup("key-lighting", "Lighting", [
     parameterBlock("Current profile", [
       element("dl", { attrs: { "data-selected-lighting": context.key.id } }, [
@@ -2844,10 +2724,6 @@ function keyRelationList(relations: KeyRelation[], shortcuts: KeyShortcut[]): HT
   relations.forEach((relation) => {
     list.append(relationRow(relation));
   });
-
-  if (relations.length === 0 && shortcuts.length === 0) {
-    list.append(element("p", { className: "empty muted", text: "None" }));
-  }
 
   return controlGroup("key-relations", "Relations", [
     list,
@@ -2929,10 +2805,6 @@ function keycodePalette(state: EditorState, actions: RenderActions): HTMLElement
   entries.forEach((entry) => {
     grid.append(keycodeButton(entry, actions.updateSelectedKeycode));
   });
-
-  if (entries.length === 0) {
-    grid.append(element("p", { className: "empty", text: "No matches" }));
-  }
 
   return element("section", { className: "keycode-browser" }, [
     element("h3", { text: "Keycodes" }),
@@ -3098,11 +2970,6 @@ function supportDetails(issues: UiIssue[], qmkJson: unknown, state: EditorState)
 
 function issueList(issues: UiIssue[]): HTMLElement {
   const list = element("ul", { className: "issues" });
-  if (issues.length === 0) {
-    list.append(element("li", { className: "empty", text: "No blocking project issues" }));
-    return list;
-  }
-
   issues.forEach((issue) => {
     list.append(
       element("li", {}, [
