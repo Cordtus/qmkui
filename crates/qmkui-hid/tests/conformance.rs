@@ -143,6 +143,92 @@ fn read_via_keymap_reads_all_positions() {
     assert_eq!(keymap.keycodes[0][0], vec![1, 2, 3]);
 }
 
+#[test]
+fn read_via_macros_decodes_actions_and_characters_across_chunks() {
+    // Macro 1: "hi"; Macro 2: tap KC_A, tap KC_B. Buffer is 9 bytes, read in a
+    // single chunk.
+    let transport = MacroTransport {
+        buffer: vec![0x68, 0x69, 0x00, 0x01, 0x04, 0x01, 0x05, 0x00],
+    };
+    let mut via = ViaReadProtocol::new(transport);
+    let macros = via.read_via_macros().expect("macros");
+    assert_eq!(macros.count, 2);
+    assert_eq!(macros.buffer_size, 8);
+    assert_eq!(macros.macros.len(), 2);
+    assert_eq!(macros.macros[0].len(), 2);
+    assert_eq!(
+        macros.macros[0][0],
+        qmkui_hid::via::ViaMacroStep {
+            kind: qmkui_hid::via::ViaMacroStepKind::Char,
+            keycode: None,
+            char: Some("h".to_owned()),
+        }
+    );
+    assert_eq!(
+        macros.macros[1][0],
+        qmkui_hid::via::ViaMacroStep {
+            kind: qmkui_hid::via::ViaMacroStepKind::Tap,
+            keycode: Some(0x04),
+            char: None,
+        }
+    );
+}
+
+#[test]
+fn read_via_macros_returns_empty_when_disabled() {
+    let transport = MacroTransport { buffer: Vec::new() };
+    let mut via = ViaReadProtocol::new(transport);
+    let macros = via.read_via_macros().expect("macros");
+    assert_eq!(macros.count, 0);
+    assert_eq!(macros.macros, Vec::<Vec<_>>::new());
+}
+
+/// Serves macro commands from a fixed buffer. `0x0c` reports the macro count
+/// (one NUL-terminated macro per run), `0x0d` reports the buffer size, and
+/// `0x0e` serves chunked slices.
+struct MacroTransport {
+    buffer: Vec<u8>,
+}
+
+impl MacroTransport {
+    fn macro_count(&self) -> u8 {
+        self.buffer.iter().filter(|&&byte| byte == 0).count() as u8
+    }
+}
+
+impl HidTransport for MacroTransport {
+    fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
+        let mut report = vec![0u8; 32];
+        report[0] = command;
+        match command {
+            0x0c => report[1] = self.macro_count(),
+            0x0d => {
+                let size = self.buffer.len() as u16;
+                report[1] = (size >> 8) as u8;
+                report[2] = (size & 0xff) as u8;
+            }
+            0x0e => {
+                let offset = (u16::from(payload[0]) << 8) | u16::from(payload[1]);
+                let size = usize::from(payload[2]);
+                report[1] = payload[0];
+                report[2] = payload[1];
+                report[3] = payload[2];
+                for (index, byte) in self
+                    .buffer
+                    .iter()
+                    .skip(offset as usize)
+                    .take(size)
+                    .enumerate()
+                {
+                    report[4 + index] = *byte;
+                }
+            }
+            _ => return Err(HidError::ResponseMismatch),
+        }
+        Ok(report)
+    }
+}
+
 struct SequentialTransport {
     next_keycode: std::cell::Cell<u16>,
 }

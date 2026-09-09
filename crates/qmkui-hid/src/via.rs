@@ -20,6 +20,8 @@ const KEYBOARD_VALUE_LAYOUT_OPTIONS: u8 = 0x02;
 const KEYBOARD_VALUE_FIRMWARE_VERSION: u8 = 0x04;
 const KEYBOARD_VALUE_KEYCODES_VERSION: u8 = 0x06;
 
+const MAX_MACRO_BUFFER_CHUNK: u8 = 28;
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViaKeymap {
@@ -32,6 +34,33 @@ pub struct KeymapDimensions {
     pub layer_count: u8,
     pub rows: u8,
     pub columns: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViaMacroStep {
+    pub kind: ViaMacroStepKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keycode: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub char: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ViaMacroStepKind {
+    Tap,
+    Down,
+    Up,
+    Char,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViaMacros {
+    pub count: u8,
+    pub buffer_size: u16,
+    pub macros: Vec<Vec<ViaMacroStep>>,
 }
 
 /// A bounded, read-only VIA adapter with no path for set, save, reset,
@@ -104,9 +133,55 @@ impl<T: HidTransport> ViaReadProtocol<T> {
         ))
     }
 
-    pub fn get_macro_buffer(&mut self, offset: u8, size: u8) -> Result<Vec<u8>, HidError> {
-        let response = self.read(DYNAMIC_KEYMAP_MACRO_GET_BUFFER, &[offset, size])?;
-        Ok(response[3..].to_vec())
+    /// Reads a chunk of the macro buffer. Mirrors the TypeScript
+    /// `getMacroBuffer`: the request carries a 16-bit offset and the payload
+    /// bytes start at response index 4.
+    pub fn get_macro_buffer(&mut self, offset: u16, size: u8) -> Result<Vec<u8>, HidError> {
+        if size == 0 || size > MAX_MACRO_BUFFER_CHUNK {
+            return Err(HidError::InvalidRequest);
+        }
+        let response = self.read(
+            DYNAMIC_KEYMAP_MACRO_GET_BUFFER,
+            &[(offset >> 8) as u8, (offset & 0xff) as u8, size],
+        )?;
+        Ok(response[4..4 + usize::from(size)].to_vec())
+    }
+
+    /// Reads and decodes every VIA macro. Mirrors the TypeScript
+    /// `readViaMacros`: macros are NUL-terminated byte sequences where a key
+    /// action is a prefix byte (tap/down/up) followed by one basic keycode
+    /// byte, and any other byte is a literal character.
+    pub fn read_via_macros(&mut self) -> Result<ViaMacros, HidError> {
+        let count = self.get_macro_count()?;
+        if count == 0 {
+            return Ok(ViaMacros {
+                count,
+                buffer_size: 0,
+                macros: Vec::new(),
+            });
+        }
+        let buffer_size = self.get_macro_buffer_size()?;
+        if buffer_size == 0 {
+            return Ok(ViaMacros {
+                count,
+                buffer_size,
+                macros: Vec::new(),
+            });
+        }
+
+        let mut bytes = Vec::with_capacity(usize::from(buffer_size));
+        let mut offset = 0u16;
+        while offset < buffer_size {
+            let chunk = (buffer_size - offset).min(u16::from(MAX_MACRO_BUFFER_CHUNK));
+            bytes.extend(self.get_macro_buffer(offset, chunk as u8)?);
+            offset += chunk;
+        }
+
+        Ok(ViaMacros {
+            count,
+            buffer_size,
+            macros: decode_macro_buffer(&bytes, count),
+        })
     }
 
     pub fn get_dynamic_keymap_buffer(&mut self, offset: u8, size: u8) -> Result<Vec<u8>, HidError> {
@@ -171,4 +246,59 @@ fn read_uint32(response: &[u8], offset: usize) -> u32 {
         + (u32::from(response[offset + 1]) * 0x1_0000)
         + (u32::from(response[offset + 2]) * 0x100)
         + u32::from(response[offset + 3])
+}
+
+const MACRO_ACTION_TAP: u8 = 0x01;
+const MACRO_ACTION_DOWN: u8 = 0x02;
+const MACRO_ACTION_UP: u8 = 0x03;
+
+fn decode_macro_buffer(bytes: &[u8], count: u8) -> Vec<Vec<ViaMacroStep>> {
+    let mut macros: Vec<Vec<ViaMacroStep>> = Vec::new();
+    let mut current: Vec<ViaMacroStep> = Vec::new();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte == 0 {
+            if !current.is_empty() {
+                macros.push(std::mem::take(&mut current));
+            }
+            if macros.len() >= usize::from(count) {
+                break;
+            }
+            index += 1;
+            continue;
+        }
+        match byte {
+            MACRO_ACTION_TAP | MACRO_ACTION_DOWN | MACRO_ACTION_UP => {
+                let Some(&keycode) = bytes.get(index + 1) else {
+                    break;
+                };
+                let kind = if byte == MACRO_ACTION_TAP {
+                    ViaMacroStepKind::Tap
+                } else if byte == MACRO_ACTION_DOWN {
+                    ViaMacroStepKind::Down
+                } else {
+                    ViaMacroStepKind::Up
+                };
+                current.push(ViaMacroStep {
+                    kind,
+                    keycode: Some(u16::from(keycode)),
+                    char: None,
+                });
+                index += 2;
+            }
+            _ => {
+                current.push(ViaMacroStep {
+                    kind: ViaMacroStepKind::Char,
+                    keycode: None,
+                    char: Some((byte as char).to_string()),
+                });
+                index += 1;
+            }
+        }
+    }
+    if !current.is_empty() {
+        macros.push(current);
+    }
+    macros
 }

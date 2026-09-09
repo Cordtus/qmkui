@@ -23,6 +23,19 @@ type NativeV5Snapshot = {
     colors: Array<{ led: number; hue: number; saturation: number; value: number }>;
   };
   keymap: { layerCount: number; keycodes: number[][][] };
+  macros: NativeMacros;
+};
+
+type NativeMacros = {
+  count: number;
+  bufferSize: number;
+  macros: NativeMacroStep[][];
+};
+
+type NativeMacroStep = {
+  kind: "tap" | "down" | "up" | "char";
+  keycode?: number;
+  char?: string;
 };
 
 type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -123,7 +136,17 @@ function nativeSnapshot(data: NativeV5Snapshot): KeychronV5MaxReadSnapshot {
       effects: data.lighting.effects,
       colors: data.lighting.colors,
     }),
-    macros: { state: "unavailable", reason: "Native macro reads are not implemented." },
+    macros: available({
+      count: data.macros.count,
+      bufferSize: data.macros.bufferSize,
+      macros: data.macros.macros.map((steps) =>
+        steps.map((step) =>
+          step.kind === "char"
+            ? { kind: "char" as const, char: step.char ?? "" }
+            : { kind: step.kind, keycode: step.keycode ?? 0 },
+        ),
+      ),
+    }),
     readAt: new Date().toISOString(),
   };
 }

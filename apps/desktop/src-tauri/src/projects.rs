@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -85,7 +85,7 @@ impl ProjectStore {
     }
 }
 
-fn summary_of(value: &serde_json::Value, path: &PathBuf) -> Option<ProjectSummary> {
+fn summary_of(value: &serde_json::Value, path: &Path) -> Option<ProjectSummary> {
     let updated_at = path
         .metadata()
         .ok()

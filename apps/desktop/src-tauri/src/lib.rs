@@ -46,6 +46,7 @@ struct V5Snapshot {
     capabilities: qmkui_hid::keychron_v5::V5Capabilities,
     lighting: qmkui_hid::keychron_v5::V5Lighting,
     keymap: qmkui_hid::via::ViaKeymap,
+    macros: qmkui_hid::via::ViaMacros,
 }
 
 /// Lists connected devices matching supported keyboards. Read-only: only
@@ -78,11 +79,16 @@ fn read_v5_snapshot() -> Result<V5Snapshot, String> {
     let keymap = reader
         .read_via_keymap(V5_DIMENSIONS)
         .map_err(|error| error.to_string())?;
+    drop(reader);
+    let transport = HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
+    let mut via = ViaReadProtocol::new(transport);
+    let macros = via.read_via_macros().map_err(|error| error.to_string())?;
     Ok(V5Snapshot {
         identity,
         capabilities,
         lighting,
         keymap,
+        macros,
     })
 }
 
