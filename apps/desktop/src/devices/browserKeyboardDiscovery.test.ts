@@ -87,11 +87,13 @@ describe("browser keyboard discovery", () => {
       [0x11],
     ]);
     expect(sentCommands(device).filter(([command]) => command === 0x04)).toHaveLength(4 * 6 * 19);
-    expect(sentCommands(device).slice(-3)).toEqual([
+    expect(sentCommands(device).slice(-4)).toEqual([
       [0xa8, 0x01],
       [0xa8, 0x03],
       [0xa8, 0x05],
+      [0x0c],
     ]);
+    expect(snapshot.macros).toEqual({ state: "available", value: { count: 0, bufferSize: 0, macros: [] } });
     expect(device.open).toHaveBeenCalledOnce();
     expect(device.close).toHaveBeenCalledOnce();
   });
@@ -103,6 +105,7 @@ describe("browser keyboard discovery", () => {
       capabilities: { state: "unavailable" as const, reason: "Feature bitmap read failed: timeout." },
       keymap: { state: "unavailable" as const, reason: "Dynamic keymap read failed: timeout." },
       lighting: { state: "unavailable" as const, reason: "RGB state read failed: timeout." },
+      macros: { state: "unavailable" as const, reason: "Macro read failed: timeout." },
       readAt: "2026-07-18T18:00:00.000Z",
     };
     const readSnapshot = vi.fn(async () => failedLiveRead);
@@ -303,6 +306,7 @@ describe("browser keyboard discovery", () => {
       capabilities: { state: "unavailable" as const, reason: "transport unavailable" },
       keymap: { state: "unavailable" as const, reason: "transport unavailable" },
       lighting: { state: "unavailable" as const, reason: "transport unavailable" },
+      macros: { state: "unavailable" as const, reason: "transport unavailable" },
       readAt: "2026-07-18T18:00:00.000Z",
     }));
     const result = await discoverAuthorizedBrowserKeyboard(
@@ -386,6 +390,7 @@ function responseFor(request: Uint8Array): Uint8Array | undefined {
   if (request[0] === 0x04) {
     return report([0x04, request[1]!, request[2]!, request[3]!, 0x12, 0x34]);
   }
+  if (request[0] === 0x0c) return report([0x0c, 0]);
   if (request[0] !== 0xa8) return undefined;
   if (request[1] === 0x01) return report([0xa8, 0x01, 0x01, 0x00]);
   if (request[1] === 0x03) return report([0xa8, 0x03, 0x11]);

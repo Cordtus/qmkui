@@ -2,10 +2,10 @@ import { EditorState, RenderActions, isKeychronV5MaxSnapshot } from "../appState
 import { chooseBrowserKeyboard } from "../devices/browserKeyboardDiscovery";
 import { GenericViaStandardState } from "../devices/genericViaReader";
 import { KeychronV5MaxCapabilities, KeychronV5MaxIdentityFacts, KeychronV5MaxLighting, KeychronV5MaxReadSnapshot } from "../devices/keychronV5MaxReader";
-import { ViaKeymap } from "../devices/viaReadProtocol";
+import { ViaKeymap, ViaMacros, ViaMacroStep } from "../devices/viaReadProtocol";
 import { decodeHardwareKeycode, isSysRqKeycode } from "../keycodes";
 import { keychronV5MaxKeyboard } from "../presets";
-import { definitionList, element, layoutBounds, uiButton } from "./primitives";
+import { definitionList, definitionRow, element, layoutBounds, uiButton } from "./primitives";
 export function snapshotScreen(state: EditorState, actions: RenderActions): HTMLElement {
   return element("main", { className: "snapshot-shell" }, [snapshotContent(state, actions)]);
 }
@@ -48,7 +48,8 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
       ),
       snapshotField("Identity", snapshot.identity, identitySnapshotRows),
       snapshotField("Capabilities", snapshot.capabilities, capabilitySnapshotRows),
-      snapshotField("Lighting", snapshot.lighting, lightingSnapshotRows),
+      snapshotLightingField(snapshot.lighting),
+      snapshotField("Macros", snapshot.macros, macrosSnapshotRows),
     ]),
     deviceWritePanel(state, actions),
   ]);
@@ -427,4 +428,61 @@ export function lightingSnapshotRows(value: KeychronV5MaxLighting): Array<[strin
     ...(colors ? [["Colors", colors] as [string, string]] : []),
     ...(effects ? [["Effects", effects] as [string, string]] : []),
   ];
+}
+
+export function snapshotLightingField(field: KeychronV5MaxReadSnapshot["lighting"]): HTMLElement {
+  if (field.state !== "available") {
+    return snapshotField("Lighting", field, lightingSnapshotRows);
+  }
+  const swatches = field.value.colors.map((color) => {
+    const swatch = element("span", {
+      className: "lighting-swatch",
+      attrs: {
+        "data-led": String(color.led),
+        "data-hue": String(color.hue),
+        "data-saturation": String(color.saturation),
+        "data-value": String(color.value),
+        title: `LED ${color.led}: HSV ${color.hue}, ${color.saturation}, ${color.value}`,
+      },
+    });
+    swatch.style.backgroundColor = hsvToCss(color.hue, color.saturation, color.value);
+    return swatch;
+  });
+  return element("section", {
+    className: "snapshot-field lighting available",
+    attrs: { "data-snapshot-field": "lighting", "data-snapshot-state": "available" },
+  }, [
+    element("h2", { text: "Lighting" }),
+    element("dl", {}, [
+      definitionRow("RGB protocol", field.value.rgbProtocol.map((part) => `0x${part.toString(16).padStart(2, "0")}`).join(" ")),
+      definitionRow("LED count", String(field.value.ledCount)),
+      definitionRow("Active colors", "One swatch per LED"),
+      element("div", { className: "lighting-swatches", attrs: { "data-lighting-swatches": "true" } }, swatches),
+    ]),
+  ]);
+}
+
+function hsvToCss(hue: number, saturation: number, value: number): string {
+  return `hsl(${Math.round((hue / 255) * 360)} ${Math.round((saturation / 255) * 100)}% ${Math.round((value / 255) * 100)}%)`;
+}
+
+export function macrosSnapshotRows(value: ViaMacros): Array<[string, string]> {
+  if (value.count === 0) {
+    return [["Macros", "None configured"]];
+  }
+  return [
+    ["Count", String(value.count)],
+    ...value.macros.map((steps, index) => [
+      `Macro ${index + 1}`,
+      steps.map(formatMacroStep).join(""),
+    ] as [string, string]),
+  ];
+}
+
+function formatMacroStep(step: ViaMacroStep): string {
+  if (step.kind === "char") {
+    return step.char;
+  }
+  const label = decodeHardwareKeycode(step.keycode);
+  return step.kind === "tap" ? `{${label}}` : step.kind === "down" ? `{+${label}}` : `{-${label}}`;
 }

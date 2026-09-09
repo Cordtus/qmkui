@@ -67,8 +67,10 @@ describe("Keychron V5 Max reader", () => {
       ...Array.from({ length: 10 }, (_, led) => [[0xa8, 0x06, led], [0xa8, 0x07, led]]).flat(),
       [0xa8, 0x09, 0, 9],
       [0xa8, 0x09, 9, 1],
+      [0x0c],
     ];
     expect(sentFrames(device)).toEqual(expectedRequests.map((bytes) => [0, [...report(bytes)]]));
+    expect(snapshot.macros).toEqual({ state: "available", value: { count: 0, bufferSize: 0, macros: [] } });
     expect(device.open).toHaveBeenCalledOnce();
     expect(device.close).toHaveBeenCalledOnce();
     expect(device.listenerCount()).toBe(0);
@@ -188,6 +190,7 @@ function responseFor(request: Uint8Array, firmware: number[]): Uint8Array | unde
   if (request[0] === 0xa3) return report([0xa3, 0x02]);
   if (request[0] === 0x11) return report([0x11, 1]);
   if (request[0] === 0x04) return report([0x04, request[1]!, request[2]!, request[3]!, 0x12, 0x34]);
+  if (request[0] === 0x0c) return report([0x0c, 0]);
   if (request[0] !== 0xa8) return undefined;
 
   if (request[1] === 0x01) return report([0xa8, 0x01, 0x01, 0x00]);

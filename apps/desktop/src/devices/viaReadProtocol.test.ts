@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ViaReadProtocol,
   readViaKeymap,
+  readViaMacros,
   type ViaReadTransport,
 } from "./viaReadProtocol";
 
@@ -362,6 +363,60 @@ describe("VIA read protocol", () => {
       [0x04, 1, 0, 0],
       [0x04, 1, 0, 1],
     ]);
+  });
+
+  it("reads and decodes VIA macros across chunked buffer reads", async () => {
+    const transport = createTransport();
+    transport.sendReport = vi.fn(async (_reportId: number, data: BufferSource) => {
+      const request = new Uint8Array(data as ArrayBuffer);
+      if (request[0] === 0x0c) {
+        transport.emit({ reportId: 0, data: report([0x0c, 0x02]) });
+        return;
+      }
+      if (request[0] === 0x0d) {
+        transport.emit({ reportId: 0, data: report([0x0d, 0x00, 0x09]) });
+        return;
+      }
+      if (request[0] === 0x0e) {
+        const offset = request[1]!;
+        const size = request[3]!;
+        const bytes = [
+          // Macro 1: "hi" typed literally.
+          0x68, 0x69, 0x00,
+          // Macro 2: tap KC_A (0x04), delay unsupported -> tap KC_B (0x05).
+          0x01, 0x04, 0x01, 0x05, 0x00,
+        ];
+        const chunk = bytes.slice(offset, offset + size);
+        while (chunk.length < 4) chunk.push(0);
+        transport.emit({ reportId: 0, data: report([0x0e, request[1]!, request[2]!, request[3]!, ...chunk]) });
+        return;
+      }
+    });
+    const protocol = new ViaReadProtocol(transport);
+
+    await expect(readViaMacros(protocol)).resolves.toEqual({
+      count: 2,
+      bufferSize: 9,
+      macros: [
+        [{ kind: "char", char: "h" }, { kind: "char", char: "i" }],
+        [{ kind: "tap", keycode: 0x04 }, { kind: "tap", keycode: 0x05 }],
+      ],
+    });
+    expect(sentCommands(transport).map(([command]) => command)).toEqual([0x0c, 0x0d, 0x0e]);
+  });
+
+  it("returns an empty macro list when the device reports zero macros", async () => {
+    const transport = createTransport();
+    transport.sendReport = vi.fn(async (_reportId: number, data: BufferSource) => {
+      const request = new Uint8Array(data as ArrayBuffer);
+      if (request[0] === 0x0c) {
+        transport.emit({ reportId: 0, data: report([0x0c, 0x00]) });
+      }
+    });
+    const protocol = new ViaReadProtocol(transport);
+
+    await expect(readViaMacros(protocol)).resolves.toEqual({ count: 0, bufferSize: 0, macros: [] });
+    expect(sentCommands(transport).map(([command]) => command)).toEqual([0x0c]);
   });
 });
 

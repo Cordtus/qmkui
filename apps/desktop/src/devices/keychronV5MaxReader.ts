@@ -5,7 +5,7 @@ import {
 } from "./keychronV5MaxContract";
 import { available, unavailable, unverified, type ValueState } from "./hardwareSnapshot";
 import type { DeviceTransport } from "./transport";
-import { ViaReadProtocol, readViaKeymap, type ViaKeymap } from "./viaReadProtocol";
+import { ViaReadProtocol, readViaKeymap, readViaMacros, type ViaKeymap, type ViaMacros } from "./viaReadProtocol";
 
 const REPORT_ID = 0;
 const REPORT_LENGTH = 32;
@@ -45,6 +45,7 @@ export type KeychronV5MaxReadSnapshot = {
   capabilities: ValueState<KeychronV5MaxCapabilities>;
   keymap: ValueState<ViaKeymap>;
   lighting: ValueState<KeychronV5MaxLighting>;
+  macros: ValueState<ViaMacros>;
   readAt: string;
 };
 
@@ -120,11 +121,13 @@ export async function readKeychronV5MaxSnapshot(
     const capabilities = await readCapabilities(device, timeoutMs);
     const keymap = await readKeymap(device, options.keymap, timeoutMs);
     const lighting = await readLighting(device, timeoutMs);
+    const macros = await readMacros(device, timeoutMs);
     return {
       identity,
       capabilities,
       keymap,
       lighting,
+      macros,
       readAt: (options.now ?? (() => new Date().toISOString()))(),
     };
   } finally {
@@ -271,6 +274,17 @@ async function readLedColors(
     }
   }
   return colors;
+}
+
+async function readMacros(
+  device: KeychronV5MaxReaderDevice,
+  timeoutMs: number,
+): Promise<ValueState<ViaMacros>> {
+  try {
+    return available(await readViaMacros(new ViaReadProtocol(device, { timeoutMs })));
+  } catch (error) {
+    return unavailable(readFailureReason("Macros", error));
+  }
 }
 
 function validateReadRequest(command: number, payload: readonly number[]): void {

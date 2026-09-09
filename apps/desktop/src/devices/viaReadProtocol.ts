@@ -422,6 +422,88 @@ function readUint16(response: Uint8Array, offset: number): number {
   return (response[offset]! << 8) | response[offset + 1]!;
 }
 
+// VIA macro buffer encoding (from `the-via/app` macro-api): macros are
+// NUL-terminated byte sequences. A key action is a prefix byte (`0x01` tap,
+// `0x02` down, `0x03` up) followed by one basic keycode byte; any other byte
+// is a literal character typed by the macro.
+const MACRO_ACTION_TAP = 0x01;
+const MACRO_ACTION_DOWN = 0x02;
+const MACRO_ACTION_UP = 0x03;
+const MACRO_ACTION_PREFIXES = new Set([MACRO_ACTION_TAP, MACRO_ACTION_DOWN, MACRO_ACTION_UP]);
+
+export type ViaMacroStep =
+  | { kind: "tap" | "down" | "up"; keycode: number }
+  | { kind: "char"; char: string };
+
+export type ViaMacros = {
+  count: number;
+  bufferSize: number;
+  macros: ViaMacroStep[][];
+};
+
+/**
+ * Reads every VIA macro from the dynamic keymap macro buffer and decodes it
+ * into tap/down/up keycode steps and literal characters. This surfaces the
+ * custom key combos and shortcuts a user configured in VIA before ever using
+ * QMKUI.
+ */
+export async function readViaMacros(
+  protocol: ViaReadProtocol,
+  options: { maxChunkSize?: number } = {},
+): Promise<ViaMacros> {
+  const maxChunkSize = options.maxChunkSize ?? MAX_BUFFER_READ_SIZE;
+  const count = await protocol.getMacroCount();
+  if (count === 0) {
+    return { count, bufferSize: 0, macros: [] };
+  }
+  const bufferSize = await protocol.getMacroBufferSize();
+  if (bufferSize === 0) {
+    return { count, bufferSize, macros: [] };
+  }
+
+  const bytes: number[] = [];
+  for (let offset = 0; offset < bufferSize; offset += maxChunkSize) {
+    const size = Math.min(maxChunkSize, bufferSize - offset);
+    const chunk = await protocol.getMacroBuffer(offset, size);
+    bytes.push(...Array.from(chunk.bytes));
+  }
+
+  return { count, bufferSize, macros: decodeMacroBuffer(bytes, count) };
+}
+
+function decodeMacroBuffer(bytes: readonly number[], count: number): ViaMacroStep[][] {
+  const macros: ViaMacroStep[][] = [];
+  let current: ViaMacroStep[] = [];
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = bytes[index]!;
+    if (byte === 0) {
+      if (current.length > 0) {
+        macros.push(current);
+        current = [];
+      }
+      if (macros.length >= count) {
+        break;
+      }
+      continue;
+    }
+    if (MACRO_ACTION_PREFIXES.has(byte)) {
+      const keycode = bytes[index + 1];
+      if (keycode === undefined) {
+        break;
+      }
+      const kind = byte === MACRO_ACTION_TAP ? "tap" : byte === MACRO_ACTION_DOWN ? "down" : "up";
+      current.push({ kind, keycode });
+      index += 1;
+    } else {
+      current.push({ kind: "char", char: String.fromCharCode(byte) });
+    }
+  }
+  if (current.length > 0) {
+    macros.push(current);
+  }
+  return macros;
+}
+
 function readUint32(response: Uint8Array, offset: number): number {
   return (
     response[offset]! * 0x1_0000_00 +

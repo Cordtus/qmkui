@@ -26,7 +26,7 @@ describe("device-first hardware workspace", () => {
     expect(root.textContent).not.toContain("preset");
   });
 
-  it("shows model identity and an explicit read action only after browser authorization", async () => {
+  it("auto-reads and shows model identity immediately after browser authorization", async () => {
     const root = document.createElement("div");
     const selection = recognizedSelection(async () => availableSnapshot());
 
@@ -40,21 +40,17 @@ describe("device-first hardware workspace", () => {
     root.querySelector<HTMLElement>('[data-device-action="connect"]')?.click();
     await flush();
 
-    expect(root.querySelector('[data-device-action="read"]')?.textContent).toBe("Read device");
+    expect(root.querySelector("[data-hardware-snapshot]")).not.toBeNull();
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
     expect(root.querySelector('[data-device-action="write"]')).toBeNull();
     expect(root.querySelector('[data-device-action="flash"]')).toBeNull();
   });
 
-  it("consumes a snapshot only when Read device is clicked and renders reported fields", async () => {
+  it("auto-reads a snapshot on selection and renders reported fields", async () => {
     const root = document.createElement("div");
     const readSnapshot = vi.fn(async () => availableSnapshot());
 
     createApp(root, { discoverBrowserKeyboard: async () => recognizedSelection(readSnapshot) });
-    await flush();
-    expect(readSnapshot).not.toHaveBeenCalled();
-
-    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
     await flush();
 
     expect(readSnapshot).toHaveBeenCalledOnce();
@@ -64,7 +60,10 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector('[data-hardware-key="0:0"]')?.textContent).toContain("A");
     expect(root.querySelector('[data-hardware-key="0:2"]')?.textContent).toContain("B");
     expect(root.querySelector("[data-hardware-snapshot]")?.textContent).not.toContain("KC_ESC");
-    expect(root.textContent).toContain("HSV 12, 34, 56");
+    expect(root.querySelector("[data-lighting-swatches]")).not.toBeNull();
+    expect(root.querySelector("[data-lighting-swatches] [data-led='0']")?.getAttribute("data-hue")).toBe("12");
+    expect(root.querySelector("[data-lighting-swatches] [data-led='0']")?.getAttribute("data-saturation")).toBe("34");
+    expect(root.querySelector("[data-lighting-swatches] [data-led='0']")?.getAttribute("data-value")).toBe("56");
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
   });
 
@@ -320,6 +319,10 @@ function availableSnapshot(): KeychronV5MaxReadSnapshot {
         colors: [{ led: 0, hue: 12, saturation: 34, value: 56 }],
       },
     },
+    macros: {
+      state: "available",
+      value: { count: 1, bufferSize: 8, macros: [[{ kind: "char", char: "h" }, { kind: "char", char: "i" }]] },
+    },
     readAt: "2026-07-18T00:00:00.000Z",
   };
 }
@@ -330,6 +333,7 @@ function unavailableSnapshot(): KeychronV5MaxReadSnapshot {
     capabilities: { state: "unverified", reason: "Feature response was malformed." },
     keymap: { state: "unavailable", reason: "No verified V5 Max matrix dimensions were supplied." },
     lighting: { state: "unverified", reason: "RGB state could not be verified." },
+    macros: { state: "unavailable", reason: "Macro read failed: timeout." },
     readAt: "2026-07-18T00:00:00.000Z",
   };
 }

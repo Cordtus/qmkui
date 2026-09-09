@@ -123,6 +123,7 @@ function nativeSnapshot(data: NativeV5Snapshot): KeychronV5MaxReadSnapshot {
       effects: data.lighting.effects,
       colors: data.lighting.colors,
     }),
+    macros: { state: "unavailable", reason: "Native macro reads are not implemented." },
     readAt: new Date().toISOString(),
   };
 }

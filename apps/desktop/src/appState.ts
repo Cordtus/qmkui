@@ -199,6 +199,9 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
         state.deviceSelection = selection;
         state.protocolVerification = { state: "idle" };
         actions.render();
+        if (isProtocolVerifiableSelection(selection)) {
+          readDeviceSnapshot(state, () => actions.render());
+        }
       },
       () => {
         if (state.deviceSelectionEpoch !== selectionEpoch) {
@@ -344,6 +347,9 @@ export function createActions(
                 state.snapshotSelectedKey = "0:0";
                 state.snapshotReadStatus = "idle";
                 actions.render();
+                if (isProtocolVerifiableSelection(selection)) {
+                  readDeviceSnapshot(state, () => actions.render());
+                }
               },
               () => {
                 if (state.deviceSelectionEpoch !== selectionEpoch) {
@@ -380,33 +386,7 @@ export function createActions(
             );
           },
           readDevice: () => {
-            if (!isBrowserReadSelection(state.deviceSelection)) {
-              return;
-            }
-            const selectionEpoch = state.deviceSelectionEpoch;
-            const session = browserReadSession(state.deviceSelection);
-            state.snapshotReadStatus = "reading";
-            actions.render();
-            ("readSnapshot" in session ? session.readSnapshot() : session.readStandardState()).then(
-              (snapshot) => {
-                if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
-                  return;
-                }
-                state.hardwareSnapshot = snapshot;
-                state.snapshotLayerIndex = 0;
-                state.snapshotSelectedKey = "0:0";
-                state.snapshotReadStatus = "idle";
-                actions.render();
-              },
-              () => {
-                if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
-                  return;
-                }
-                state.hardwareSnapshot = undefined;
-                state.snapshotReadStatus = "failed";
-                actions.render();
-              },
-            );
+            readDeviceSnapshot(state, () => actions.render());
           },
           selectKeycodeCategory: (categoryId) => {
             state.keycodeCategoryId = categoryId;
@@ -895,6 +875,36 @@ export function isCurrentProtocolSession(
     state.deviceSelectionEpoch === selectionEpoch &&
     isBrowserReadSelection(state.deviceSelection) &&
     browserReadSession(state.deviceSelection) === session
+  );
+}
+
+export function readDeviceSnapshot(state: EditorState, render: () => void): void {
+  if (!isBrowserReadSelection(state.deviceSelection)) {
+    return;
+  }
+  const selectionEpoch = state.deviceSelectionEpoch;
+  const session = browserReadSession(state.deviceSelection);
+  state.snapshotReadStatus = "reading";
+  render();
+  ("readSnapshot" in session ? session.readSnapshot() : session.readStandardState()).then(
+    (snapshot) => {
+      if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+        return;
+      }
+      state.hardwareSnapshot = snapshot;
+      state.snapshotLayerIndex = 0;
+      state.snapshotSelectedKey = "0:0";
+      state.snapshotReadStatus = "idle";
+      render();
+    },
+    () => {
+      if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+        return;
+      }
+      state.hardwareSnapshot = undefined;
+      state.snapshotReadStatus = "failed";
+      render();
+    },
   );
 }
 
