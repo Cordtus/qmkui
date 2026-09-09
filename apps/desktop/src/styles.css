@@ -88,6 +88,11 @@ h3 {
   place-items: center;
 }
 
+.connection-embedded {
+  display: grid;
+  place-items: center;
+}
+
 .connection-panel,
 .snapshot-shell {
   color: var(--text);
@@ -165,6 +170,27 @@ h3 {
   gap: 12px;
 }
 
+.snapshot-group {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.snapshot-group-title {
+  margin: 0;
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.snapshot-group-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .hardware-keymap {
   display: grid;
   grid-column: 1 / -1;
@@ -220,6 +246,84 @@ h3 {
   font-size: clamp(7px, 0.85vw, 12px);
   line-height: 1;
   white-space: nowrap;
+  padding: 0;
+  cursor: pointer;
+}
+
+.hardware-keymap-key[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel-strong));
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.hardware-sysrq-summary {
+  margin: 6px 0 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.hardware-sysrq-summary.sysrq-found {
+  color: var(--accent);
+}
+
+.hardware-key-roles {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-muted);
+}
+
+.hardware-key-roles h3 {
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.hardware-key-role-list {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hardware-key-role {
+  display: grid;
+  grid-template-columns: 5.5em 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.85em;
+}
+
+.hardware-key-role.sysrq {
+  color: var(--accent);
+}
+
+.hardware-key-role-layer {
+  color: var(--text-muted);
+}
+
+.hardware-key-role-hex {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-muted);
+}
+
+.hardware-key-role-tag {
+  font-size: 0.8em;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 1px 5px;
+}
+
+.hardware-key-role-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
 }
 
 .snapshot-field.unavailable,
@@ -2015,4 +2119,65 @@ wa-drawer::part(dialog) {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+.device-write-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-muted);
+}
+
+.device-write-panel h3 {
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.device-write-panel p {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.write-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+}
+
+.device-write-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.device-write-actions input[data-write-keycode] {
+  width: 5em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--panel-strong);
+  border: 1px solid var(--border-muted);
+  color: var(--text);
+  padding: 4px 6px;
+}
+
+.device-write-controls {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-muted);
+}
+
+.device-write-controls h3 {
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.device-write-controls p {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
 }

@@ -31,6 +31,30 @@ export type FeatureRecord = {
   enabled?: boolean;
 };
 
+/**
+ * Returns human-readable blockers for exporting a project as QMK JSON. Any
+ * enabled feature record that requires generated C (or live-only support)
+ * cannot be represented in Configurator-style JSON.
+ */
+export function jsonExportBlockers(project: Project): string[] {
+  const blockers: string[] = [];
+  const featureGroups: Array<[string, FeatureRecord[] | undefined]> = [
+    ["Macros", project.macros],
+    ["Combos", project.combos],
+    ["Tap dances", project.tapDances],
+    ["Encoders", project.encoders],
+  ];
+  for (const [label, records] of featureGroups) {
+    const requiringC = (records ?? []).filter(
+      (record) => record.enabled !== false && record.exportMode === "c",
+    );
+    if (requiringC.length > 0) {
+      blockers.push(`${label} require generated C and cannot be exported as QMK JSON.`);
+    }
+  }
+  return blockers;
+}
+
 export type Layer = {
   id: string;
   index: number;
@@ -73,6 +97,10 @@ export type KeyboardDefinition = {
   manufacturer?: string;
   aliases?: string[];
   usb?: { vid: string; pid: string };
+  bootloader?: string;
+  processor?: string;
+  matrix?: { rows: number; cols: number };
+  qmkCommit?: string;
   features?: FeatureCapabilities;
   source?: { kind: string; version?: string };
   layouts: Array<{
@@ -476,8 +504,27 @@ type LayerReferenceScan = {
   wrapper?: string;
 };
 
-export function scanLayerReference(qmk: string): LayerReferenceScan {
-  const trimmed = qmk.trim();
+/**
+ * Resolves the effective keycode for a key on a layer by walking transparent
+ * (`KC_TRNS`) assignments downward to the base layer. Returns `KC_NO` when no
+ * layer from `layerIndex` down to 0 assigns a non-transparent keycode.
+ */
+export function resolveTransparent(
+  layers: readonly Layer[],
+  layerIndex: number,
+  keyId: string,
+): string {
+  for (let index = layerIndex; index >= 0; index -= 1) {
+    const layer = layers.find((item) => item.index === index);
+    const assignment = layer?.assignments.find((item) => item.visualKeyId === keyId);
+    if (assignment && assignment.qmk !== "KC_TRNS") {
+      return assignment.qmk;
+    }
+  }
+  return "KC_NO";
+}
+
+export function scanLayerReference(qmk: string): LayerReferenceScan {  const trimmed = qmk.trim();
   const match = /^([A-Z_]+)\((.*)\)$/.exec(trimmed);
   if (!match) {
     return isLayerWrapperPrefix(trimmed) ? { malformed: true } : { malformed: false };

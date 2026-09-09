@@ -1,4 +1,6 @@
 import type { Project } from "./domain";
+import { migrateProject } from "./migrations";
+import { isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
 
 export type ProjectSummary = {
   id: string;
@@ -60,6 +62,78 @@ export function createMemoryProjectStorage(
   };
 }
 
+/**
+ * A localStorage-backed {@link ProjectStorage}. Projects survive page reloads
+ * and are stored as plain JSON under a `qmkui.projects.v1.*` key per project.
+ * The storage object is injectable so the adapter is testable without a DOM.
+ */
+export function createLocalStorageProjectStorage(
+  now: () => string = () => new Date().toISOString(),
+  storage: Pick<Storage, "length" | "key" | "getItem" | "setItem" | "removeItem"> = localStorage,
+): ProjectStorage {
+  const PROJECT_STORAGE_PREFIX = "qmkui.projects.v1.";
+
+  const keyFor = (projectId: string): string => `${PROJECT_STORAGE_PREFIX}${projectId}`;
+
+  return {
+    save(project) {
+      const stored: StoredProject = {
+        project: structuredClone(project),
+        updatedAt: now(),
+        sequence: Date.now(),
+      };
+      storage.setItem(keyFor(project.id), JSON.stringify(stored));
+    },
+    load(projectId) {
+      const serialized = storage.getItem(keyFor(projectId));
+      if (serialized === null) {
+        return null;
+      }
+      try {
+        const stored = JSON.parse(serialized) as StoredProject;
+        return structuredClone(stored.project);
+      } catch {
+        return null;
+      }
+    },
+    list() {
+      const projects: StoredProject[] = [];
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (!key?.startsWith(PROJECT_STORAGE_PREFIX)) {
+          continue;
+        }
+        const serialized = storage.getItem(key);
+        if (serialized === null) {
+          continue;
+        }
+        try {
+          projects.push(JSON.parse(serialized) as StoredProject);
+        } catch {
+          // Ignore a corrupt entry; it must not break listing or removal.
+        }
+      }
+      return projects
+        .sort((left, right) => {
+          const byDate = right.updatedAt.localeCompare(left.updatedAt);
+          return byDate || right.sequence - left.sequence;
+        })
+        .map((stored) => ({
+          id: stored.project.id,
+          name: stored.project.name,
+          keyboardId: stored.project.target.keyboardId,
+          qmkKeyboard: stored.project.target.qmkKeyboard,
+          updatedAt: stored.updatedAt,
+        }));
+    },
+    remove(projectId) {
+      const key = keyFor(projectId);
+      const existed = storage.getItem(key) !== null;
+      storage.removeItem(key);
+      return existed;
+    },
+  };
+}
 export function importProjectJson(json: string): Project {
   let parsed: unknown;
   try {
@@ -68,8 +142,9 @@ export function importProjectJson(json: string): Project {
     throw new Error("Project JSON is invalid", { cause: error });
   }
 
-  assertProjectPayload(parsed);
-  return structuredClone(parsed);
+  const migrated = migrateProject(parsed);
+  assertProjectPayload(migrated);
+  return structuredClone(migrated);
 }
 
 function assertProjectPayload(value: unknown): asserts value is Project {
@@ -230,4 +305,97 @@ function isOptionalString(value: unknown): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type NativeInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+
+/**
+ * A Tauri-native {@link ProjectStorage} backed by the shell's filesystem
+ * store. The `ProjectStorage` interface is synchronous, so this adapter keeps
+ * an in-memory cache that is prefetched from the native store on creation and
+ * refreshed after each mutation; save/remove are fire-and-forget with a
+ * best-effort refresh. Only used when running inside the Tauri shell.
+ */
+export function createNativeProjectStorage(): ProjectStorage {
+  const cache = new Map<string, Project>();
+  let summaries: ProjectSummary[] = [];
+  let invokePromise: Promise<NativeInvoke> | undefined;
+
+  const invoke = (): Promise<NativeInvoke> => {
+    invokePromise ??= import("@tauri-apps/api/core").then((module) => module.invoke as NativeInvoke);
+    return invokePromise;
+  };
+
+  const refresh = async (): Promise<void> => {
+    const call = await invoke();
+    const listed = (await call("list_projects")) as ProjectSummary[];
+    const loaded: Project[] = [];
+    for (const summary of listed) {
+      const json = (await call("load_project", { id: summary.id })) as string | null;
+      if (json === null) {
+        continue;
+      }
+      try {
+        loaded.push(importProjectJson(json));
+      } catch {
+        // Ignore a corrupt native entry; it stays hidden from the UI.
+      }
+    }
+    cache.clear();
+    for (const project of loaded) {
+      cache.set(project.id, project);
+    }
+    summaries = listed;
+  };
+
+  void refresh();
+
+  return {
+    save(project) {
+      cache.set(project.id, structuredClone(project));
+      summaries = [
+        {
+          id: project.id,
+          name: project.name,
+          keyboardId: project.target.keyboardId,
+          qmkKeyboard: project.target.qmkKeyboard,
+          updatedAt: new Date().toISOString(),
+        },
+        ...summaries.filter((summary) => summary.id !== project.id),
+      ];
+      void invoke()
+        .then((call) =>
+          call("save_project", {
+            id: project.id,
+            projectJson: JSON.stringify(project),
+          }),
+        )
+        .then(() => refresh())
+        .catch(() => {});
+    },
+    load(projectId) {
+      const cached = cache.get(projectId);
+      return cached ? structuredClone(cached) : null;
+    },
+    list() {
+      return summaries;
+    },
+    remove(projectId) {
+      const existed = cache.delete(projectId);
+      summaries = summaries.filter((summary) => summary.id !== projectId);
+      void invoke()
+        .then((call) => call("remove_project", { id: projectId }))
+        .then(() => refresh())
+        .catch(() => {});
+      return existed;
+    },
+  };
+}
+
+export function defaultProjectStorage(): ProjectStorage {
+  return isNativeRuntime()
+    ? createNativeProjectStorage()
+    : typeof localStorage === "undefined"
+      ? createMemoryProjectStorage()
+      : createLocalStorageProjectStorage();
 }

@@ -29,6 +29,10 @@ export type QmkKeyboardSource = {
   manufacturer?: string;
   aliases?: string[];
   usb?: { vid: string; pid: string };
+  bootloader?: string;
+  processor?: string;
+  matrix?: { rows: number; cols: number };
+  qmkCommit?: string;
   features?: FeatureCapabilities;
   source?: { kind: string; version?: string };
   layout: {
@@ -62,6 +66,10 @@ export function keyboardFromQmkMetadata(
     manufacturer: source.manufacturer,
     aliases: source.aliases,
     usb: source.usb,
+    bootloader: source.bootloader,
+    processor: source.processor,
+    matrix: source.matrix,
+    qmkCommit: source.qmkCommit,
     features: source.features,
     source: source.source,
     layouts: [

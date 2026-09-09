@@ -1,0 +1,1218 @@
+import catalog from "../../../fixtures/catalog/keyboards.json";
+import project from "../../../fixtures/projects/example-60.json";
+import { createBuildPlan } from "./buildPlan";
+import { importConfiguratorKeymap } from "./configuratorImport";
+import { createMacroRecord } from "./macros";
+import { viaDefinitionFor } from "./viaDefinition";
+import {
+  createCommandHistory,
+  type Command,
+  type CommandHistory,
+} from "./commands";
+import { BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
+import { chooseNativeKeyboard, discoverNativeKeyboard, enableNativeDeviceWrites, isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
+import { GenericViaStandardState } from "./devices/genericViaReader";
+import { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
+import { loadLocalDoctorReport } from "./doctorReport";
+import { DoctorReport, KeyboardDefinition, LightingProfile, Project, UiIssue, exportQmkJson, jsonExportBlockers, validateProject } from "./domain";
+import { HostKeyCapture, captureHostKey } from "./keyTester";
+import { keycodeCategories, keycodeValue, kindForKeycode } from "./keycodes";
+import { addTransparentLayer, deleteLayer, duplicateLayer, renameLayer } from "./layerActions";
+import { keychronV5MaxKeyboard, keychronV5MaxProject } from "./presets";
+import { createProjectFromKeyboard } from "./projectFactory";
+import {
+  ProjectStorage,
+  defaultProjectStorage,
+  importProjectJson,
+} from "./projectStorage";
+import { RecoveryBundle, SafetyAuditReceipt, importRecoveryBundleJson, importSafetyAuditReceiptJson, mergeSafetyLedgers, recoveryBundleMatchesKeyboard, safetyAuditMatchesCurrent } from "./safety";
+import { SafetyLedgerStorage, createMemorySafetyLedgerStorage, createSafetyLedgerStorage } from "./safetyStorage";
+import { mainShell } from "./views/shell";
+export const fixtureKeyboard = catalog[0] as KeyboardDefinition;
+export const fixtureProject = project as Project;
+export const bundledKeyboards = [keychronV5MaxKeyboard, fixtureKeyboard];
+
+export type AppView = "workspace" | "catalog" | "system";
+export type ContextPanel = "assignment" | "lighting" | "test";
+
+export type AppOptions = {
+  keyboard?: KeyboardDefinition;
+  project?: Project;
+  projectStorage?: ProjectStorage;
+  safetyLedgerStorage?: SafetyLedgerStorage;
+  downloadProjectJson?: (project: Project) => void;
+  downloadQmkJson?: (output: unknown, project: Project) => void;
+  discoverBrowserKeyboard?: () => Promise<BrowserKeyboardSelection>;
+  chooseBrowserKeyboard?: () => Promise<BrowserKeyboardSelection>;
+  now?: () => string;
+  qmkDetected?: boolean;
+  doctorReportLoader?: () => Promise<DoctorReport | null>;
+};
+
+export type EditorState = {
+  keyboard: KeyboardDefinition;
+  project: Project;
+  fallbackQmkDetected: boolean;
+  qmkDetected: boolean;
+  activeView: AppView;
+  workspaceMode: "device" | "editor";
+  activeContextPanel: ContextPanel;
+  projectDetailsOpen: boolean;
+  selectedLayerIndex: number;
+  selectedKeyId: string;
+  commandHistory: CommandHistory;
+  keycodeCategoryId: string;
+  keycodeSearch: string;
+  catalogSearch: string;
+  projectStorage: ProjectStorage;
+  safetyLedgerStorage: SafetyLedgerStorage;
+  downloadProjectJson: (project: Project) => void;
+  downloadQmkJson: (output: unknown, project: Project) => void;
+  discoverBrowserKeyboard: () => Promise<BrowserKeyboardSelection>;
+  chooseBrowserKeyboard: () => Promise<BrowserKeyboardSelection>;
+  deviceSelection: DeviceSelectionState;
+  deviceSelectionEpoch: number;
+  protocolVerification: ProtocolVerificationState;
+  hardwareSnapshot?: KeychronV5MaxReadSnapshot | GenericViaStandardState;
+  snapshotLayerIndex: number;
+  snapshotSelectedKey: string;
+  snapshotReadStatus: "idle" | "reading" | "failed";
+  deviceWriteEnabled: boolean;
+  now: () => string;
+  projectStatus: string;
+  projectJsonDraft: string;
+  selectedSavedProjectId: string;
+  testEvents: HostKeyCapture[];
+  doctorReport?: DoctorReport;
+  doctorStatus: "loading" | "ready" | "missing";
+};
+
+export type DeviceSelectionState =
+  | BrowserKeyboardSelection
+  | { state: "discovering" | "selecting" | "cancelled" | "discovery-failed" };
+
+export type ProtocolVerificationState =
+  | { state: "idle" }
+  | { state: "verifying" }
+  | { state: "verified"; version: number }
+  | { state: "failed" };
+
+function defaultDiscoverKeyboard(): () => Promise<BrowserKeyboardSelection> {
+  return async () => {
+    if (isNativeRuntime()) {
+      return (await discoverNativeKeyboard()) ?? { state: "no-authorized-device" };
+    }
+    return discoverAuthorizedBrowserKeyboard();
+  };
+}
+
+function defaultChooseKeyboard(): () => Promise<BrowserKeyboardSelection> {
+  return async () => {
+    if (isNativeRuntime()) {
+      return (await chooseNativeKeyboard()) ?? { state: "no-selection" };
+    }
+    return chooseBrowserKeyboard();
+  };
+}
+
+export function createApp(root: HTMLElement, options: AppOptions = {}): void {
+  const keyboard = structuredClone(options.keyboard ?? keychronV5MaxKeyboard ?? fixtureKeyboard);
+  const currentProject = structuredClone(options.project ?? keychronV5MaxProject ?? fixtureProject);
+  const projectStorage = options.projectStorage ?? defaultProjectStorage();
+  const safetyLedgerStorage = options.safetyLedgerStorage ?? defaultSafetyLedgerStorage();
+  const doctorReportLoader =
+    options.doctorReportLoader ??
+    (import.meta.env.DEV
+      ? () => loadLocalDoctorReport(fetch, true)
+      : async (): Promise<DoctorReport | null> => null);
+  const layout = selectedLayout(keyboard, currentProject);
+  const state: EditorState = {
+    keyboard,
+    project: currentProject,
+    fallbackQmkDetected: options.qmkDetected ?? false,
+    qmkDetected: options.qmkDetected ?? false,
+    activeView: "workspace",
+    workspaceMode: "device",
+    activeContextPanel: "assignment",
+    projectDetailsOpen: false,
+    selectedLayerIndex: defaultSelectedLayerIndex(currentProject),
+    selectedKeyId: layout.keys[0]?.id ?? "",
+    commandHistory: createCommandHistory(),
+    keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
+    keycodeSearch: "",
+    catalogSearch: "",
+    projectStorage,
+    safetyLedgerStorage,
+    downloadProjectJson: options.downloadProjectJson ?? downloadProjectJson,
+    downloadQmkJson: options.downloadQmkJson ?? downloadQmkJson,
+    discoverBrowserKeyboard: options.discoverBrowserKeyboard ?? defaultDiscoverKeyboard(),
+    chooseBrowserKeyboard: options.chooseBrowserKeyboard ?? defaultChooseKeyboard(),
+    deviceSelection: { state: "discovering" },
+    deviceSelectionEpoch: 0,
+    protocolVerification: { state: "idle" },
+    snapshotLayerIndex: 0,
+    snapshotSelectedKey: "0:0",
+    snapshotReadStatus: "idle",
+    deviceWriteEnabled: false,
+    now: options.now ?? (() => new Date().toISOString()),
+    projectStatus: "Project is not saved in this preview session.",
+    projectJsonDraft: JSON.stringify(currentProject, null, 2),
+    selectedSavedProjectId: projectStorage.list()[0]?.id ?? "",
+    testEvents: [],
+    doctorStatus: "loading",
+  };
+
+  let latestDoctorReportRequest = 0;
+  const requestDoctorReport = () => {
+    const requestId = ++latestDoctorReportRequest;
+    const settle = (report: DoctorReport | null) => {
+      if (requestId !== latestDoctorReportRequest) {
+        return;
+      }
+      applyDoctorReport(state, report);
+      actions.render();
+    };
+
+    state.doctorStatus = "loading";
+    actions.render();
+    try {
+      doctorReportLoader().then(settle, () => settle(null));
+    } catch {
+      settle(null);
+    }
+  };
+
+  const requestBrowserKeyboardDiscovery = () => {
+    const selectionEpoch = ++state.deviceSelectionEpoch;
+    state.deviceSelection = { state: "discovering" };
+    state.protocolVerification = { state: "idle" };
+    state.hardwareSnapshot = undefined;
+    state.snapshotLayerIndex = 0;
+    state.snapshotSelectedKey = "0:0";
+    state.snapshotReadStatus = "idle";
+    actions.render();
+    state.discoverBrowserKeyboard().then(
+      (selection) => {
+        if (state.deviceSelectionEpoch !== selectionEpoch) {
+          return;
+        }
+        state.deviceSelection = selection;
+        state.protocolVerification = { state: "idle" };
+        actions.render();
+      },
+      () => {
+        if (state.deviceSelectionEpoch !== selectionEpoch) {
+          return;
+        }
+        state.deviceSelection = { state: "discovery-failed" };
+        actions.render();
+      },
+    );
+  };
+
+  const actions = createActions(root, state, requestDoctorReport);
+  requestDoctorReport();
+  requestBrowserKeyboardDiscovery();
+}
+
+export function createActions(
+  root: HTMLElement,
+  state: EditorState,
+  requestDoctorReport: () => void,
+) {
+  const actions = {
+    render: () => {
+      const focusedInput = captureFocusedInput(root);
+      const workspaceScroll = captureWorkspaceScroll(root);
+      const layout = selectedLayout(state.keyboard, state.project);
+      const issues = validateProject(state.project, state.keyboard);
+      const qmkJson = safeExportQmkJson(state.project, state.keyboard, issues);
+      const buildPlan = createBuildPlan(state.project, issues, state.qmkDetected);
+
+      root.replaceChildren(
+        mainShell(state, layout, issues, qmkJson, buildPlan, {
+          selectLayer: (nextLayerIndex) => {
+            state.selectedLayerIndex = nextLayerIndex;
+            actions.render();
+          },
+          selectView: (view) => {
+            state.activeView = view;
+            actions.render();
+          },
+          selectWorkspaceMode: (mode) => {
+            state.workspaceMode = mode;
+            actions.render();
+          },
+          selectContextPanel: (panel) => {
+            state.activeContextPanel = panel;
+            actions.render();
+          },
+          openProjectDetails: () => {
+            state.projectDetailsOpen = true;
+            actions.render();
+          },
+          closeProjectDetails: () => {
+            state.projectDetailsOpen = false;
+            actions.render();
+          },
+          selectKey: (keyId) => {
+            state.selectedKeyId = keyId;
+            actions.render();
+          },
+          updateSelectedKeycode: (qmk) => {
+            const layerIndex = state.selectedLayerIndex;
+            const keyId = state.selectedKeyId;
+            const before = assignmentQmk(state.project, layerIndex, keyId);
+            updateAssignment(state, qmk);
+            state.commandHistory.push({
+              kind: "assign-keycode",
+              layerIndex,
+              keyId,
+              before,
+              after: qmk || "KC_NO",
+            });
+            actions.render();
+          },
+          updateSelectedLighting: (color) => {
+            const keyId = state.selectedKeyId;
+            const before = activeLightingProfile(state.project).perKey[keyId] ?? "";
+            updateLighting(state, color);
+            state.commandHistory.push({ kind: "set-lighting", keyId, before, after: color });
+            actions.render();
+          },
+          undo: () => {
+            const command = state.commandHistory.undo();
+            if (command) {
+              applyCommand(state, command, "backward");
+              actions.render();
+            }
+          },
+          redo: () => {
+            const command = state.commandHistory.redo();
+            if (command) {
+              applyCommand(state, command, "forward");
+              actions.render();
+            }
+          },
+          captureHostKey: (input) => {
+            const capture = captureHostKey(state.project, state.selectedLayerIndex, input);
+            state.testEvents = [capture, ...state.testEvents].slice(0, 12);
+            state.selectedKeyId = capture.matchedKeyIds[0] ?? state.selectedKeyId;
+            actions.render();
+          },
+          downloadQmkJson: () => {
+            const issues = validateProject(state.project, state.keyboard);
+            if (issues.some((issue) => issue.severity === "error")) {
+              return;
+            }
+            state.downloadQmkJson(
+              safeExportQmkJson(state.project, state.keyboard, issues),
+              state.project,
+            );
+          },
+          downloadViaDefinition: (qmkKeyboard) => {
+            const entry = viaDefinitionFor(qmkKeyboard);
+            if (!entry) {
+              state.projectStatus = `No bundled VIA definition for ${qmkKeyboard}.`;
+              actions.render();
+              return;
+            }
+            downloadJson(
+              JSON.stringify(entry.definition, null, 2),
+              `via-${slugify(entry.definition.name)}.json`,
+            );
+            state.projectStatus = `VIA definition exported for ${qmkKeyboard}; sideload it in VIA's Design tab.`;
+            actions.render();
+          },
+          chooseBrowserKeyboard: () => {
+            const selectionEpoch = ++state.deviceSelectionEpoch;
+            state.deviceSelection = { state: "selecting" };
+            state.protocolVerification = { state: "idle" };
+            state.hardwareSnapshot = undefined;
+            state.snapshotLayerIndex = 0;
+            state.snapshotReadStatus = "idle";
+            actions.render();
+            state.chooseBrowserKeyboard().then(
+              (selection) => {
+                if (state.deviceSelectionEpoch !== selectionEpoch) {
+                  return;
+                }
+                state.deviceSelection = selection;
+                state.protocolVerification = { state: "idle" };
+                state.hardwareSnapshot = undefined;
+                state.snapshotLayerIndex = 0;
+                state.snapshotSelectedKey = "0:0";
+                state.snapshotReadStatus = "idle";
+                actions.render();
+              },
+              () => {
+                if (state.deviceSelectionEpoch !== selectionEpoch) {
+                  return;
+                }
+                state.deviceSelection = { state: "cancelled" };
+                actions.render();
+              },
+            );
+          },
+          verifyKeychronV5MaxProtocol: () => {
+            if (!isBrowserReadSelection(state.deviceSelection)) {
+              return;
+            }
+            const selectionEpoch = state.deviceSelectionEpoch;
+            const session = browserReadSession(state.deviceSelection);
+            state.protocolVerification = { state: "verifying" };
+            actions.render();
+            session.verifyProtocolVersion().then(
+              ({ version }) => {
+                if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+                  return;
+                }
+                state.protocolVerification = { state: "verified", version };
+                actions.render();
+              },
+              () => {
+                if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+                  return;
+                }
+                state.protocolVerification = { state: "failed" };
+                actions.render();
+              },
+            );
+          },
+          readDevice: () => {
+            if (!isBrowserReadSelection(state.deviceSelection)) {
+              return;
+            }
+            const selectionEpoch = state.deviceSelectionEpoch;
+            const session = browserReadSession(state.deviceSelection);
+            state.snapshotReadStatus = "reading";
+            actions.render();
+            ("readSnapshot" in session ? session.readSnapshot() : session.readStandardState()).then(
+              (snapshot) => {
+                if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+                  return;
+                }
+                state.hardwareSnapshot = snapshot;
+                state.snapshotLayerIndex = 0;
+                state.snapshotSelectedKey = "0:0";
+                state.snapshotReadStatus = "idle";
+                actions.render();
+              },
+              () => {
+                if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+                  return;
+                }
+                state.hardwareSnapshot = undefined;
+                state.snapshotReadStatus = "failed";
+                actions.render();
+              },
+            );
+          },
+          selectKeycodeCategory: (categoryId) => {
+            state.keycodeCategoryId = categoryId;
+            state.keycodeSearch = "";
+            actions.render();
+          },
+          selectSnapshotLayer: (layerIndex) => {
+            if (
+              !isKeychronV5MaxSnapshot(state.hardwareSnapshot) ||
+              state.hardwareSnapshot.keymap.state !== "available" ||
+              !state.hardwareSnapshot.keymap.value.keycodes[layerIndex]
+            ) {
+              return;
+            }
+            state.snapshotLayerIndex = layerIndex;
+            actions.render();
+          },
+          selectSnapshotKey: (matrixKey) => {
+            state.snapshotSelectedKey = matrixKey;
+            actions.render();
+          },
+          enableDeviceWrites: (confirmed) => {
+            if (!confirmed) {
+              return;
+            }
+            state.deviceWriteEnabled = true;
+            if (isNativeRuntime()) {
+              void enableNativeDeviceWrites().catch(() => {
+                state.deviceWriteEnabled = false;
+              });
+            }
+            state.projectStatus = "Device writes enabled; use caution.";
+            actions.render();
+          },
+          writeSnapshotKeycode: (keycode, confirmed) => {
+            if (!confirmed || !state.deviceWriteEnabled) {
+              state.projectStatus = "Confirm the write and enable device writes first.";
+              actions.render();
+              return;
+            }
+            if (!isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
+              state.projectStatus = "No device keymap snapshot to write to.";
+              actions.render();
+              return;
+            }
+            const session = currentWriteSession(state);
+            if (!session) {
+              state.projectStatus = "The connected device does not support writes.";
+              actions.render();
+              return;
+            }
+            const [rowText, colText] = state.snapshotSelectedKey.split(":");
+            const row = Number(rowText);
+            const col = Number(colText);
+            if (!Number.isInteger(row) || !Number.isInteger(col)) {
+              state.projectStatus = "Select a key on the device keymap first.";
+              actions.render();
+              return;
+            }
+            session
+              .writeKeycode(state.snapshotLayerIndex, row, col, keycode)
+              .then(() => {
+                state.projectStatus = `Wrote keycode 0x${keycode.toString(16).padStart(4, "0")} to layer ${state.snapshotLayerIndex} position ${row}:${col}.`;
+                actions.render();
+              })
+              .catch(() => {
+                state.projectStatus = "Device write failed.";
+                actions.render();
+              });
+          },
+          saveEepromToDevice: (confirmed) => {
+            if (!confirmed || !state.deviceWriteEnabled) {
+              state.projectStatus = "Confirm the EEPROM save and enable device writes first.";
+              actions.render();
+              return;
+            }
+            const session = currentWriteSession(state);
+            if (!session) {
+              state.projectStatus = "The connected device does not support writes.";
+              actions.render();
+              return;
+            }
+            session
+              .saveEeprom()
+              .then(() => {
+                state.projectStatus = "Keymap saved to device EEPROM.";
+                actions.render();
+              })
+              .catch(() => {
+                state.projectStatus = "EEPROM save failed.";
+                actions.render();
+              });
+          },
+          writeKeymapToDevice: (confirmed) => {
+            if (!confirmed || !state.deviceWriteEnabled) {
+              state.projectStatus = "Confirm the keymap write and enable device writes first.";
+              actions.render();
+              return;
+            }
+            const session = currentWriteSession(state);
+            if (!session) {
+              state.projectStatus = "The connected device does not support writes.";
+              actions.render();
+              return;
+            }
+            const writes = projectKeymapWrites(state);
+            if (writes.entries.length === 0) {
+              state.projectStatus = "No writable keycodes in the project keymap.";
+              actions.render();
+              return;
+            }
+            let index = 0;
+            const runNext = (): Promise<void> => {
+              if (index >= writes.entries.length) {
+                return Promise.resolve();
+              }
+              const entry = writes.entries[index]!;
+              index += 1;
+              return session.writeKeycode(entry.layer, entry.row, entry.col, entry.keycode).then(runNext);
+            };
+            runNext()
+              .then(() => {
+                const skipped = writes.skipped.length;
+                state.projectStatus =
+                  `Wrote ${writes.entries.length} keycodes to the device` +
+                  (skipped > 0 ? `; ${skipped} unmappable keycodes were skipped.` : ".");
+                actions.render();
+              })
+              .catch(() => {
+                state.projectStatus = `Keymap write failed at entry ${index} of ${writes.entries.length}.`;
+                actions.render();
+              });
+          },
+          updateKeycodeSearch: (query) => {
+            state.keycodeSearch = query;
+            actions.render();
+          },
+          updateCatalogSearch: (query) => {
+            state.catalogSearch = query;
+            actions.render();
+          },
+          selectKeyboardFromCatalog: (keyboardId) => {
+            const keyboard = bundledKeyboards.find((item) => item.id === keyboardId);
+            if (!keyboard) {
+              return;
+            }
+            state.keyboard = structuredClone(keyboard);
+            state.project =
+              keyboard.id === keychronV5MaxKeyboard.id
+                ? structuredClone(keychronV5MaxProject)
+                : createProjectFromKeyboard(state.keyboard);
+            state.selectedLayerIndex = defaultSelectedLayerIndex(state.project);
+            state.selectedKeyId = selectedLayout(state.keyboard, state.project).keys[0]?.id ?? "";
+            state.commandHistory.clear();
+            state.catalogSearch = "";
+            state.projectJsonDraft = JSON.stringify(state.project, null, 2);
+            state.projectStatus = `Created ${state.project.name} from catalog.`;
+            state.activeView = "workspace";
+            state.activeContextPanel = "assignment";
+            actions.render();
+          },
+          saveProject: () => {
+            state.projectStorage.save(state.project);
+            state.selectedSavedProjectId = state.project.id;
+            state.projectStatus = `Saved ${state.project.name}`;
+            state.projectJsonDraft = JSON.stringify(state.project, null, 2);
+            actions.render();
+          },
+          renameSavedProject: (name) => {
+            const savedProject = state.projectStorage.load(state.selectedSavedProjectId);
+            const nextName = name.trim();
+            if (!savedProject || !nextName) {
+              state.projectStatus = "Choose a saved project and enter a name.";
+              actions.render();
+              return;
+            }
+            savedProject.name = nextName;
+            state.projectStorage.save(savedProject);
+            if (savedProject.id === state.project.id) {
+              state.project.name = nextName;
+              state.projectJsonDraft = JSON.stringify(state.project, null, 2);
+            }
+            state.projectStatus = `Renamed saved project to ${nextName}.`;
+            actions.render();
+          },
+          duplicateSavedProject: () => {
+            const savedProject = state.projectStorage.load(state.selectedSavedProjectId);
+            if (!savedProject) {
+              state.projectStatus = "Choose a saved project to duplicate.";
+              actions.render();
+              return;
+            }
+            const copy = {
+              ...savedProject,
+              id: `${savedProject.id}_copy_${crypto.randomUUID()}`,
+              name: `${savedProject.name} copy`,
+            };
+            state.projectStorage.save(copy);
+            state.selectedSavedProjectId = copy.id;
+            state.projectStatus = `Duplicated ${savedProject.name}.`;
+            actions.render();
+          },
+          deleteSavedProject: () => {
+            const deletedProject = state.projectStorage.load(state.selectedSavedProjectId);
+            if (!deletedProject || !state.projectStorage.remove(deletedProject.id)) {
+              state.projectStatus = "Choose a saved project to delete.";
+              actions.render();
+              return;
+            }
+            state.selectedSavedProjectId = state.projectStorage.list()[0]?.id ?? "";
+            state.projectStatus = `Deleted saved project ${deletedProject.name}.`;
+            actions.render();
+          },
+          downloadProjectJson: () => {
+            state.downloadProjectJson(structuredClone(state.project));
+            state.projectStatus = `Project export started for ${state.project.name}.`;
+            actions.render();
+          },
+          selectSavedProject: (projectId) => {
+            state.selectedSavedProjectId = projectId;
+            actions.render();
+          },
+          openSavedProject: () => {
+            const savedProject = state.projectStorage.load(state.selectedSavedProjectId);
+            if (!savedProject) {
+              state.projectStatus = "Select a saved project to open.";
+              actions.render();
+              return;
+            }
+            const keyboard = keyboardForProject(savedProject);
+            if (!keyboard) {
+              state.projectStatus = `Saved project target ${savedProject.target.qmkKeyboard} is not bundled.`;
+              actions.render();
+              return;
+            }
+            openProject(state, savedProject, keyboard, `Opened ${savedProject.name}.`);
+            actions.render();
+          },
+          updateProjectJsonDraft: (json) => {
+            state.projectJsonDraft = json;
+            actions.render();
+          },
+          importProjectDraft: () => {
+            try {
+              const imported = projectFromDraft(state.projectJsonDraft, (qmkKeyboard) =>
+                bundledKeyboards.find((keyboard) => keyboard.qmkKeyboard === qmkKeyboard),
+              );
+              if (imported.safetyAudit) {
+                if (state.safetyLedgerStorage.availability() !== "available") {
+                  state.projectStatus = "Safety audit could not be restored because the private safety ledger is unavailable.";
+                } else if (!safetyAuditMatchesCurrent(imported.safetyAudit, state.project, state.keyboard)) {
+                  state.projectStatus = "Safety audit does not match the current project and catalog definition; it was not restored.";
+                } else {
+                  state.safetyLedgerStorage.save(
+                    mergeSafetyLedgers(state.safetyLedgerStorage.load(), {
+                      version: 1,
+                      events: [imported.safetyAudit.event],
+                    }),
+                  );
+                  state.projectStatus = "Restored the saved backup-decline audit for the current project and device state.";
+                }
+                actions.render();
+                return;
+              }
+              const importedProject = imported.project;
+              if (!importedProject) {
+                throw new Error("Imported content does not contain a project");
+              }
+              const keyboard = keyboardForProject(importedProject);
+              if (!keyboard) {
+                state.projectStatus = `Imported project target ${importedProject.target.qmkKeyboard} is not bundled.`;
+                actions.render();
+                return;
+              }
+              let status = `Imported ${importedProject.name}.`;
+              if (imported.recoveryBundle) {
+                if (!recoveryBundleMatchesKeyboard(imported.recoveryBundle, keyboard)) {
+                  status = `Restored ${importedProject.name}; bundled catalog facts changed, so verification must be repeated.`;
+                } else if (state.safetyLedgerStorage.availability() !== "available") {
+                  status = `Restored ${importedProject.name}; private safety history could not be restored.`;
+                } else {
+                  state.safetyLedgerStorage.save(
+                    mergeSafetyLedgers(
+                      state.safetyLedgerStorage.load(),
+                      imported.recoveryBundle.ledger,
+                    ),
+                  );
+                  status = `Restored ${importedProject.name} with matching local safety history.`;
+                }
+              }
+              openProject(state, importedProject, keyboard, status);
+            } catch (error) {
+              state.projectStatus = `Import failed: ${error instanceof Error ? error.message : "Unknown error"}.`;
+            }
+            actions.render();
+          },
+          updateSelectedLayerName: (name) => {
+            const before = structuredClone(state.project.layers);
+            renameLayer(state.project, state.selectedLayerIndex, name);
+            state.commandHistory.push({ kind: "layers", before, after: structuredClone(state.project.layers) });
+            actions.render();
+          },
+          updateLightingMode: (mode) => {
+            activeLightingProfile(state.project).mode = mode;
+            actions.render();
+          },
+          updateLightingGlobal: (key, value) => {
+            updateLightingGlobal(state.project, key, value);
+            actions.render();
+          },
+          addLayer: () => {
+            const before = structuredClone(state.project.layers);
+            const layer = addTransparentLayer(state.project, layout.keys);
+            if (layer) {
+              state.selectedLayerIndex = layer.index;
+            }
+            state.commandHistory.push({ kind: "layers", before, after: structuredClone(state.project.layers) });
+            actions.render();
+          },
+          duplicateSelectedLayer: () => {
+            const before = structuredClone(state.project.layers);
+            const layer = duplicateLayer(state.project, state.selectedLayerIndex, layout.keys);
+            if (layer) {
+              state.selectedLayerIndex = layer.index;
+            }
+            state.commandHistory.push({ kind: "layers", before, after: structuredClone(state.project.layers) });
+            actions.render();
+          },
+          deleteSelectedLayer: () => {
+            const before = structuredClone(state.project.layers);
+            const result = deleteLayer(state.project, state.selectedLayerIndex);
+            if (result.deleted) {
+              state.selectedLayerIndex = state.project.layers.at(-1)?.index ?? 0;
+            }
+            state.commandHistory.push({ kind: "layers", before, after: structuredClone(state.project.layers) });
+            actions.render();
+          },
+          reloadProbe: () => {
+            requestDoctorReport();
+          },
+          addMacro: (name, macroActions) => {
+            const record = createMacroRecord(name, macroActions);
+            state.project.macros = [...(state.project.macros ?? []), record];
+            actions.render();
+          },
+          removeMacro: (macroId) => {
+            state.project.macros = (state.project.macros ?? []).filter(
+              (macro) => macro.id !== macroId,
+            );
+            actions.render();
+          },
+        }),
+      );
+      restoreWorkspaceScroll(root, workspaceScroll);
+      restoreFocusedInput(root, focusedInput);
+    },
+  };
+
+  return actions;
+}
+
+export type RenderActions = {
+  selectLayer: (layerIndex: number) => void;
+  selectView: (view: AppView) => void;
+  selectWorkspaceMode: (mode: "device" | "editor") => void;
+  selectContextPanel: (panel: ContextPanel) => void;
+  openProjectDetails: () => void;
+  closeProjectDetails: () => void;
+  selectKey: (keyId: string) => void;
+  updateSelectedKeycode: (qmk: string) => void;
+  updateSelectedLighting: (color: string) => void;
+  captureHostKey: (input: { code: string; key: string }) => void;
+  downloadQmkJson: () => void;
+  downloadViaDefinition: (qmkKeyboard: string) => void;
+  chooseBrowserKeyboard: () => void;
+  verifyKeychronV5MaxProtocol: () => void;
+  readDevice: () => void;
+  selectSnapshotLayer: (layerIndex: number) => void;
+  selectSnapshotKey: (matrixKey: string) => void;
+  enableDeviceWrites: (confirmed: boolean) => void;
+  writeSnapshotKeycode: (keycode: number, confirmed: boolean) => void;
+  saveEepromToDevice: (confirmed: boolean) => void;
+  writeKeymapToDevice: (confirmed: boolean) => void;
+  selectKeycodeCategory: (categoryId: string) => void;
+  updateKeycodeSearch: (query: string) => void;
+  updateCatalogSearch: (query: string) => void;
+  selectKeyboardFromCatalog: (keyboardId: string) => void;
+  saveProject: () => void;
+  renameSavedProject: (name: string) => void;
+  duplicateSavedProject: () => void;
+  deleteSavedProject: () => void;
+  downloadProjectJson: () => void;
+  selectSavedProject: (projectId: string) => void;
+  openSavedProject: () => void;
+  updateProjectJsonDraft: (json: string) => void;
+  importProjectDraft: () => void;
+  updateSelectedLayerName: (name: string) => void;
+  updateLightingMode: (mode: LightingProfile["mode"]) => void;
+  updateLightingGlobal: (key: string, value: string | number | boolean) => void;
+  addLayer: () => void;
+  duplicateSelectedLayer: () => void;
+  deleteSelectedLayer: () => void;
+  undo: () => void;
+  redo: () => void;
+  addMacro: (name: string, actions: string) => void;
+  removeMacro: (macroId: string) => void;
+  reloadProbe: () => void;
+};
+
+export function isProtocolVerifiableSelection(
+  selection: DeviceSelectionState,
+): selection is Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "partial" } }> {
+  return selection.state === "selected" && selection.contract.state === "partial";
+}
+
+export function isGenericViaCandidateSelection(
+  selection: DeviceSelectionState,
+): selection is Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "unverified-via" } }> {
+  return selection.state === "selected" && selection.contract.state === "unverified-via";
+}
+
+export function isBrowserReadSelection(
+  selection: DeviceSelectionState,
+): selection is Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "partial" | "unverified-via" } }> {
+  return isProtocolVerifiableSelection(selection) || isGenericViaCandidateSelection(selection);
+}
+
+export function browserReadSession(selection: Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "partial" | "unverified-via" } }>) {
+  return isProtocolVerifiableSelection(selection) ? selection.session : selection.viaSession;
+}
+
+type WriteCapableSession = {
+  writeKeycode: (layer: number, row: number, col: number, keycode: number) => Promise<void>;
+  saveEeprom: () => Promise<void>;
+};
+
+function currentWriteSession(state: EditorState): WriteCapableSession | null {
+  if (!isBrowserReadSelection(state.deviceSelection)) {
+    return null;
+  }
+  const session = browserReadSession(state.deviceSelection);
+  if ("writeKeycode" in session && session.writeKeycode && session.saveEeprom) {
+    return session as WriteCapableSession;
+  }
+  return null;
+}
+
+function projectKeymapWrites(state: EditorState): {
+  entries: Array<{ layer: number; row: number; col: number; keycode: number }>;
+  skipped: string[];
+} {
+  const layout = state.keyboard.layouts.find(
+    (item) => item.id === state.project.target.layoutId,
+  );
+  const entries: Array<{ layer: number; row: number; col: number; keycode: number }> = [];
+  const skipped: string[] = [];
+  const layers = [...state.project.layers].sort((a, b) => a.index - b.index);
+  for (const layer of layers) {
+    for (const assignment of layer.assignments) {
+      const key = layout?.keys.find((candidate) => candidate.id === assignment.visualKeyId);
+      if (!key?.matrix) {
+        continue;
+      }
+      const value = keycodeValue(assignment.qmk);
+      if (value === undefined) {
+        skipped.push(`L${layer.index} ${key.id} (${assignment.qmk})`);
+        continue;
+      }
+      entries.push({
+        layer: layer.index,
+        row: key.matrix.row,
+        col: key.matrix.col,
+        keycode: value,
+      });
+    }
+  }
+  return { entries, skipped };
+}
+
+export function isCurrentProtocolSession(
+  state: EditorState,
+  selectionEpoch: number,
+  session: ReturnType<typeof browserReadSession>,
+): boolean {
+  return (
+    state.deviceSelectionEpoch === selectionEpoch &&
+    isBrowserReadSelection(state.deviceSelection) &&
+    browserReadSession(state.deviceSelection) === session
+  );
+}
+
+export function isKeychronV5MaxSnapshot(
+  snapshot: EditorState["hardwareSnapshot"],
+): snapshot is KeychronV5MaxReadSnapshot {
+  return Boolean(snapshot && "capabilities" in snapshot);
+}
+
+export type FocusedElement = {
+  focusId: string;
+  selectionEnd: number | null;
+  selectionStart: number | null;
+} | null;
+
+export type WorkspaceScroll = {
+  left: number;
+  top: number;
+} | null;
+
+export function captureWorkspaceScroll(root: HTMLElement): WorkspaceScroll {
+  const workspace = root.querySelector<HTMLElement>(".workspace");
+  if (!workspace) {
+    return null;
+  }
+
+  return { left: workspace.scrollLeft, top: workspace.scrollTop };
+}
+
+export function restoreWorkspaceScroll(root: HTMLElement, scroll: WorkspaceScroll): void {
+  if (!scroll) {
+    return;
+  }
+
+  const workspace = root.querySelector<HTMLElement>(".workspace");
+  if (!workspace) {
+    return;
+  }
+
+  workspace.scrollLeft = scroll.left;
+  workspace.scrollTop = scroll.top;
+}
+
+export function captureFocusedInput(root: HTMLElement): FocusedElement {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !root.contains(active)) {
+    return null;
+  }
+
+  const focusId = active.dataset.focusId;
+  if (!focusId) {
+    return null;
+  }
+
+  return {
+    focusId,
+    selectionEnd: active instanceof HTMLInputElement ? active.selectionEnd : null,
+    selectionStart: active instanceof HTMLInputElement ? active.selectionStart : null,
+  };
+}
+
+export function restoreFocusedInput(root: HTMLElement, focusedInput: FocusedElement): void {
+  if (!focusedInput) {
+    return;
+  }
+
+  const nextElement = root.querySelector<HTMLElement>(
+    `[data-focus-id="${focusedInput.focusId}"]`,
+  );
+  if (!nextElement) {
+    return;
+  }
+
+  nextElement.focus({ preventScroll: true });
+  if (
+    !(nextElement instanceof HTMLInputElement) ||
+    focusedInput.selectionStart === null ||
+    focusedInput.selectionEnd === null
+  ) {
+    return;
+  }
+
+  try {
+    nextElement.setSelectionRange(focusedInput.selectionStart, focusedInput.selectionEnd);
+  } catch {
+    // Color inputs do not support text selections in all DOM implementations.
+  }
+}
+
+export function applyDoctorReport(state: EditorState, report: DoctorReport | null): void {
+  state.doctorReport = report ?? undefined;
+  state.doctorStatus = report ? "ready" : "missing";
+  state.qmkDetected = report ? qmkDetectedFromReport(report) : state.fallbackQmkDetected;
+}
+
+export function keyboardForProject(project: Project): KeyboardDefinition | undefined {
+  return bundledKeyboards.find(
+    (keyboard) =>
+      keyboard.id === project.target.keyboardId &&
+      keyboard.qmkKeyboard === project.target.qmkKeyboard,
+  );
+}
+
+export function projectFromDraft(
+  json: string,
+  resolveKeyboard?: (qmkKeyboard: string) => KeyboardDefinition | undefined,
+): {
+  project?: Project;
+  recoveryBundle?: RecoveryBundle;
+  safetyAudit?: SafetyAuditReceipt;
+} {
+  try {
+    const recoveryBundle = importRecoveryBundleJson(json);
+    return { project: recoveryBundle.project, recoveryBundle };
+  } catch {
+    try {
+      return { safetyAudit: importSafetyAuditReceiptJson(json) };
+    } catch {
+      try {
+        return { project: importProjectJson(json) };
+      } catch (projectError) {
+        if (!resolveKeyboard || isAppNativeProjectPayload(json)) {
+          throw projectError;
+        }
+        return { project: importConfiguratorKeymap(json, resolveKeyboard) };
+      }
+    }
+  }
+}
+
+function isAppNativeProjectPayload(json: string): boolean {
+  try {
+    const parsed = JSON.parse(json) as { schemaVersion?: unknown };
+    return typeof parsed.schemaVersion === "string";
+  } catch {
+    return false;
+  }
+}
+
+export function defaultSafetyLedgerStorage(): SafetyLedgerStorage {
+  try {
+    const storage = window.localStorage;
+    return storage ? createSafetyLedgerStorage(storage) : createMemorySafetyLedgerStorage();
+  } catch {
+    return createMemorySafetyLedgerStorage();
+  }
+}
+
+export function downloadQmkJson(output: unknown, currentProject: Project): void {
+  const contents = JSON.stringify(output, null, 2);
+  if (typeof contents !== "string") {
+    return;
+  }
+  const filename = currentProject.build.keymapName
+    .replace(/[^a-z0-9_-]+/gi, "-")
+    .toLowerCase();
+  downloadJson(`${contents}\n`, `${filename}-qmk.json`);
+}
+
+export function downloadProjectJson(project: Project): void {
+  const contents = JSON.stringify(project, null, 2);
+  const filename = project.name.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase();
+  downloadJson(`${contents}\n`, `${filename}-project.json`);
+}
+
+export function downloadJson(contents: string, filename: string): void {
+  const blob = new Blob([contents], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  queueMicrotask(() => URL.revokeObjectURL(url));
+}
+
+function slugify(value: string): string {
+  return value.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+export function openProject(
+  state: EditorState,
+  project: Project,
+  keyboard: KeyboardDefinition,
+  status: string,
+): void {
+  state.keyboard = structuredClone(keyboard);
+  state.project = structuredClone(project);
+  state.selectedLayerIndex = defaultSelectedLayerIndex(state.project);
+  state.commandHistory.clear();
+  state.selectedKeyId = selectedLayout(state.keyboard, state.project).keys[0]?.id ?? "";
+  state.projectJsonDraft = JSON.stringify(state.project, null, 2);
+  state.projectStatus = status;
+  state.activeView = "workspace";
+  state.activeContextPanel = "assignment";
+  state.projectDetailsOpen = false;
+}
+
+export function qmkDetectedFromReport(report: DoctorReport): boolean {
+  return (
+    report.snapshot.commands?.some(
+      (command) =>
+        command.name === "qmk" && command.requiredFor === "localBuild" && Boolean(command.path),
+    ) ?? false
+  );
+}
+
+export function currentLayer(state: EditorState) {
+  return (
+    state.project.layers.find((layer) => layer.index === state.selectedLayerIndex) ??
+    state.project.layers[0]
+  );
+}
+
+export function defaultSelectedLayerIndex(currentProject: Project): number {
+  return (
+    currentProject.layers.find((layer) => /^win base$/i.test(layer.name))?.index ??
+    currentProject.layers[0]?.index ??
+    0
+  );
+}
+
+export function selectedLayout(keyboard: KeyboardDefinition, currentProject: Project) {
+  return (
+    keyboard.layouts.find((layout) => layout.id === currentProject.target.layoutId) ??
+    keyboard.layouts[0]
+  );
+}
+
+export function activeLightingProfile(currentProject: Project): LightingProfile {
+  if (!currentProject.lightingProfiles?.length) {
+    currentProject.lightingProfiles = [
+      {
+        id: "profile_default",
+        name: "Default",
+        mode: "static",
+        perKey: {},
+      },
+    ];
+  }
+
+  return currentProject.lightingProfiles[0];
+}
+
+export function updateAssignment(state: EditorState, qmk: string): void {
+  setAssignmentQmk(state.project, state.selectedLayerIndex, state.selectedKeyId, qmk);
+}
+
+function setAssignmentQmk(project: Project, layerIndex: number, keyId: string, qmk: string): void {
+  const layer = project.layers.find((item) => item.index === layerIndex);
+  const assignment = layer?.assignments.find((item) => item.visualKeyId === keyId);
+  if (!layer || !assignment) {
+    return;
+  }
+  assignment.qmk = qmk || "KC_NO";
+  assignment.kind = kindForKeycode(assignment.qmk);
+}
+
+function assignmentQmk(project: Project, layerIndex: number, keyId: string): string {
+  const layer = project.layers.find((item) => item.index === layerIndex);
+  return layer?.assignments.find((item) => item.visualKeyId === keyId)?.qmk ?? "KC_NO";
+}
+
+export function updateLighting(state: EditorState, color: string): void {
+  setLightingColor(state.project, state.selectedKeyId, color);
+}
+
+function setLightingColor(project: Project, keyId: string, color: string): void {
+  activeLightingProfile(project).perKey[keyId] = color;
+}
+
+function applyCommand(state: EditorState, command: Command, direction: "forward" | "backward"): void {
+  switch (command.kind) {
+    case "assign-keycode":
+      setAssignmentQmk(
+        state.project,
+        command.layerIndex,
+        command.keyId,
+        direction === "forward" ? command.after : command.before,
+      );
+      break;
+    case "set-lighting":
+      setLightingColor(
+        state.project,
+        command.keyId,
+        direction === "forward" ? command.after : command.before,
+      );
+      break;
+    case "layers":
+      state.project.layers = structuredClone(
+        direction === "forward" ? command.after : command.before,
+      );
+      break;
+  }
+}
+
+export function updateLightingGlobal(
+  currentProject: Project,
+  key: string,
+  value: string | number | boolean,
+): void {
+  const profile = activeLightingProfile(currentProject);
+  profile.global = {
+    ...(profile.global ?? {}),
+    [key]: value,
+  };
+}
+
+export function safeExportQmkJson(
+  currentProject: Project,
+  keyboard: KeyboardDefinition,
+  issues: UiIssue[],
+): unknown {
+  if (issues.some((issue) => issue.severity === "error")) {
+    return { blocked: "Project cannot export until validation errors are fixed." };
+  }
+  const cBlockers = jsonExportBlockers(currentProject);
+  if (cBlockers.length > 0) {
+    return { blocked: cBlockers.join(" ") };
+  }
+  return exportQmkJson(currentProject, keyboard);
+}

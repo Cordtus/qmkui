@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import project from "../../../fixtures/projects/example-60.json";
 import type { Project } from "./domain";
-import { createMemoryProjectStorage, importProjectJson } from "./projectStorage";
+import {
+  createLocalStorageProjectStorage,
+  createMemoryProjectStorage,
+  importProjectJson,
+} from "./projectStorage";
 
 const fixtureProject = project as Project;
 
@@ -83,3 +87,74 @@ describe("project storage", () => {
     );
   });
 });
+
+describe("localStorage project storage", () => {
+  it("persists projects across adapter instances like a page reload", () => {
+    const storage = createFakeStorage();
+    const first = createLocalStorageProjectStorage(() => "2026-06-27T19:00:00.000Z", storage);
+    const savedProject = structuredClone(fixtureProject);
+    savedProject.id = "project_reload";
+    savedProject.name = "Survives Reload";
+    first.save(savedProject);
+
+    const second = createLocalStorageProjectStorage(() => "2026-06-27T19:00:00.000Z", storage);
+    expect(second.list()).toEqual([
+      {
+        id: "project_reload",
+        name: "Survives Reload",
+        keyboardId: "example/keyboard",
+        qmkKeyboard: "example/keyboard",
+        updatedAt: "2026-06-27T19:00:00.000Z",
+      },
+    ]);
+    expect(second.load("project_reload")?.name).toBe("Survives Reload");
+  });
+
+  it("returns editable copies that do not mutate the stored project", () => {
+    const storage = createFakeStorage();
+    const persisted = createLocalStorageProjectStorage(() => "2026-06-27T19:00:00.000Z", storage);
+    persisted.save(fixtureProject);
+
+    const loaded = persisted.load(fixtureProject.id);
+    loaded!.name = "Edited";
+
+    expect(persisted.load(fixtureProject.id)?.name).toBe(fixtureProject.name);
+  });
+
+  it("ignores corrupt entries and still lists valid ones", () => {
+    const storage = createFakeStorage();
+    storage.setItem("qmkui.projects.v1.corrupt", "{not json");
+    const persisted = createLocalStorageProjectStorage(() => "2026-06-27T19:00:00.000Z", storage);
+    persisted.save(fixtureProject);
+
+    expect(persisted.list().map((summary) => summary.id)).toEqual([fixtureProject.id]);
+  });
+
+  it("removes only the requested project and reports existence", () => {
+    const storage = createFakeStorage();
+    const persisted = createLocalStorageProjectStorage(() => "2026-06-27T19:00:00.000Z", storage);
+    persisted.save(fixtureProject);
+
+    expect(persisted.remove("missing")).toBe(false);
+    expect(persisted.remove(fixtureProject.id)).toBe(true);
+    expect(persisted.list()).toEqual([]);
+  });
+});
+
+function createFakeStorage(): Storage {
+  const map = new Map<string, string>();
+  return {
+    get length() {
+      return map.size;
+    },
+    clear: () => map.clear(),
+    getItem: (key) => map.get(key) ?? null,
+    key: (index) => [...map.keys()][index] ?? null,
+    removeItem: (key) => {
+      map.delete(key);
+    },
+    setItem: (key, value) => {
+      map.set(key, value);
+    },
+  } as Storage;
+}

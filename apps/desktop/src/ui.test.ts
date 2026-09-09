@@ -60,12 +60,109 @@ describe("device-first hardware workspace", () => {
     expect(readSnapshot).toHaveBeenCalledOnce();
     expect(root.querySelector("[data-hardware-snapshot]")?.getAttribute("data-source")).toBe("hardware");
     expect(root.textContent).toContain("1.2.3");
-    expect(root.textContent).toContain("0x0004");
     expect(root.querySelector("[data-hardware-keymap]")).not.toBeNull();
-    expect(root.querySelector('[data-hardware-key="0:2"]')?.textContent).toContain("0x0005");
-    expect(root.textContent).not.toContain("KC_ESC");
+    expect(root.querySelector('[data-hardware-key="0:0"]')?.textContent).toContain("A");
+    expect(root.querySelector('[data-hardware-key="0:2"]')?.textContent).toContain("B");
+    expect(root.querySelector("[data-hardware-snapshot]")?.textContent).not.toContain("KC_ESC");
     expect(root.textContent).toContain("HSV 12, 34, 56");
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
+  });
+
+  it("re-surfaces the app shell after a device is selected, with a Device/Project editor toggle", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+
+    expect(root.querySelector('[data-view="workspace"]')).not.toBeNull();
+    expect(root.querySelector('[data-view="catalog"]')).not.toBeNull();
+    expect(root.querySelector('[data-view="system"]')).not.toBeNull();
+    expect(
+      root.querySelector('[data-workspace-mode="device"]')?.getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
+
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    expect(root.querySelector("[data-hardware-snapshot]")).not.toBeNull();
+
+    root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
+    await flush();
+    expect(root.querySelector("[data-keyboard-workspace]")).not.toBeNull();
+    expect(root.querySelector("[data-hardware-snapshot]")).toBeNull();
+  });
+
+  it("shows the selected key's role on every layer and flags Print/SysRq", async () => {
+    const root = document.createElement("div");
+    const snapshot = availableSnapshot();
+    snapshot.keymap = {
+      state: "available",
+      value: { layerCount: 2, keycodes: [[[0x0004, 0, 0]], [[0x0046, 0, 0]]] },
+    };
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => snapshot),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+
+    expect(root.querySelector('[data-hardware-key-roles="0:0"]')).not.toBeNull();
+    const roles = root.querySelectorAll("[data-hardware-key-role]");
+    expect(roles).toHaveLength(2);
+    expect(roles[0]?.textContent).toContain("Layer 0");
+    expect(roles[0]?.textContent).toContain("A");
+    expect(roles[1]?.textContent).toContain("Layer 1");
+    expect(roles[1]?.textContent).toContain("Print");
+    expect(roles[1]?.textContent).toContain("0x0046");
+    expect(roles[1]?.textContent).toContain("SysRq");
+  });
+
+  it("selects a key on the board and updates its roles", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLElement>('[data-hardware-key="0:2"]')?.click();
+    await flush();
+
+    expect(root.querySelector('[data-hardware-key-roles="0:2"]')).not.toBeNull();
+    expect(root.querySelector('[data-hardware-key="0:2"]')?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("reports when no key maps to Print/SysRq on any layer", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+
+    expect(root.textContent).toContain("No key maps to Print/SysRq on any layer.");
+  });
+
+  it("reports a board-level Print/SysRq summary when a key is mapped", async () => {
+    const root = document.createElement("div");
+    const snapshot = availableSnapshot();
+    snapshot.keymap = {
+      state: "available",
+      value: { layerCount: 1, keycodes: [[[0x0046, 0, 0]]] },
+    };
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => snapshot),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+
+    expect(root.querySelector(".hardware-sysrq-summary")?.textContent).toContain(
+      "Print/SysRq is mapped",
+    );
   });
 
   it("ignores a snapshot that resolves after another keyboard selection starts", async () => {
@@ -117,7 +214,7 @@ describe("device-first hardware workspace", () => {
     expect(root.textContent).toContain("No verified V5 Max matrix dimensions were supplied.");
     expect(root.querySelector('[data-snapshot-field="lighting"]')?.getAttribute("data-snapshot-state")).toBe("unverified");
     expect(root.textContent).toContain("RGB state could not be verified.");
-    expect(root.textContent).not.toContain("Win Base");
+    expect(root.querySelector("[data-hardware-snapshot]")?.textContent).not.toContain("Win Base");
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
   });
 
@@ -143,7 +240,7 @@ describe("device-first hardware workspace", () => {
 
     expect(root.querySelector('[data-device-action="verify-protocol"]')).not.toBeNull();
     expect(root.querySelector('[data-device-action="read"]')).toBeNull();
-    expect(root.textContent).not.toContain("Keychron V5 Max");
+    expect(root.querySelector("[data-connection-screen]")?.textContent).not.toContain("Keychron V5 Max");
 
     root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
     await flush();
@@ -300,3 +397,149 @@ function deferred<Value>() {
   });
   return { promise, resolve };
 }
+
+  it("moves key selection with arrow keys on the board", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
+    await flush();
+
+    const keys = [...root.querySelectorAll<HTMLElement>("[data-key]")];
+    expect(keys.length).toBeGreaterThan(1);
+    keys[0]?.focus();
+    const before = root
+      .querySelector('[data-key][aria-pressed="true"]')
+      ?.getAttribute("data-key");
+
+    keys[0]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    await flush();
+
+    const after = root
+      .querySelector('[data-key][aria-pressed="true"]')
+      ?.getAttribute("data-key");
+    expect(after).not.toBe(before);
+    expect(after).toBeTruthy();
+  });
+
+  it("adds a macro from the editor and blocks JSON export for C macros", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
+    await flush();
+
+    const nameInput = root.querySelector<HTMLInputElement>('[data-focus-id="macro-name"]');
+    const actionsInput = root.querySelector<HTMLInputElement>('[data-focus-id="macro-actions"]');
+    expect(nameInput).not.toBeNull();
+    nameInput!.value = "F12";
+    actionsInput!.value = "TAP KC_F12";
+    root.querySelector<HTMLElement>('[data-macro-add]')?.click();
+    await flush();
+
+    expect(root.querySelector("[data-macro]")?.textContent).toContain("F12");
+    expect(root.querySelector("[data-macro]")?.textContent).toContain("export: json");
+
+    actionsInput!.value = "UNICODE 0x1F600";
+    root.querySelector<HTMLElement>('[data-macro-add]')?.click();
+    await flush();
+    const cMacro = [...root.querySelectorAll("[data-macro]")].at(-1);
+    expect(cMacro?.textContent).toContain("export: c");
+
+    const download = root.querySelector<HTMLElement>('[data-qmk-action="download"]');
+    expect(download?.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("exports the bundled VIA definition for a catalog keyboard", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="catalog"]')?.click();
+    await flush();
+
+    const viaButton = root.querySelector<HTMLElement>(
+      '[data-catalog-keyboard="keychron/v5_max/ansi_encoder"] [data-via-definition-download]',
+    );
+    expect(viaButton).not.toBeNull();
+    viaButton?.click();
+    await flush();
+
+    expect(root.textContent).toContain("VIA definition exported for keychron/v5_max/ansi_encoder");
+  });
+
+  it("writes a keycode to the device and saves EEPROM behind confirmation", async () => {
+    const root = document.createElement("div");
+    const writeKeycode = vi.fn(async () => {});
+    const saveEeprom = vi.fn(async () => {});
+    const selection = recognizedSelection(async () => availableSnapshot());
+    (selection.session as { writeKeycode: unknown }).writeKeycode = writeKeycode;
+    (selection.session as { saveEeprom: unknown }).saveEeprom = saveEeprom;
+
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+
+    // Writes are gated: without confirmation nothing is sent.
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    expect(root.textContent).toContain("Device writes enabled");
+
+    root.querySelector<HTMLElement>('[data-hardware-key="0:0"]')?.click();
+    await flush();
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    const input = root.querySelector<HTMLInputElement>("[data-write-keycode]");
+    input!.value = "0046";
+    root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
+    await flush();
+
+    expect(writeKeycode).toHaveBeenCalledWith(0, 0, 0, 0x0046);
+
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-device-save-eeprom]")?.click();
+    await flush();
+    expect(saveEeprom).toHaveBeenCalledOnce();
+  });
+
+  it("writes the whole project keymap to the device from the editor", async () => {
+    const root = document.createElement("div");
+    const writeKeycode = vi.fn(async () => {});
+    const saveEeprom = vi.fn(async () => {});
+    const selection = recognizedSelection(async () => availableSnapshot());
+    (selection.session as { writeKeycode: unknown }).writeKeycode = writeKeycode;
+    (selection.session as { saveEeprom: unknown }).saveEeprom = saveEeprom;
+
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-write-keymap]")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
+
+    expect(writeKeycode).toHaveBeenCalled();
+    expect(root.textContent).toContain("Wrote");
+
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-device-save-eeprom]")?.click();
+    await flush();
+    expect(saveEeprom).toHaveBeenCalledOnce();
+  });
