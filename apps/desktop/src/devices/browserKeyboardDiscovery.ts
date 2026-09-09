@@ -21,6 +21,7 @@ import {
   type GenericViaStandardState,
 } from "./genericViaReader";
 import { ViaReadProtocol } from "./viaReadProtocol";
+import { ViaWriteProtocol } from "./viaWrite";
 
 type BrowserHidDevice = BrowserKeyboardIdentity & Partial<KeychronV5MaxReaderDevice>;
 
@@ -49,6 +50,8 @@ export type BrowserKeyboardSession = {
   };
   verifyProtocolVersion: () => Promise<KeychronV5MaxProtocolVersion>;
   readSnapshot: () => Promise<KeychronV5MaxReadSnapshot>;
+  writeKeycode?: (layer: number, row: number, col: number, keycode: number) => Promise<void>;
+  saveEeprom?: () => Promise<void>;
 };
 
 export type GenericViaBrowserKeyboardSession = {
@@ -186,6 +189,32 @@ function protocolSession(
     capabilities: { canRead: true, canWrite: false, canFlash: false },
     verifyProtocolVersion: () => verifyProtocolVersion(device as KeychronV5MaxProtocolDevice),
     readSnapshot: () => readSnapshot(device, { keymap: keychronV5MaxReadDefinition.keymap }),
+    writeKeycode: async (layer, row, col, keycode) => {
+      const openedByQmkui = !device.opened;
+      if (openedByQmkui) {
+        await device.open();
+      }
+      try {
+        await new ViaWriteProtocol(device).setKeycode(layer, row, col, keycode);
+      } finally {
+        if (openedByQmkui) {
+          await device.close();
+        }
+      }
+    },
+    saveEeprom: async () => {
+      const openedByQmkui = !device.opened;
+      if (openedByQmkui) {
+        await device.open();
+      }
+      try {
+        await new ViaWriteProtocol(device).saveEeprom();
+      } finally {
+        if (openedByQmkui) {
+          await device.close();
+        }
+      }
+    },
   };
 }
 
