@@ -66,19 +66,23 @@ behavior under test. Add a regression test first for a bug fix when practical.
 
 ## Hardware safety
 
-Routine tests must not open HID or serial endpoints, enter bootloader mode,
-flash firmware, or write to a keyboard. Do not add or run hardware-write tests
-without an explicitly approved hardware test plan covering the exact device,
-target validation, recovery path, and operator steps.
+QMKUI is a write-capable VIA replacement (operator direction 2026-08-12).
+Writes are gated, never unrestricted:
 
-Future write-capable code must remain disabled until it has an authoritative
-device profile and must use the safety foundation: current client-side project
-validation, a recovery bundle confirmed both before and after its final
-confirmation record is downloaded, or an explicit two-step backup decline with
-a saved audit receipt, and a final operator review of every pending action. A
-past safety record applies only to the unchanged project/device-source state.
-Never infer a bootloader, recovery artifact, firmware revision, or device
-protocol from a generic profile.
+- Routine tests must not open HID or serial endpoints, enter bootloader mode,
+  flash firmware, or write to a keyboard, except through the gated write path
+  and only against mock transports or an approved hardware test plan.
+- Every write frame must be in `fixtures/protocol/write-commands.json` and pass
+  the write allow-list in `qmkui-hid`; nothing is hardcoded ad hoc.
+- A write only runs after explicit operator confirmation in the UI (a
+  confirmation step, plus "save to EEPROM" as a separate confirmed action) and
+  only when the device identity matches the selected target.
+- No write reaches real hardware until the V5 Max manual test plan
+  (`dev-docs/plans/hardware-test-plan.md`) is signed off by the operator.
+  Until then, writes are exercised only against mock transports and the
+  dry-run adapter.
+- Never infer a bootloader, recovery artifact, firmware revision, or device
+  protocol from a generic profile.
 
 Recovery bundles and browser ledger data are intentionally local-only plain
 JSON. Do not add network upload, analytics, USB serial-number collection, or

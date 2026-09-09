@@ -16,6 +16,7 @@ npm --prefix apps/desktop exec playwright install chromium
 npm --prefix apps/desktop test
 npm --prefix apps/desktop run build
 scripts/test-public-packaging.sh
+scripts/test-public-gui-packaging.sh
 
 doctor_output="${QMKUI_DOCTOR_OUTPUT:-$root_dir/target/qmkui-doctor-readiness.json}"
 mkdir -p "$(dirname "$doctor_output")"

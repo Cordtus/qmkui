@@ -1,0 +1,52 @@
+# Maintainer: QMKUI maintainers
+pkgname=qmkui
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Device-first QMK/VIA keyboard reader and project workbench"
+arch=("x86_64")
+url="https://github.com/Cordtus/qmkui"
+license=("MIT")
+depends=(
+  "qmk"
+  "hidapi"
+  "webkit2gtk-4.1"
+  "gtk3"
+  "librsvg"
+)
+makedepends=(
+  "cargo"
+)
+source=()
+sha256sums=()
+
+_local_source="${QMKUI_SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+
+pkgver() {
+  cd "$_local_source"
+  printf "0.1.0.r%s" "$(git rev-list --count HEAD 2>/dev/null || printf 0)"
+}
+
+build() {
+  cd "$_local_source"
+  cargo build --release -p qmkui
+}
+
+package() {
+  cd "$_local_source"
+  install -Dm755 target/release/qmkui "$pkgdir/usr/bin/qmkui"
+  install -Dm644 packaging/arch/qmkui/qmkui.desktop \
+    "$pkgdir/usr/share/applications/qmkui.desktop"
+  install -Dm644 packaging/arch/qmkui/qmkui.xml \
+    "$pkgdir/usr/share/mime/packages/qmkui.xml"
+  install -Dm644 packaging/arch/qmkui/qmkui.png \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/qmkui.png"
+  install -Dm644 packaging/udev/70-qmkui.rules \
+    "$pkgdir/usr/lib/udev/rules.d/70-qmkui.rules"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/qmkui/README.md"
+  install -Dm644 CONTRIBUTING.md "$pkgdir/usr/share/doc/qmkui/CONTRIBUTING.md"
+  install -Dm644 THIRD_PARTY_NOTICES.md \
+    "$pkgdir/usr/share/doc/qmkui/THIRD_PARTY_NOTICES.md"
+  install -Dm644 packaging/arch/qmkui/README.md \
+    "$pkgdir/usr/share/doc/qmkui/gui-packaging.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/qmkui/LICENSE"
+}

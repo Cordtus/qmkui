@@ -10,10 +10,15 @@ VIA raw-HID interface, first choose **Verify protocol**; QMKUI sends only the
 standard VIA `Get Protocol Version` request. A successful response enables a
 generic standard-state read with no inferred keyboard model or layout.
 
-Connection, Read device, and Refresh device are read-only. QMKUI never writes,
-resets, stages, loads defaults, applies a preset, enters a bootloader, or
-flashes firmware. A capability is live only when the recognized device returned
-it. Unavailable or unverified fields remain visibly unavailable with their
+Connection, Read device, and Refresh device are read-only. QMKUI is also
+becoming a write-capable VIA replacement (operator direction 2026-08-12):
+a gated write path can set keycodes on the live dynamic keymap and save them to
+EEPROM, exactly like VIA. Writes are **gated** — they require an explicit
+operator confirmation in the UI, a separate confirmed "save to EEPROM" action,
+a matching device identity, and every frame must be in the write allow-list
+(`fixtures/protocol/write-commands.json`). No write reaches real hardware until
+the V5 Max manual test plan (`dev-docs/plans/hardware-test-plan.md`) is signed
+off. There is still no flash, bootloader, or firmware path. Unavailable or unverified fields remain visibly unavailable with their
 reason; QMKUI never substitutes a bundled default. The bundled V5 definition
 is available after a read only as an explicit, read-only comparison reference.
 

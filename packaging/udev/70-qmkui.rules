@@ -1,0 +1,4 @@
+# QMKUI read-only HID access for supported Keychron devices.
+# Grants the input group access to the raw HID interfaces QMKUI reads.
+# QMKUI only issues VIA/QMK read commands on these interfaces.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3434", ATTRS{idProduct}=="0950", MODE="0660", GROUP="input"
