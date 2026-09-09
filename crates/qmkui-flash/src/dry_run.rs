@@ -1,0 +1,102 @@
+use crate::request::{FlashRequest, FlashResult, FlashStatus};
+use crate::FlashError;
+
+/// The seam a real flash implementation must satisfy. Only the dry-run adapter
+/// exists today; a gated `qmk flash` adapter reuses this trait post-gate.
+pub trait FlashAdapter {
+    fn flash(&mut self, request: &FlashRequest) -> Result<FlashResult, FlashError>;
+}
+
+/// Records the command sequence a real flash would run, without executing it.
+pub struct DryRunAdapter {
+    pub log: Vec<String>,
+}
+
+impl DryRunAdapter {
+    pub fn new() -> Self {
+        Self { log: Vec::new() }
+    }
+}
+
+impl Default for DryRunAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FlashAdapter for DryRunAdapter {
+    fn flash(&mut self, request: &FlashRequest) -> Result<FlashResult, FlashError> {
+        let mut log = Vec::new();
+        log.push(format!(
+            "would flash {} ({}) to {}:{} with bootloader {}",
+            request.target.qmk_keyboard,
+            &request.target.firmware_sha256[..request.target.firmware_sha256.len().min(12)],
+            request.expected_device.vendor_id,
+            request.expected_device.product_id,
+            request.target.bootloader,
+        ));
+        log.push("dry-run: no command was executed".to_owned());
+        self.log = log.clone();
+        Ok(FlashResult {
+            status: FlashStatus::Success,
+            log,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::policy::{assess_request, PolicyVerdict};
+    use crate::request::{DeviceIdentity, FlashRequest, FlashTarget};
+
+    #[test]
+    fn dry_run_records_without_executing() {
+        let request = FlashRequest {
+            target: FlashTarget {
+                project_digest: "d".into(),
+                firmware_sha256: "0123456789abcdef".into(),
+                qmk_keyboard: "example/one".into(),
+                bootloader: "atmel-dfu".into(),
+            },
+            expected_device: DeviceIdentity {
+                vendor_id: "3434".into(),
+                product_id: "0950".into(),
+            },
+            operator_confirmed: true,
+        };
+        let mut adapter = DryRunAdapter::new();
+        let result = adapter.flash(&request).expect("dry run succeeds");
+        assert_eq!(result.status, FlashStatus::Success);
+        assert!(result.log[0].contains("would flash"));
+        assert!(result
+            .log
+            .iter()
+            .any(|line| line.contains("no command was executed")));
+    }
+
+    #[test]
+    fn dry_run_never_runs_a_blocked_request() {
+        let request = FlashRequest {
+            target: FlashTarget {
+                project_digest: "stale".into(),
+                firmware_sha256: "abc".into(),
+                qmk_keyboard: "example/one".into(),
+                bootloader: "atmel-dfu".into(),
+            },
+            expected_device: DeviceIdentity {
+                vendor_id: "3434".into(),
+                product_id: "0950".into(),
+            },
+            operator_confirmed: true,
+        };
+        // The adapter does not enforce policy; policy is assessed upstream.
+        let verdict = assess_request(
+            &request,
+            "current",
+            Some(&request.expected_device),
+            Some("atmel-dfu"),
+        );
+        assert!(matches!(verdict, PolicyVerdict::Blocked { .. }));
+    }
+}

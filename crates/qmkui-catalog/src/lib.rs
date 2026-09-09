@@ -3,6 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use thiserror::Error;
 
+pub mod ingest;
+
+pub use ingest::ingest_qmk_boards;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyboardDefinition {
@@ -15,9 +19,24 @@ pub struct KeyboardDefinition {
     pub aliases: Vec<String>,
     #[serde(default)]
     pub usb: Option<UsbId>,
+    #[serde(default)]
+    pub bootloader: Option<String>,
+    #[serde(default)]
+    pub processor: Option<String>,
+    #[serde(default)]
+    pub matrix: Option<MatrixSize>,
     pub layouts: Vec<LayoutDefinition>,
     pub features: FeatureCapabilities,
     pub source: CatalogSource,
+    #[serde(default)]
+    pub qmk_commit: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatrixSize {
+    pub rows: u16,
+    pub cols: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

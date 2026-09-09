@@ -3,7 +3,11 @@ members = [
     "crates/qmkui-core",
     "crates/qmkui-catalog",
     "crates/qmkui-doctor",
+    "crates/qmkui-build",
+    "crates/qmkui-hid",
+    "crates/qmkui-flash",
 ]
+exclude = ["apps/desktop/src-tauri"]
 resolver = "2"
 
 [workspace.package]

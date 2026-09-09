@@ -1,0 +1,17 @@
+{
+  "keyboard_name": "Fixture Two",
+  "manufacturer": "QMKUI Fixtures",
+  "aliases": ["two-b", "two-a"],
+  "features": {
+    "rgb_matrix": true,
+    "encoder": false
+  },
+  "layouts": {
+    "LAYOUT": {
+      "layout": [
+        { "matrix": [0, 0], "x": 0, "y": 0 },
+        { "matrix": [0, 1], "x": 1, "y": 0 }
+      ]
+    }
+  }
+}

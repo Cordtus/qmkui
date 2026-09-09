@@ -1,0 +1,39 @@
+{
+  "keyboard_name": "Fixture One",
+  "manufacturer": "QMKUI Fixtures",
+  "url": "https://example.com/one",
+  "maintainer": "qmkui",
+  "usb": {
+    "vid": "0xFEED",
+    "pid": "0x0001",
+    "device_version": "1.0.0"
+  },
+  "bootloader": "atmel-dfu",
+  "processor": "RP2040",
+  "matrix_size": { "rows": 4, "cols": 3 },
+  "features": {
+    "backlight": true,
+    "rgblight": false,
+    "rgb_matrix": true,
+    "encoder": true,
+    "via": true,
+    "dynamic_keymap": true,
+    "raw_hid": true
+  },
+  "layouts": {
+    "LAYOUT": {
+      "layout": [
+        { "matrix": [0, 0], "x": 0, "y": 0, "label": "Esc" },
+        { "matrix": [0, 1], "x": 1, "y": 0, "label": "A" },
+        { "matrix": [0, 2], "x": 2, "y": 0, "label": "Fn" },
+        { "matrix": [1, 0], "x": 0, "y": 1.25, "w": 2, "label": "Space" }
+      ]
+    },
+    "LAYOUT_SPLIT": {
+      "layout": [
+        { "matrix": [0, 0], "x": 0, "y": 0 },
+        { "matrix": [0, 1], "x": 1, "y": 0 }
+      ]
+    }
+  }
+}
