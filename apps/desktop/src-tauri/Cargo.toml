@@ -19,3 +19,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hidapi = "2"
 qmkui-hid = { path = "../../../crates/qmkui-hid", features = ["hidapi-transport"] }
+qmkui-build = { path = "../../../crates/qmkui-build" }
+qmkui-flash = { path = "../../../crates/qmkui-flash" }
+qmkui-core = { path = "../../../crates/qmkui-core" }

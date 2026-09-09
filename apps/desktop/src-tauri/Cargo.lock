@@ -2374,11 +2374,43 @@ name = "qmkui"
 version = "0.1.0"
 dependencies = [
  "hidapi",
+ "qmkui-build",
+ "qmkui-core",
+ "qmkui-flash",
  "qmkui-hid",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+]
+
+[[package]]
+name = "qmkui-build"
+version = "0.1.0"
+dependencies = [
+ "qmkui-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "qmkui-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "qmkui-flash"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

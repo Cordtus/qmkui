@@ -2,7 +2,13 @@ use qmkui_hid::hidapi::HidApiTransport;
 use qmkui_hid::keychron_v5::KeychronV5Reader;
 use qmkui_hid::via::{KeymapDimensions, ViaReadProtocol};
 use qmkui_hid::via_write::ViaWriteProtocol;
-use serde::Serialize;
+use qmkui_build::artifact::{command_log, ArtifactInput, ArtifactStore};
+use qmkui_build::plan::project_digest;
+use qmkui_build::runner::{CommandRunner, SystemCommandRunner};
+use qmkui_flash::dry_run::{DryRunAdapter, FlashAdapter};
+use qmkui_flash::policy::assess_request;
+use qmkui_flash::request::{DeviceIdentity, FlashRequest, FlashTarget};
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::State;
 
@@ -159,6 +165,200 @@ fn save_eeprom(gate: State<WriteGate>) -> Result<(), String> {
     write.save_eeprom().map_err(|error| error.to_string())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalBuildResult {
+    ok: bool,
+    stdout: String,
+    stderr: String,
+    duration_ms: u64,
+    artifact_id: Option<String>,
+    project_digest: String,
+}
+
+/// Runs the local `qmk compile` for the staged project. The runner is the real
+/// system runner; staging and artifact storage happen under the user data dir.
+#[tauri::command]
+fn run_local_build(project_json: String) -> Result<LocalBuildResult, String> {
+    let project: qmkui_core::model::KeyboardProject =
+        serde_json::from_str(&project_json).map_err(|error| error.to_string())?;
+    let digest = project_digest(&project).map_err(|error| error.to_string())?;
+
+    let root = ProjectStore::default_root();
+    let artifacts_dir = root.join("artifacts");
+    let staging_dir = root.join("staging");
+    let store = ArtifactStore::new(artifacts_dir);
+
+    let layout = layout_contract_for(&project);
+    let keymap_path = qmkui_build::staging::export_and_stage(&staging_dir, &project, &layout)
+        .map_err(|error| error.to_string())?;
+
+    let command_plan = qmkui_build::runner::CommandPlan {
+        program: "qmk".to_owned(),
+        args: vec![
+            "compile".to_owned(),
+            "-kb".to_owned(),
+            project.target.qmk_keyboard.clone(),
+            "-km".to_owned(),
+            project.build.keymap_name.clone(),
+        ],
+        cwd: Some(staging_dir.to_string_lossy().into_owned()),
+    };
+
+    let started = std::time::Instant::now();
+    let mut runner = SystemCommandRunner;
+    let result = runner.run(&command_plan).map_err(|error| error.to_string())?;
+    let duration_ms = started.elapsed().as_millis() as u64;
+
+    if result.exit_code != Some(0) {
+        return Ok(LocalBuildResult {
+            ok: false,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            duration_ms,
+            artifact_id: None,
+            project_digest: digest,
+        });
+    }
+
+    let firmware = std::fs::read(keymap_path).unwrap_or_default();
+    let artifact = store
+        .store(ArtifactInput {
+            firmware,
+            keymap_json: serde_json::to_vec(&serde_json::json!({ "keyboard": project.target.qmk_keyboard })).unwrap_or_default(),
+            log: command_log(&command_plan, &result),
+            project_digest: digest.clone(),
+            qmk_keyboard: project.target.qmk_keyboard.clone(),
+            qmk_version: None,
+            catalog_version: None,
+            created_at: now_iso(),
+        })
+        .map_err(|error| error.to_string())?;
+
+    Ok(LocalBuildResult {
+        ok: true,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        duration_ms,
+        artifact_id: Some(artifact.id),
+        project_digest: digest,
+    })
+}
+
+fn layout_contract_for(project: &qmkui_core::model::KeyboardProject) -> qmkui_core::LayoutContract {
+    let mut visual_key_order = Vec::new();
+    if let Some(layer) = project.layers.first() {
+        visual_key_order.extend(layer.assignments.iter().map(|assignment| assignment.visual_key_id.clone()));
+    }
+    qmkui_core::LayoutContract::for_keyboard_layout(
+        project.target.keyboard_id.clone(),
+        project.target.qmk_keyboard.clone(),
+        project.target.layout_id.clone(),
+        project.target.qmk_layout_macro.clone(),
+        visual_key_order,
+    )
+}
+
+/// Submits a remote build. No remote endpoint is configured, so this returns a
+/// clear error; the injectable browser transport reports the same. A real
+/// backend can be wired here without changing the UI contract.
+#[tauri::command]
+fn submit_remote_build(_keymap_json: String, _keymap_name: String) -> Result<String, String> {
+    Err("Remote build endpoint is not configured.".to_owned())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FlashDryRunResult {
+    verdict: FlashVerdictJson,
+    log: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FlashVerdictJson {
+    pass: bool,
+    reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FlashDryRunInput {
+    project_json: String,
+    artifact_id: String,
+    expected_vendor: String,
+    expected_product: String,
+    detected_vendor: Option<String>,
+    detected_product: Option<String>,
+    bootloader: Option<String>,
+    operator_confirmed: bool,
+}
+
+/// Assesses a flash request against the current project and runs the dry-run
+/// adapter when policy passes. No command reaches a device.
+#[tauri::command]
+fn flash_dry_run(input: FlashDryRunInput) -> Result<FlashDryRunResult, String> {
+    let project: qmkui_core::model::KeyboardProject =
+        serde_json::from_str(&input.project_json).map_err(|error| error.to_string())?;
+    let digest = project_digest(&project).map_err(|error| error.to_string())?;
+
+    let store = ArtifactStore::new(ProjectStore::default_root().join("artifacts"));
+    let artifact = store
+        .load(&input.artifact_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Artifact {} does not exist", input.artifact_id))?;
+
+    let request = FlashRequest {
+        target: FlashTarget {
+            project_digest: artifact.project_digest,
+            firmware_sha256: artifact.firmware_sha256,
+            qmk_keyboard: artifact.qmk_keyboard,
+            bootloader: input.bootloader.clone().unwrap_or_else(|| "atmel-dfu".to_owned()),
+        },
+        expected_device: DeviceIdentity {
+            vendor_id: input.expected_vendor,
+            product_id: input.expected_product,
+        },
+        operator_confirmed: input.operator_confirmed,
+    };
+    let detected_device = match (input.detected_vendor, input.detected_product) {
+        (Some(vendor), Some(product)) => Some(DeviceIdentity {
+            vendor_id: vendor,
+            product_id: product,
+        }),
+        _ => None,
+    };
+
+    let verdict = assess_request(&request, &digest, detected_device.as_ref(), input.bootloader.as_deref());
+    let log = if matches!(verdict, qmkui_flash::policy::PolicyVerdict::Pass) {
+        let mut adapter = DryRunAdapter::new();
+        adapter.flash(&request).map_err(|error| error.to_string())?.log
+    } else {
+        Vec::new()
+    };
+
+    Ok(FlashDryRunResult {
+        verdict: match verdict {
+            qmkui_flash::policy::PolicyVerdict::Pass => FlashVerdictJson {
+                pass: true,
+                reason: None,
+            },
+            qmkui_flash::policy::PolicyVerdict::Blocked { reason } => FlashVerdictJson {
+                pass: false,
+                reason: Some(reason),
+            },
+        },
+        log,
+    })
+}
+
+fn now_iso() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis().to_string())
+        .unwrap_or_default()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -174,7 +374,10 @@ pub fn run() {
             remove_project,
             enable_device_writes,
             set_keycode,
-            save_eeprom
+            save_eeprom,
+            run_local_build,
+            submit_remote_build,
+            flash_dry_run
         ])
         .run(tauri::generate_context!())
         .expect("error while running QMKUI");
