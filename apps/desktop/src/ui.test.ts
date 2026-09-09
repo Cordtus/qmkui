@@ -539,11 +539,42 @@ function deferred<Value>() {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await flush();
 
-    expect(writeKeycode).toHaveBeenCalled();
+expect(writeKeycode).toHaveBeenCalled();
     expect(root.textContent).toContain("Wrote");
 
     root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
     root.querySelector<HTMLElement>("[data-device-save-eeprom]")?.click();
     await flush();
     expect(saveEeprom).toHaveBeenCalledOnce();
+  });
+
+  it("downloads a support bundle from the System panel", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+
+    root.querySelector<HTMLElement>('[data-view="system"]')?.click();
+    await flush();
+
+    const download = root.querySelector<HTMLElement>("[data-download-support-bundle]");
+    expect(download).not.toBeNull();
+
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:qmkui");
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    download?.click();
+    await flush();
+
+    expect(createUrl).toHaveBeenCalledOnce();
+    const blob = createUrl.mock.calls[0]?.[0] as Blob;
+    const contents = JSON.parse(await blob.text());
+    expect(contents.schemaVersion).toContain("support-bundle");
+    expect(contents.macros).toBeDefined();
+
+    click.mockRestore();
+    createUrl.mockRestore();
+    revoke.mockRestore();
   });

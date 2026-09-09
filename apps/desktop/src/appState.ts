@@ -3,6 +3,7 @@ import project from "../../../fixtures/projects/example-60.json";
 import { createBuildPlan } from "./buildPlan";
 import { importConfiguratorKeymap } from "./configuratorImport";
 import { createMacroRecord } from "./macros";
+import { buildSupportBundle } from "./supportBundle";
 import { viaDefinitionFor } from "./viaDefinition";
 import {
   createCommandHistory,
@@ -605,6 +606,16 @@ export function createActions(
             state.projectStatus = `Project export started for ${state.project.name}.`;
             actions.render();
           },
+          downloadSupportBundle: () => {
+            const contents = buildSupportBundle({
+              project: state.project,
+              doctor: state.doctorReport,
+              includeSensitiveMacroText: true,
+            });
+            downloadJson(contents, "qmkui-support-bundle.json");
+            state.projectStatus = "Support bundle downloaded.";
+            actions.render();
+          },
           selectSavedProject: (projectId) => {
             state.selectedSavedProjectId = projectId;
             actions.render();
@@ -779,6 +790,7 @@ export type RenderActions = {
   duplicateSavedProject: () => void;
   deleteSavedProject: () => void;
   downloadProjectJson: () => void;
+  downloadSupportBundle: () => void;
   selectSavedProject: (projectId: string) => void;
   openSavedProject: () => void;
   updateProjectJsonDraft: (json: string) => void;

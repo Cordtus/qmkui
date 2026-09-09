@@ -654,6 +654,7 @@ export function systemPanel(
   issues: UiIssue[],
   qmkJson: unknown,
   reloadProbe: () => void,
+  downloadSupportBundle: () => void,
 ): HTMLElement {
   const report = state.doctorReport;
   const layout = selectedLayout(state.keyboard, state.project);
@@ -709,7 +710,7 @@ export function systemPanel(
         findingList,
       ]),
     ]),
-    supportDetails(issues, qmkJson, state),
+    supportDetails(issues, qmkJson, state, downloadSupportBundle),
   ]);
 }
 
@@ -1013,7 +1014,12 @@ export function nextContextPanel(panels: ContextPanel[], position: number, key: 
   return panels[nextPosition];
 }
 
-export function supportDetails(issues: UiIssue[], qmkJson: unknown, state: EditorState): HTMLElement {
+export function supportDetails(
+  issues: UiIssue[],
+  qmkJson: unknown,
+  state: EditorState,
+  downloadSupportBundle: () => void,
+): HTMLElement {
   const detected = state.doctorReport?.snapshot.hardwareProbe.detectedKeyboards?.[0];
   return element("wa-details", {
     className: "support-details",
@@ -1037,8 +1043,29 @@ export function supportDetails(issues: UiIssue[], qmkJson: unknown, state: Edito
           ["Device", detected ? `${detected.device.vid}:${detected.device.pid}` : "Preset"],
         ]),
       ]),
+      element("section", {}, [
+        element("h3", { text: "Bundle" }),
+        element("p", {
+          className: "muted",
+          text: "Downloads project identity, doctor findings, and macro actions for sharing.",
+        }),
+        element("div", {}, [
+          downloadBundleButton(downloadSupportBundle),
+        ]),
+      ]),
     ]),
   ]);
+}
+
+function downloadBundleButton(downloadSupportBundle: () => void): HTMLElement {
+  const button = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: "Download support bundle",
+    attrs: { "data-download-support-bundle": "true" },
+  });
+  button.addEventListener("click", downloadSupportBundle);
+  return button;
 }
 
 export function issueList(issues: UiIssue[]): HTMLElement {

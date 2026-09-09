@@ -132,7 +132,7 @@ export function activePanel(
     return catalogPanel(state, actions);
   }
   if (state.activeView === "system") {
-    return systemPanel(state, issues, qmkJson, actions.reloadProbe);
+    return systemPanel(state, issues, qmkJson, actions.reloadProbe, actions.downloadSupportBundle);
   }
 
   return element("div", {
