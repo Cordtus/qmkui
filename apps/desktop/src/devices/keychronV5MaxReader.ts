@@ -1,8 +1,10 @@
+import readOnlyCommands from "../../../../fixtures/protocol/read-only-commands.json";
 import {
   classifyKeychronV5MaxIdentity,
   type HidIdentityMetadata,
 } from "./keychronV5MaxContract";
 import { available, unavailable, unverified, type ValueState } from "./hardwareSnapshot";
+import type { DeviceTransport } from "./transport";
 import { ViaReadProtocol, readViaKeymap, type ViaKeymap } from "./viaReadProtocol";
 
 const REPORT_ID = 0;
@@ -11,25 +13,12 @@ const DEFAULT_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 10_000;
 const MAX_RGB_COLOR_BATCH_SIZE = 9;
 
-const KEYCHRON_READ_COMMANDS = new Set([0xa0, 0xa1, 0xa2, 0xa3, 0xa8]);
-const KEYCHRON_RGB_READ_OPERATIONS = new Set([0x01, 0x03, 0x05, 0x06, 0x07, 0x09]);
+const KEYCHRON_READ_COMMANDS = new Set(Object.values(readOnlyCommands.keychronReadCommands));
+const KEYCHRON_RGB_READ_OPERATIONS = new Set(Object.values(readOnlyCommands.keychronRgbReadOperations));
 const pendingVendorReads = new WeakSet<object>();
 const pendingSnapshots = new WeakSet<object>();
 
-export type KeychronV5MaxReaderDevice = HidIdentityMetadata & {
-  opened: boolean;
-  open: () => Promise<void>;
-  close: () => Promise<void>;
-  sendReport: (reportId: number, data: BufferSource) => Promise<void>;
-  addEventListener: (
-    type: "inputreport",
-    listener: (event: { reportId: number; data: ArrayBuffer | ArrayBufferView }) => void,
-  ) => void;
-  removeEventListener: (
-    type: "inputreport",
-    listener: (event: { reportId: number; data: ArrayBuffer | ArrayBufferView }) => void,
-  ) => void;
-};
+export type KeychronV5MaxReaderDevice = DeviceTransport & HidIdentityMetadata;
 
 export type KeychronV5MaxIdentityFacts = {
   model: "Keychron V5 Max ANSI Knob";

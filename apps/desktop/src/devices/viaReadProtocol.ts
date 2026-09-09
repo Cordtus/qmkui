@@ -1,15 +1,20 @@
+import readOnlyCommands from "../../../../fixtures/protocol/read-only-commands.json";
+import type { DeviceTransport } from "./transport";
+
+const commands = readOnlyCommands.viaReadCommands;
+
 const VIA_REPORT_ID = 0;
 const VIA_REPORT_LENGTH = 32;
-const GET_PROTOCOL_VERSION = 0x01;
-const GET_KEYBOARD_VALUE = 0x02;
-const DYNAMIC_KEYMAP_GET_KEYCODE = 0x04;
-const CUSTOM_GET_VALUE = 0x08;
-const DYNAMIC_KEYMAP_MACRO_GET_COUNT = 0x0c;
-const DYNAMIC_KEYMAP_MACRO_GET_BUFFER_SIZE = 0x0d;
-const DYNAMIC_KEYMAP_MACRO_GET_BUFFER = 0x0e;
-const DYNAMIC_KEYMAP_GET_LAYER_COUNT = 0x11;
-const DYNAMIC_KEYMAP_GET_BUFFER = 0x12;
-const DYNAMIC_KEYMAP_GET_ENCODER = 0x14;
+const GET_PROTOCOL_VERSION = commands.getProtocolVersion;
+const GET_KEYBOARD_VALUE = commands.getKeyboardValue;
+const DYNAMIC_KEYMAP_GET_KEYCODE = commands.dynamicKeymapGetKeycode;
+const CUSTOM_GET_VALUE = commands.customGetValue;
+const DYNAMIC_KEYMAP_MACRO_GET_COUNT = commands.dynamicKeymapMacroGetCount;
+const DYNAMIC_KEYMAP_MACRO_GET_BUFFER_SIZE = commands.dynamicKeymapMacroGetBufferSize;
+const DYNAMIC_KEYMAP_MACRO_GET_BUFFER = commands.dynamicKeymapMacroGetBuffer;
+const DYNAMIC_KEYMAP_GET_LAYER_COUNT = commands.dynamicKeymapGetLayerCount;
+const DYNAMIC_KEYMAP_GET_BUFFER = commands.dynamicKeymapGetBuffer;
+const DYNAMIC_KEYMAP_GET_ENCODER = commands.dynamicKeymapGetEncoder;
 const DEFAULT_TIMEOUT_MS = 1_000;
 // A VIA read must always settle promptly; ten seconds is the largest supported wait.
 const MAX_TIMEOUT_MS = 10_000;
@@ -21,32 +26,16 @@ const KEYBOARD_VALUE_SWITCH_MATRIX_STATE = 0x03;
 const KEYBOARD_VALUE_FIRMWARE_VERSION = 0x04;
 const KEYBOARD_VALUE_KEYCODES_VERSION = 0x06;
 
-const READ_ONLY_COMMANDS = new Set<number>([
-  GET_PROTOCOL_VERSION,
-  GET_KEYBOARD_VALUE,
-  DYNAMIC_KEYMAP_GET_KEYCODE,
-  CUSTOM_GET_VALUE,
-  DYNAMIC_KEYMAP_MACRO_GET_COUNT,
-  DYNAMIC_KEYMAP_MACRO_GET_BUFFER_SIZE,
-  DYNAMIC_KEYMAP_MACRO_GET_BUFFER,
-  DYNAMIC_KEYMAP_GET_LAYER_COUNT,
-  DYNAMIC_KEYMAP_GET_BUFFER,
-  DYNAMIC_KEYMAP_GET_ENCODER,
-]);
+const READ_ONLY_COMMANDS = new Set(Object.values(commands));
 
 export type ViaInputReportData = ArrayBuffer | ArrayBufferView;
 
-export type ViaReadTransport = {
-  sendReport: (reportId: number, data: BufferSource) => Promise<void>;
-  addEventListener: (
-    type: "inputreport",
-    listener: (event: { reportId: number; data: ViaInputReportData }) => void,
-  ) => void;
-  removeEventListener: (
-    type: "inputreport",
-    listener: (event: { reportId: number; data: ViaInputReportData }) => void,
-  ) => void;
-};
+export type ViaReadTransport = Pick<
+  DeviceTransport,
+  "sendReport" | "addEventListener" | "removeEventListener"
+>;
+
+export type ViaReadProtocolDevice = DeviceTransport;
 
 export type ViaKeymap = {
   layerCount: number;

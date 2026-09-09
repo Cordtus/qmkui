@@ -2,6 +2,7 @@ import {
   classifyKeychronV5MaxIdentity,
   type HidIdentityMetadata,
 } from "./keychronV5MaxContract";
+import type { DeviceTransport } from "./transport";
 
 const PROTOCOL_VERSION_COMMAND = 0x01;
 const PROTOCOL_VERSION_RESPONSE_LENGTH = 32;
@@ -10,17 +11,10 @@ const DEFAULT_TIMEOUT_MS = 1_000;
 
 type InputReport = {
   reportId: number;
-  data: DataView;
+  data: ArrayBuffer | ArrayBufferView;
 };
 
-export type KeychronV5MaxProtocolDevice = HidIdentityMetadata & {
-  opened: boolean;
-  open: () => Promise<void>;
-  close: () => Promise<void>;
-  sendReport: (reportId: number, data: BufferSource) => Promise<void>;
-  addEventListener: (type: "inputreport", listener: (event: InputReport) => void) => void;
-  removeEventListener: (type: "inputreport", listener: (event: InputReport) => void) => void;
-};
+export type KeychronV5MaxProtocolDevice = DeviceTransport & HidIdentityMetadata;
 
 export type KeychronV5MaxProtocolVersion = {
   version: 0x000c;
@@ -83,19 +77,20 @@ function requestProtocolVersion(
       }
     };
     const onInputReport = (event: InputReport) => {
+      const data = toDataView(event.data);
       if (event.reportId !== 0) {
         finish(new KeychronV5MaxProtocolError("report-id"));
         return;
       }
-      if (event.data.byteLength !== PROTOCOL_VERSION_RESPONSE_LENGTH) {
+      if (data.byteLength !== PROTOCOL_VERSION_RESPONSE_LENGTH) {
         finish(new KeychronV5MaxProtocolError("report-length"));
         return;
       }
-      if (event.data.getUint8(0) !== PROTOCOL_VERSION_COMMAND) {
+      if (data.getUint8(0) !== PROTOCOL_VERSION_COMMAND) {
         finish(new KeychronV5MaxProtocolError("report-command"));
         return;
       }
-      if (event.data.getUint16(1) !== OBSERVED_PROTOCOL_VERSION) {
+      if (data.getUint16(1) !== OBSERVED_PROTOCOL_VERSION) {
         finish(new KeychronV5MaxProtocolError("unsupported-version"));
         return;
       }
@@ -108,4 +103,11 @@ function requestProtocolVersion(
     device.addEventListener("inputreport", onInputReport);
     device.sendReport(0, request).catch(() => finish(new KeychronV5MaxProtocolError("timeout")));
   });
+}
+
+function toDataView(data: ArrayBuffer | ArrayBufferView): DataView {
+  if (data instanceof ArrayBuffer) {
+    return new DataView(data);
+  }
+  return new DataView(data.buffer, data.byteOffset, data.byteLength);
 }

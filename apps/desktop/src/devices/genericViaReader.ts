@@ -1,11 +1,8 @@
 import { available, unavailable, unverified, type ValueState } from "./hardwareSnapshot";
-import { ViaReadProtocol, type ViaReadTransport } from "./viaReadProtocol";
+import type { DeviceTransport } from "./transport";
+import { ViaReadProtocol } from "./viaReadProtocol";
 
-export type GenericViaReaderDevice = ViaReadTransport & {
-  opened: boolean;
-  open: () => Promise<void>;
-  close: () => Promise<void>;
-};
+export type GenericViaReaderDevice = DeviceTransport;
 
 export type GenericViaStandardState = {
   identity: ValueState<never>;
