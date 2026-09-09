@@ -1,0 +1,6 @@
+{
+  "viaWriteCommands": {
+    "setKeycode": 5,
+    "saveEeprom": 9
+  }
+}

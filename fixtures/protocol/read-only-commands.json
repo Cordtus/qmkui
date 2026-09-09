@@ -1,0 +1,29 @@
+{
+  "viaReadCommands": {
+    "getProtocolVersion": 1,
+    "getKeyboardValue": 2,
+    "dynamicKeymapGetKeycode": 4,
+    "customGetValue": 8,
+    "dynamicKeymapMacroGetCount": 12,
+    "dynamicKeymapMacroGetBufferSize": 13,
+    "dynamicKeymapMacroGetBuffer": 14,
+    "dynamicKeymapGetLayerCount": 17,
+    "dynamicKeymapGetBuffer": 18,
+    "dynamicKeymapGetEncoder": 20
+  },
+  "keychronReadCommands": {
+    "identityProtocol": 160,
+    "identityFirmware": 161,
+    "capabilities": 162,
+    "defaultLayer": 163,
+    "rgb": 168
+  },
+  "keychronRgbReadOperations": {
+    "rgbProtocol": 1,
+    "rgbIndicators": 3,
+    "ledCount": 5,
+    "ledIndex": 6,
+    "ledEffect": 7,
+    "colors": 9
+  }
+}
