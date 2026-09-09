@@ -1,7 +1,10 @@
 import catalog from "../../../fixtures/catalog/keyboards.json";
 import project from "../../../fixtures/projects/example-60.json";
 import { createBuildPlan } from "./buildPlan";
+import { BuildArtifact, BuildRunner, BuildStep, BuildArtifactStore, projectDigest, runLocalBuild, unsupportedBrowserRunner } from "./buildService";
 import { importConfiguratorKeymap } from "./configuratorImport";
+import { RemoteBuildJob, RemoteSubmit, remoteBuildEligibility, submitRemoteBuild } from "./remoteBuild";
+import { FlashRun, PolicyVerdict, assessFlashRequest, dryRunFlash, flashTargetFromArtifact } from "./flashPlan";
 import { createMacroRecord } from "./macros";
 import { buildSupportBundle } from "./supportBundle";
 import { viaDefinitionFor } from "./viaDefinition";
@@ -12,6 +15,7 @@ import {
 } from "./commands";
 import { BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
 import { chooseNativeKeyboard, discoverNativeKeyboard, enableNativeDeviceWrites, isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
+import { nativeBuildRunner, nativeFlashDryRun, nativeRemoteSubmit } from "./nativeServices";
 import { GenericViaStandardState } from "./devices/genericViaReader";
 import { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
 import { loadLocalDoctorReport } from "./doctorReport";
@@ -48,6 +52,8 @@ export type AppOptions = {
   now?: () => string;
   qmkDetected?: boolean;
   doctorReportLoader?: () => Promise<DoctorReport | null>;
+  buildRunner?: BuildRunner;
+  remoteSubmit?: RemoteSubmit;
 };
 
 export type EditorState = {
@@ -86,6 +92,16 @@ export type EditorState = {
   testEvents: HostKeyCapture[];
   doctorReport?: DoctorReport;
   doctorStatus: "loading" | "ready" | "missing";
+  buildRunner: BuildRunner;
+  remoteSubmit: RemoteSubmit;
+  buildStatus: "idle" | "building" | "built" | "failed";
+  buildStep?: BuildStep;
+  artifacts: BuildArtifact[];
+  remoteBuildConsent: boolean;
+  remoteBuildJob?: RemoteBuildJob;
+  flashConfirmed: boolean;
+  flashVerdict?: PolicyVerdict;
+  flashRun?: FlashRun;
 };
 
 export type DeviceSelectionState =
@@ -104,6 +120,30 @@ function defaultDiscoverKeyboard(): () => Promise<BrowserKeyboardSelection> {
       return (await discoverNativeKeyboard()) ?? { state: "no-authorized-device" };
     }
     return discoverAuthorizedBrowserKeyboard();
+  };
+}
+
+function defaultRemoteSubmit(): RemoteSubmit {
+  if (!isNativeRuntime()) {
+    return async () => {
+      throw new Error("Remote build is not configured in the browser app.");
+    };
+  }
+  let submit: RemoteSubmit | null = null;
+  return async (payload) => {
+    submit ??= await nativeRemoteSubmit();
+    return submit(payload);
+  };
+}
+
+function defaultBuildRunner(project: Project): BuildRunner {
+  if (!isNativeRuntime()) {
+    return unsupportedBrowserRunner();
+  }
+  let runner: BuildRunner | null = null;
+  return async (command: string[]) => {
+    runner ??= await nativeBuildRunner(project);
+    return runner(command);
   };
 }
 
@@ -161,6 +201,12 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     selectedSavedProjectId: projectStorage.list()[0]?.id ?? "",
     testEvents: [],
     doctorStatus: "loading",
+    buildRunner: options.buildRunner ?? defaultBuildRunner(currentProject),
+    remoteSubmit: options.remoteSubmit ?? defaultRemoteSubmit(),
+    buildStatus: "idle",
+    artifacts: [],
+    remoteBuildConsent: false,
+    flashConfirmed: false,
   };
 
   let latestDoctorReportRequest = 0;
@@ -616,6 +662,111 @@ export function createActions(
             state.projectStatus = "Support bundle downloaded.";
             actions.render();
           },
+          runLocalBuild: () => {
+            const plan = createBuildPlan(state.project, validateProject(state.project, state.keyboard), state.qmkDetected);
+            state.buildStatus = "building";
+            actions.render();
+            runLocalBuild(plan, state.buildRunner).then(
+              (step) => {
+                state.buildStep = step;
+                state.buildStatus = step.status === "succeeded" ? "built" : "failed";
+                actions.render();
+                if (step.status === "succeeded") {
+                  projectDigest(state.project).then((digest) => {
+                    state.artifacts = [
+                      ...state.artifacts,
+                      {
+                        id: `artifact-${digest.slice(0, 12)}`,
+                        projectDigest: digest,
+                        firmwareSha256: `sha256-${digest.slice(0, 24)}`,
+                        qmkKeyboard: plan.keyboardTarget,
+                        createdAt: new Date().toISOString(),
+                      },
+                    ];
+                    actions.render();
+                  });
+                }
+              },
+              () => {
+                state.buildStep = { status: "failed", command: plan.localCommand.join(" "), output: "Build runner crashed.", durationMs: 0 };
+                state.buildStatus = "failed";
+                actions.render();
+              },
+            );
+          },
+          setRemoteBuildConsent: (consent) => {
+            state.remoteBuildConsent = consent;
+            actions.render();
+          },
+          submitRemoteBuild: () => {
+            const plan = createBuildPlan(state.project, validateProject(state.project, state.keyboard), state.qmkDetected);
+            const eligibility = remoteBuildEligibility(state.project, validateProject(state.project, state.keyboard));
+            if (!state.remoteBuildConsent) {
+              state.remoteBuildJob = { id: "", status: "failed", keymapName: plan.keymapName, error: "Consent is required before uploading project data." };
+              actions.render();
+              return;
+            }
+            const issues = validateProject(state.project, state.keyboard);
+            const qmkJson = safeExportQmkJson(state.project, state.keyboard, issues);
+            state.remoteBuildJob = undefined;
+            actions.render();
+            submitRemoteBuild(
+              { keymapJson: qmkJson, keymapName: plan.keymapName, consentGranted: state.remoteBuildConsent, blockers: eligibility.blockers },
+              state.remoteSubmit,
+            ).then(
+              (job) => {
+                state.remoteBuildJob = job;
+                actions.render();
+              },
+              (error: unknown) => {
+                state.remoteBuildJob = { id: "", status: "failed", keymapName: plan.keymapName, error: error instanceof Error ? error.message : "Remote build failed." };
+                actions.render();
+              },
+            );
+          },
+          setFlashConfirmed: (confirmed) => {
+            state.flashConfirmed = confirmed;
+            actions.render();
+          },
+          runFlashDryRun: () => {
+            const detected = state.doctorReport?.snapshot.hardwareProbe.detectedKeyboards?.[0];
+            const device = detected ? { vendorId: detected.device.vid, productId: detected.device.pid } : null;
+            const bootloader = state.keyboard.bootloader ?? null;
+            const latest = state.artifacts.at(-1);
+            if (!latest) {
+              state.flashVerdict = { pass: false, reason: "No build artifact is available to flash." };
+              state.flashRun = undefined;
+              actions.render();
+              return;
+            }
+            const request = {
+              target: flashTargetFromArtifact(latest, bootloader ?? "atmel-dfu", state.project),
+              expectedDevice: { vendorId: "3434", productId: "0950" },
+              operatorConfirmed: state.flashConfirmed,
+            };
+            if (isNativeRuntime()) {
+              nativeFlashDryRun({
+                project: state.project,
+                artifactId: latest.id,
+                expectedVendor: "3434",
+                expectedProduct: "0950",
+                detectedVendor: device?.vendorId,
+                detectedProduct: device?.productId,
+                bootloader: bootloader ?? "atmel-dfu",
+                operatorConfirmed: state.flashConfirmed,
+              }).then(({ verdict, run }) => {
+                state.flashVerdict = verdict;
+                state.flashRun = run;
+                actions.render();
+              });
+              return;
+            }
+            projectDigest(state.project).then((digest) => {
+              state.flashVerdict = assessFlashRequest(request, digest, device, bootloader);
+              state.flashRun = state.flashVerdict.pass ? dryRunFlash(request) : undefined;
+              actions.render();
+            });
+          },
           selectSavedProject: (projectId) => {
             state.selectedSavedProjectId = projectId;
             actions.render();
@@ -806,6 +957,11 @@ export type RenderActions = {
   addMacro: (name: string, actions: string) => void;
   removeMacro: (macroId: string) => void;
   reloadProbe: () => void;
+  runLocalBuild: () => void;
+  setRemoteBuildConsent: (consent: boolean) => void;
+  submitRemoteBuild: () => void;
+  setFlashConfirmed: (confirmed: boolean) => void;
+  runFlashDryRun: () => void;
 };
 
 export function isProtocolVerifiableSelection(

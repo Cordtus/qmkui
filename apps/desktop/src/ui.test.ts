@@ -578,3 +578,72 @@ expect(writeKeycode).toHaveBeenCalled();
     createUrl.mockRestore();
     revoke.mockRestore();
   });
+
+  it("runs a local build through the injected runner and shows the outcome", async () => {
+    const root = document.createElement("div");
+    const buildRunner = vi.fn(async () => ({
+      ok: true,
+      stdout: "compiled keymap",
+      stderr: "",
+      durationMs: 8,
+    }));
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+      buildRunner,
+    });
+    await flush();
+
+    root.querySelector<HTMLElement>('[data-view="system"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-build-run]")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
+
+    expect(buildRunner).toHaveBeenCalled();
+    expect(root.querySelector("[data-build-status]")?.textContent).toContain("compiled keymap");
+  });
+
+  it("submits a remote build only after consent and reports the job status", async () => {
+    const root = document.createElement("div");
+    const remoteSubmit = vi.fn(async () => ({ id: "job-1" }));
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+      remoteSubmit,
+    });
+    await flush();
+
+    root.querySelector<HTMLElement>('[data-view="system"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-remote-submit]")?.click();
+    await flush();
+    expect(remoteSubmit).not.toHaveBeenCalled();
+    expect(root.querySelector("[data-remote-status]")?.textContent).toContain("Consent");
+
+    const consent = root.querySelector<HTMLInputElement>("[data-remote-consent]")!;
+    consent.checked = true;
+    consent.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-remote-submit]")?.click();
+    await flush();
+    expect(remoteSubmit).toHaveBeenCalledOnce();
+    expect(root.querySelector("[data-remote-status]")?.textContent).toContain("queued");
+  });
+
+  it("blocks a flash dry run without an artifact or operator confirmation", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+
+    root.querySelector<HTMLElement>('[data-view="system"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-flash-dry-run]")?.click();
+    await flush();
+
+    expect(root.querySelector("[data-flash-status]")?.textContent).toContain("No build artifact");
+  });

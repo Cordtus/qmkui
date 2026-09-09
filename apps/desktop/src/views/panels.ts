@@ -1,5 +1,7 @@
 import { ContextPanel, EditorState, RenderActions, activeLightingProfile, bundledKeyboards, currentLayer, selectedLayout } from "../appState";
 import { BuildPlan, createBuildPlan } from "../buildPlan";
+import { BuildStep } from "../buildService";
+import { RemoteBuildJob } from "../remoteBuild";
 import { Assignment, CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, Project, UiIssue, validateProject } from "../domain";
 import { buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { HostKeyCapture, captureHostKey } from "../keyTester";
@@ -9,6 +11,14 @@ import { ProjectSummary } from "../projectStorage";
 import { contextDisclosure, controlGroup, definitionList, element, fieldControl, parameterBlock, rangeInput, uiButton } from "./primitives";
 import { inspector, keyLightingDetails } from "./workspace";
 import { viaDefinitionFor } from "../viaDefinition";
+
+export type BuildActions = {
+  runLocalBuild: () => void;
+  setRemoteBuildConsent: (consent: boolean) => void;
+  submitRemoteBuild: () => void;
+  setFlashConfirmed: (confirmed: boolean) => void;
+  runFlashDryRun: () => void;
+};
 export function combinedWorkspacePanel(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
@@ -655,6 +665,7 @@ export function systemPanel(
   qmkJson: unknown,
   reloadProbe: () => void,
   downloadSupportBundle: () => void,
+  buildActions: BuildActions,
 ): HTMLElement {
   const report = state.doctorReport;
   const layout = selectedLayout(state.keyboard, state.project);
@@ -704,7 +715,7 @@ export function systemPanel(
         element("h3", { text: "Device" }),
         definitionList(systemRows(state)),
       ]),
-      buildSection(buildPlan, layout.keys.length),
+      buildSection(buildPlan, layout.keys.length, state, buildActions),
       element("section", {}, [
         element("h3", { text: "Findings" }),
         findingList,
@@ -714,7 +725,7 @@ export function systemPanel(
   ]);
 }
 
-export function buildSection(plan: BuildPlan, keyCount: number): HTMLElement {
+export function buildSection(plan: BuildPlan, keyCount: number, state: EditorState, actions: BuildActions): HTMLElement {
   const blockers = element("ul", {
     className: "issues",
     attrs: { "data-build-blockers": String(plan.blockers.length) },
@@ -729,6 +740,86 @@ export function buildSection(plan: BuildPlan, keyCount: number): HTMLElement {
   });
   if (plan.blockers.length === 0) {
   }
+
+  const buildButton = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: state.buildStatus === "building" ? "Building..." : "Build locally",
+    attrs: { "data-build-run": "true", ...(state.buildStatus === "building" ? { disabled: "" } : {}) },
+  });
+  buildButton.addEventListener("click", actions.runLocalBuild);
+
+  const buildOutput = state.buildStep
+    ? element("pre", { className: "build-output", attrs: { "data-build-status": state.buildStatus }, text: buildStepLabel(state.buildStep) })
+    : element("p", { className: "muted", text: "No build has run this session." });
+
+  const artifacts = element("ul", { className: "artifact-list", attrs: { "data-artifact-count": String(state.artifacts.length) } });
+  state.artifacts.forEach((artifact) => {
+    artifacts.append(
+      element("li", {}, [
+        element("code", { text: artifact.id.slice(0, 12) }),
+        element("small", { text: `${artifact.qmkKeyboard} · ${artifact.createdAt}` }),
+      ]),
+    );
+  });
+  if (state.artifacts.length === 0) {
+    artifacts.append(element("li", { className: "muted", text: "No artifacts yet." }));
+  }
+
+  const remoteConsent = element("label", { className: "remote-consent" }, [
+    element("input", {
+      attrs: {
+        "data-remote-consent": "true",
+        type: "checkbox",
+        ...(state.remoteBuildConsent ? { checked: "" } : {}),
+      },
+    }),
+    element("span", { text: "I consent to uploading project JSON to a remote build service." }),
+  ]);
+  remoteConsent.querySelector<HTMLInputElement>("input")!.addEventListener("change", (event) => {
+    actions.setRemoteBuildConsent((event.target as HTMLInputElement).checked);
+  });
+
+  const remoteButton = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: "Submit remote build",
+    attrs: { "data-remote-submit": "true" },
+  });
+  remoteButton.addEventListener("click", actions.submitRemoteBuild);
+
+  const remoteStatus = state.remoteBuildJob
+    ? element("p", { className: `remote-status ${state.remoteBuildJob.status}`, attrs: { "data-remote-status": state.remoteBuildJob.status }, text: remoteJobLabel(state.remoteBuildJob) })
+    : element("p", { className: "muted", text: "No remote build submitted." });
+
+  const flashConfirm = element("label", { className: "flash-confirm" }, [
+    element("input", {
+      attrs: {
+        "data-flash-confirm": "true",
+        type: "checkbox",
+        ...(state.flashConfirmed ? { checked: "" } : {}),
+      },
+    }),
+    element("span", { text: "I confirm the flash target and device." }),
+  ]);
+  flashConfirm.querySelector<HTMLInputElement>("input")!.addEventListener("change", (event) => {
+    actions.setFlashConfirmed((event.target as HTMLInputElement).checked);
+  });
+
+  const flashButton = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: "Dry-run flash",
+    attrs: { "data-flash-dry-run": "true" },
+  });
+  flashButton.addEventListener("click", actions.runFlashDryRun);
+
+  const flashStatus = element("div", { className: "flash-status", attrs: { "data-flash-status": flashVerdictLabel(state) } }, [
+    ...(state.flashVerdict
+      ? [element("p", { className: state.flashVerdict.pass ? "flash-pass" : "flash-block", text: state.flashVerdict.pass ? "Policy: pass" : `Policy: ${state.flashVerdict.reason}` })]
+      : []),
+    ...(state.flashRun ? [element("pre", { className: "build-output", text: state.flashRun.log.join("\n") })] : []),
+  ]);
 
   return element(
     "section",
@@ -746,7 +837,7 @@ export function buildSection(plan: BuildPlan, keyCount: number): HTMLElement {
         ["Keys", String(keyCount)],
         ["Output", plan.output.toUpperCase()],
         ["Local", plan.localReady ? "Ready" : "Blocked"],
-        ["Remote", plan.remoteReady ? "Ready" : "Blocked"],
+        ["Remote", plan.remoteAvailable ? "Available" : "Blocked"],
       ]),
       element("code", {
         className: "command-preview",
@@ -754,8 +845,38 @@ export function buildSection(plan: BuildPlan, keyCount: number): HTMLElement {
         attrs: { "data-build-command": plan.localCommand.join(" ") },
       }),
       blockers,
+      element("div", { className: "build-actions" }, [buildButton]),
+      buildOutput,
+      element("h3", { className: "build-subheading", text: "Artifacts" }),
+      artifacts,
+      element("h3", { className: "build-subheading", text: "Remote build" }),
+      element("div", { className: "remote-controls" }, [remoteConsent, remoteButton]),
+      remoteStatus,
+      element("h3", { className: "build-subheading", text: "Flash (dry run)" }),
+      element("div", { className: "flash-controls" }, [flashConfirm, flashButton]),
+      flashStatus,
     ],
   );
+}
+
+function buildStepLabel(step: BuildStep): string {
+  return step.status === "succeeded" || step.status === "failed"
+    ? `${step.command}\n${step.output}`
+    : `${step.command} (${step.status})`;
+}
+
+function remoteJobLabel(job: RemoteBuildJob): string {
+  if (job.status === "failed") {
+    return `Remote build failed: ${job.error ?? "unknown error"}`;
+  }
+  return `Remote build ${job.status} (id: ${job.id || "n/a"}).`;
+}
+
+function flashVerdictLabel(state: EditorState): string {
+  if (!state.flashVerdict) {
+    return "idle";
+  }
+  return state.flashVerdict.pass ? "pass" : "blocked";
 }
 
 export function commandRow(command: CommandStatus): HTMLElement {
