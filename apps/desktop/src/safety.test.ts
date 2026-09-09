@@ -103,6 +103,7 @@ describe("safety foundation", () => {
     );
 
     expect(assessment.state).toBe("blocked");
+    expect(assessment.reason).toContain("does not match");
   });
 
   it("records an explicit decline for only the exact current project and device", () => {
@@ -222,6 +223,7 @@ describe("safety foundation", () => {
     );
 
     expect(assessment.state).toBe("blocked");
+    expect(assessment.reason).toContain("ledger");
   });
 
   it("rejects a recovery bundle with an invalid project payload", () => {

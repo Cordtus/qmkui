@@ -5,7 +5,8 @@ const RECOVERY_BUNDLE_FORMAT = "qmkui.recovery-bundle";
 const RECOVERY_BUNDLE_VERSION = 1;
 const SAFETY_AUDIT_FORMAT = "qmkui.safety-audit";
 const SAFETY_AUDIT_VERSION = 1;
-const LOCAL_ONLY_NOTICE = "Local recovery data.";
+const LOCAL_ONLY_NOTICE =
+  "This bundle is local-only recovery data. QMKUI does not transmit it, and user-controlled storage cannot be tamper-proof.";
 
 export type SafetyEventKind = "backupConfirmed" | "backupDeclined";
 export type SafetyLedgerAvailability = "available" | "unavailable" | "corrupt";
@@ -30,6 +31,7 @@ export type SafetyAssessment = {
   projectRevision: string;
   deviceRevision: string;
   requiresRunConfirmation: boolean;
+  reason: string;
 };
 
 export type RecoveryDevice = {
@@ -108,6 +110,7 @@ export function createSafetyAssessment(
       projectRevision,
       deviceRevision,
       requiresRunConfirmation: false,
+      reason: `The private safety ledger is ${ledgerAvailability} and cannot be used for future write preparation.`,
     };
   }
 
@@ -117,6 +120,7 @@ export function createSafetyAssessment(
       projectRevision,
       deviceRevision,
       requiresRunConfirmation: false,
+      reason: "The selected catalog definition does not match the project target.",
     };
   }
 
@@ -126,6 +130,7 @@ export function createSafetyAssessment(
       projectRevision,
       deviceRevision,
       requiresRunConfirmation: false,
+      reason: "Resolve project validation errors before preparing a backup or future write.",
     };
   }
 
@@ -140,6 +145,7 @@ export function createSafetyAssessment(
       projectRevision,
       deviceRevision,
       requiresRunConfirmation: true,
+      reason: "A recovery bundle was recorded for this exact project and device state.",
     };
   }
   if (latestEvent?.kind === "backupDeclined") {
@@ -148,6 +154,7 @@ export function createSafetyAssessment(
       projectRevision,
       deviceRevision,
       requiresRunConfirmation: true,
+      reason: "Recovery data was explicitly declined for this exact project and device state.",
     };
   }
 
@@ -156,6 +163,7 @@ export function createSafetyAssessment(
     projectRevision,
     deviceRevision,
     requiresRunConfirmation: false,
+    reason: "Create a recovery bundle before any future write operation.",
   };
 }
 
