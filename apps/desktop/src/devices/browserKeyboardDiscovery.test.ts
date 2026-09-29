@@ -77,7 +77,7 @@ describe("browser keyboard discovery", () => {
     expect(snapshot.keymap.value.keycodes[3]?.[5]?.[18]).toBe(0x1234);
     expect(snapshot.lighting).toMatchObject({
       state: "available",
-      value: { rgbProtocol: [0x01, 0x00], indicators: [0x11], ledCount: 0 },
+      value: { brightness: 0, effect: 0, effectSpeed: 0, hue: 0, saturation: 0 },
     });
     expect(sentCommands(device).slice(0, 5)).toEqual([
       [0xa0],
@@ -87,10 +87,11 @@ describe("browser keyboard discovery", () => {
       [0x11],
     ]);
     expect(sentCommands(device).filter(([command]) => command === 0x04)).toHaveLength(4 * 6 * 19);
-    expect(sentCommands(device).slice(-4)).toEqual([
-      [0xa8, 0x01],
-      [0xa8, 0x03],
-      [0xa8, 0x05],
+    expect(sentCommands(device).slice(-5)).toEqual([
+      [0x08, 0x03, 0x01],
+      [0x08, 0x03, 0x02],
+      [0x08, 0x03, 0x03],
+      [0x08, 0x03, 0x04],
       [0x0c],
     ]);
     expect(snapshot.macros).toEqual({ state: "available", value: { count: 0, bufferSize: 0, macros: [] } });
@@ -391,10 +392,12 @@ function responseFor(request: Uint8Array): Uint8Array | undefined {
     return report([0x04, request[1]!, request[2]!, request[3]!, 0x12, 0x34]);
   }
   if (request[0] === 0x0c) return report([0x0c, 0]);
-  if (request[0] !== 0xa8) return undefined;
-  if (request[1] === 0x01) return report([0xa8, 0x01, 0x01, 0x00]);
-  if (request[1] === 0x03) return report([0xa8, 0x03, 0x11]);
-  if (request[1] === 0x05) return report([0xa8, 0x05, 0]);
+  if (request[0] === 0x08 && request[1] === 0x03) {
+    if (request[2] === 0x01) return report([0x08, 0x03, 0x01, 0]);
+    if (request[2] === 0x02) return report([0x08, 0x03, 0x02, 0]);
+    if (request[2] === 0x03) return report([0x08, 0x03, 0x03, 0]);
+    if (request[2] === 0x04) return report([0x08, 0x03, 0x04, 0, 0]);
+  }
   return undefined;
 }
 
@@ -408,7 +411,13 @@ function genericViaResponseFor(request: Uint8Array): Uint8Array | undefined {
   if (request[0] === 0x08 && request[1] === 0x01 && request[2] === 0x01) return report([0x08, 0x01, 0x01, 4]);
   if (request[0] === 0x08 && request[1] === 0x01 && request[2] === 0x02) return report([0x08, 0x01, 0x02, 20]);
   if (request[0] === 0x08 && request[1] === 0x02) return report([0x08, 0x02, request[2]!, request[2]!]);
-  if (request[0] === 0x08 && request[1] === 0x03) return report([0x08, 0x03, request[2]!, request[2] === 1 ? 7 : request[2]!]);
+  if (request[0] === 0x08 && request[1] === 0x03) {
+    // value ids: 1 brightness, 2 effect, 3 effect speed, 4 colour pair
+    if (request[2] === 0x01) return report([0x08, 0x03, 0x01, 200]);
+    if (request[2] === 0x02) return report([0x08, 0x03, 0x02, 7]);
+    if (request[2] === 0x03) return report([0x08, 0x03, 0x03, 128]);
+    if (request[2] === 0x04) return report([0x08, 0x03, 0x04, 40, 220]);
+  }
   if (request[0] === 0x08 && request[1] === 0x04) return report([0x08, 0x04, request[2]!, request[2]!]);
   return undefined;
 }
@@ -426,6 +435,7 @@ function ascii(value: string): number[] {
 function sentCommands(device: KeychronV5MaxReaderDevice): number[][] {
   return (device.sendReport as ReturnType<typeof vi.fn>).mock.calls.map(([, data]) => {
     const frame = new Uint8Array(data as ArrayBuffer);
-    return [...frame.slice(0, frame[0] === 0xa8 ? 4 : 1)].filter((_, index) => index === 0 || frame[index] !== 0);
+    // Custom-get-value frames carry a channel and value id worth asserting on.
+    return [...frame.slice(0, frame[0] === 0x08 ? 3 : 1)];
   });
 }
