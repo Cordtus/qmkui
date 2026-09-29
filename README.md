@@ -42,10 +42,14 @@ artifact built and previewed with the commands below.
   switch-matrix geometry stay unavailable or unverified rather than becoming a
   model, static project, layout, or default configuration.
 - Read and display the reported V5 identity, feature bitmap, VIA keymap values,
-  and RGB state without emitting any mutation packet. The V5 keymap read uses
-  the verified definition's four-layer, six-row, 19-column matrix shape, then
-  renders the returned keycodes as the current read-only keyboard view; it does
-  not use the bundled keymap as device state.
+  and RGB-matrix lighting without emitting any mutation packet. The V5 keymap
+  read uses the verified definition's four-layer, six-row, 19-column matrix
+  shape, then renders the returned keycodes as the current read-only keyboard
+  view; it does not use the bundled keymap as device state. The V5 lighting read
+  uses the standard VIA RGB-matrix custom channel (channel 3: brightness,
+  effect, effect speed, hue, saturation); the Keychron `0xA8` vendor RGB
+  protocol is not implemented by the V5 Max firmware and is not in the
+  allow-list.
 - The confirmed-VIA protocol layer permits only these standard state queries:
   protocol version; uptime, layout options, switch-matrix state, firmware, and
   keycodes versions; keycodes; macro count, size, and buffer; layer count;
@@ -55,9 +59,10 @@ artifact built and previewed with the commands below.
   protocol values; a vendor custom-channel result remains unverified until an
   exact decoder is registered. The generic browser read uses only the standard
   `0x01`, `0x02`, `0x08`, and `0x11` read surfaces; it cannot send Keychron
-  `0xA0` or `0xA8` frames.
-- Display reported per-LED HSV colors and effect types. Dynamic effects are
-  labeled as configuration effects, not as a captured live animation.
+  `0xA0` frames.
+- Display the reported global RGB-matrix state (brightness, effect, effect
+  speed, and hue/saturation). Dynamic effects are labeled as configuration
+  effects, not as a captured live animation.
 - Keep unavailable or unverified identity, capability, keymap, and lighting
   areas grouped with their device-provided reason.
 - Compare a successful V5 read with the bundled definition baseline without
