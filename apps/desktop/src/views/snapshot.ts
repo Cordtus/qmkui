@@ -409,44 +409,39 @@ export function snapshotKeyRoles(layers: number[][][], matrixKey: string): HTMLE
 }
 
 export function lightingSnapshotRows(value: KeychronV5MaxLighting): Array<[string, string]> {
-  const colors = value.colors.map((color) => `LED ${color.led}: HSV ${color.hue}, ${color.saturation}, ${color.value}`).join("; ");
-  const effects = value.effects.map((effect) => `LED ${effect.led}: ${effect.effect}`).join("; ");
   return [
-    ["RGB protocol", value.rgbProtocol.map((part) => `0x${part.toString(16).padStart(2, "0")}`).join(" ")],
-    ...(colors ? [["Colors", colors] as [string, string]] : []),
-    ...(effects ? [["Effects", effects] as [string, string]] : []),
+    ["Brightness", String(value.brightness)],
+    ["Effect", String(value.effect)],
+    ["Effect speed", String(value.effectSpeed)],
+    ["Hue", String(value.hue)],
+    ["Saturation", String(value.saturation)],
   ];
 }
 
+/**
+ * The V5 Max exposes only global VIA RGB-matrix state (channel 3), so this is a
+ * value list — there is no per-LED colour map to render as swatches.
+ */
 export function snapshotLightingField(field: KeychronV5MaxReadSnapshot["lighting"]): HTMLElement {
   if (field.state !== "available") {
     return snapshotField("Lighting", field, lightingSnapshotRows);
   }
-  const swatches = field.value.colors.map((color) => {
-    const swatch = element("span", {
-      className: "lighting-swatch",
-      attrs: {
-        "data-led": String(color.led),
-        "data-hue": String(color.hue),
-        "data-saturation": String(color.saturation),
-        "data-value": String(color.value),
-        title: `LED ${color.led}: HSV ${color.hue}, ${color.saturation}, ${color.value}`,
-      },
-    });
-    swatch.style.backgroundColor = hsvToCss(color.hue, color.saturation, color.value);
-    return swatch;
+  const swatch = element("span", {
+    className: "lighting-swatch",
+    attrs: {
+      "data-hue": String(field.value.hue),
+      "data-saturation": String(field.value.saturation),
+      "data-value": String(field.value.brightness),
+    },
   });
+  swatch.style.backgroundColor = hsvToCss(field.value.hue, field.value.saturation, field.value.brightness);
   return element("section", {
     className: "snapshot-field lighting available",
     attrs: { "data-snapshot-field": "lighting", "data-snapshot-state": "available" },
   }, [
     element("h2", { text: "Lighting" }),
-    element("dl", {}, [
-      definitionRow("RGB protocol", field.value.rgbProtocol.map((part) => `0x${part.toString(16).padStart(2, "0")}`).join(" ")),
-      definitionRow("LED count", String(field.value.ledCount)),
-      definitionRow("Active colors", "One swatch per LED"),
-      element("div", { className: "lighting-swatches", attrs: { "data-lighting-swatches": "true" } }, swatches),
-    ]),
+    element("div", { className: "lighting-swatches", attrs: { "data-lighting-swatches": "true" } }, [swatch]),
+    definitionList(lightingSnapshotRows(field.value)),
   ]);
 }
 

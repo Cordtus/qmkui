@@ -118,17 +118,19 @@ export function topbar(
     element("div", { className: "project-heading" }, [
       element("p", { className: "eyebrow", text: deviceName }),
       element("h1", { text: state.project.name }),
-      element("small", { className: "device-id", text: deviceId }),
+      element("div", { className: "project-meta" }, [
+        element("small", { className: "device-id", text: deviceId }),
+        element("span", {
+          className: `status ${statusClass}`,
+          text: topbarStatusLabel(issues),
+          attrs: { "data-keymap-status": "true" },
+        }),
+      ]),
     ]),
     element("div", { className: "topbar-actions" }, [
       historyControls(state, actions),
-      save,
-      projectDetails,
-      refresh,
-      element("div", {
-        className: `status ${statusClass}`,
-        text: topbarStatusLabel(issues),
-      }),
+      element("div", { className: "action-group" }, [save, projectDetails]),
+      element("div", { className: "action-group" }, [refresh]),
     ]),
   ]);
 }
@@ -323,18 +325,5 @@ export function editorWorkflow(
   }, [
     actionGroup,
     notices,
-    deviceWriteControls(state, actions, {
-      description: `Writes the project keymap (${state.project.layers.length} layers) to the connected device.`,
-      controls: (confirmed) => {
-        const writeKeymap = uiButton({
-          className: "secondary-action",
-          type: "button",
-          text: "Write keymap to device",
-          attrs: { "data-write-keymap": "true" },
-        });
-        writeKeymap.addEventListener("click", () => actions.writeKeymapToDevice(confirmed()));
-        return [writeKeymap];
-      },
-    }),
   ]);
 }

@@ -450,7 +450,7 @@ export function rgbMatrixControls(profile: LightingProfile, actions: RenderActio
   [
     ["solid", "Solid"],
     ["breathing", "Breathing"],
-    ["reactive", "Reactive"],
+    ["reactive", "Reactive (keypress)"],
     ["cycle", "Cycle"],
   ].forEach(([value, label]) => {
     effectSelect.append(element("option", { text: label, attrs: { value } }));
@@ -928,7 +928,9 @@ export function requirementLabel(requirement: CommandStatus["requiredFor"]): str
 
 export function layerStrip(state: EditorState, actions: RenderActions): HTMLElement {
   return element("section", { className: "layer-strip", attrs: { "data-layer-strip": "true" } }, [
-    controlGroup("layer-selection", "Layer selection", [layerTabs(state, actions)]),
+    // The outer "Layers" settings group already labels this; avoid a second
+    // "Layer selection" heading for the same tabs.
+    element("div", { className: "layer-tabs-block" }, [layerTabs(state, actions)]),
     controlGroup("layer-details", "Layer details", [layerTools(state, actions)]),
   ]);
 }

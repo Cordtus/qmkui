@@ -63,6 +63,14 @@ function connectionPanel(state: EditorState, actions: RenderActions): HTMLElemen
   const error = connectionError(state.deviceSelection, state.protocolVerification, state.snapshotReadStatus);
 
   return element("section", { className: "connection-panel" }, [
+    element("div", { className: "connection-intro" }, [
+      element("p", { className: "eyebrow", text: "QMKUI" }),
+      element("h1", { text: "Connect a keyboard" }),
+      element("p", {
+        className: "connection-lede",
+        text: "Read and edit VIA-compatible keyboards over WebHID. Connect one to begin.",
+      }),
+    ]),
     element("div", { className: "connection-actions" }, [connect, ...(verify ? [verify] : []), ...(read ? [read] : [])]),
     ...(error
       ? [element("p", { className: "connection-state", attrs: { "data-device-state": "true" }, text: error })]

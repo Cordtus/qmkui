@@ -114,6 +114,17 @@ h3 {
   line-height: 1.5;
 }
 
+.connection-intro {
+  display: grid;
+  gap: 8px;
+}
+
+.connection-lede {
+  max-width: 44ch;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 .connection-actions,
 .snapshot-actions {
   display: flex;
@@ -503,32 +514,78 @@ wa-button.nav-item.active::part(base) {
   min-width: 0;
 }
 
+/* Actions are clustered: history, project, device. Each cluster is one
+   bordered strip so the header reads as three things, not six buttons. */
 .topbar-actions {
-  display: grid;
-  grid-template-columns: auto auto auto auto minmax(150px, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
+  justify-content: flex-end;
   flex: 0 0 auto;
-  gap: 0;
+  gap: 8px;
   min-width: 0;
+}
+
+.action-group,
+.history-controls {
+  display: flex;
+  align-items: stretch;
   border: 1px solid var(--border);
 }
 
-.topbar-actions > wa-button {
+.action-group > wa-button {
   border: 0;
   border-right: 1px solid var(--border);
 }
 
-.history-controls {
+.action-group > wa-button:last-child {
+  border-right: 0;
+}
+
+.project-meta {
   display: flex;
-  align-items: stretch;
-  border-right: 1px solid var(--border);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
 }
 
 .device-id {
   display: block;
-  margin-top: 4px;
   color: var(--text-muted);
   font-size: 0.72rem;
+}
+
+/* "Keymap valid" / "Fix keymap issues": a status chip, not a button. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-muted);
+  padding: 3px 9px;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.status::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.status.ready {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border-muted));
+  color: var(--accent);
+}
+
+.status.blocked {
+  border-color: color-mix(in srgb, #f0a3a3 42%, var(--border-muted));
+  color: #f0a3a3;
 }
 
 .eyebrow {
@@ -585,6 +642,7 @@ h3 {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto;
+  gap: 16px;
   justify-content: stretch;
   align-items: stretch;
   height: max-content;
