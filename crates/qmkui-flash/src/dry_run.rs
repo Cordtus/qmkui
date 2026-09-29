@@ -1,46 +1,35 @@
 use crate::request::{FlashRequest, FlashResult, FlashStatus};
-use crate::FlashError;
-
-/// The seam a real flash implementation must satisfy. Only the dry-run adapter
-/// exists today; a gated `qmk flash` adapter reuses this trait post-gate.
-pub trait FlashAdapter {
-    fn flash(&mut self, request: &FlashRequest) -> Result<FlashResult, FlashError>;
-}
 
 /// Records the command sequence a real flash would run, without executing it.
-pub struct DryRunAdapter {
-    pub log: Vec<String>,
-}
+pub struct DryRunAdapter;
 
 impl DryRunAdapter {
     pub fn new() -> Self {
-        Self { log: Vec::new() }
+        Self
+    }
+
+    pub fn flash(&self, request: &FlashRequest) -> FlashResult {
+        let log = vec![
+            format!(
+                "would flash {} ({}) to {}:{} with bootloader {}",
+                request.target.qmk_keyboard,
+                &request.target.firmware_sha256[..request.target.firmware_sha256.len().min(12)],
+                request.expected_device.vendor_id,
+                request.expected_device.product_id,
+                request.target.bootloader,
+            ),
+            "dry-run: no command was executed".to_owned(),
+        ];
+        FlashResult {
+            status: FlashStatus::Success,
+            log,
+        }
     }
 }
 
 impl Default for DryRunAdapter {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl FlashAdapter for DryRunAdapter {
-    fn flash(&mut self, request: &FlashRequest) -> Result<FlashResult, FlashError> {
-        let mut log = Vec::new();
-        log.push(format!(
-            "would flash {} ({}) to {}:{} with bootloader {}",
-            request.target.qmk_keyboard,
-            &request.target.firmware_sha256[..request.target.firmware_sha256.len().min(12)],
-            request.expected_device.vendor_id,
-            request.expected_device.product_id,
-            request.target.bootloader,
-        ));
-        log.push("dry-run: no command was executed".to_owned());
-        self.log = log.clone();
-        Ok(FlashResult {
-            status: FlashStatus::Success,
-            log,
-        })
     }
 }
 
@@ -65,8 +54,8 @@ mod tests {
             },
             operator_confirmed: true,
         };
-        let mut adapter = DryRunAdapter::new();
-        let result = adapter.flash(&request).expect("dry run succeeds");
+        let adapter = DryRunAdapter::new();
+        let result = adapter.flash(&request);
         assert_eq!(result.status, FlashStatus::Success);
         assert!(result.log[0].contains("would flash"));
         assert!(result

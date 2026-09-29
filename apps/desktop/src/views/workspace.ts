@@ -82,12 +82,6 @@ export function workspaceControls(
     settingsGroup("selection", "Selection", [
       combinedWorkspacePanel(state, layout, actions),
     ]),
-    settingsGroup("history", "History", [
-      historyControls(state, actions),
-    ]),
-    settingsGroup("macros", "Macros", [
-      macroEditor(state, actions),
-    ]),
   ]);
 }
 
@@ -132,7 +126,7 @@ export function macroEditor(state: EditorState, actions: RenderActions): HTMLEle
   return wrap;
 }
 
-function historyControls(state: EditorState, actions: RenderActions): HTMLElement {
+export function historyControls(state: EditorState, actions: RenderActions): HTMLElement {
   const undo = uiButton({
     className: "secondary-action",
     type: "button",
@@ -326,7 +320,7 @@ export function assignmentEditor(
       className: "assignment-editor",
       attrs: { "data-advanced-assignment": parsed.kind },
     },
-    [assignmentHeader("JSON"), ...assignmentFields(state, parsed, actions)],
+    [assignmentHeader(), ...assignmentFields(state, parsed, actions)],
   );
 }
 
@@ -361,18 +355,13 @@ export function assignmentTemplates(state: EditorState, actions: RenderActions):
       className: "assignment-editor",
       attrs: { "data-advanced-assignment": "templates" },
     },
-    [assignmentHeader("JSON"), grid],
+    [assignmentHeader(), grid],
   );
 }
 
-export function assignmentHeader(exportMode: string): HTMLElement {
+export function assignmentHeader(): HTMLElement {
   return element("div", { className: "assignment-header" }, [
     element("h3", { text: "Assignment" }),
-    element("span", {
-      className: "export-mode",
-      text: exportMode,
-      attrs: { "data-export-mode": exportMode.toLowerCase() },
-    }),
   ]);
 }
 

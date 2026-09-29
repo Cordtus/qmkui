@@ -1,43 +1,20 @@
 import { EditorState, RenderActions, isKeychronV5MaxSnapshot } from "../appState";
-import { chooseBrowserKeyboard } from "../devices/browserKeyboardDiscovery";
 import { GenericViaStandardState } from "../devices/genericViaReader";
 import { KeychronV5MaxCapabilities, KeychronV5MaxIdentityFacts, KeychronV5MaxLighting, KeychronV5MaxReadSnapshot } from "../devices/keychronV5MaxReader";
 import { ViaKeymap, ViaMacros, ViaMacroStep } from "../devices/viaReadProtocol";
 import { decodeHardwareKeycode, isSysRqKeycode } from "../keycodes";
 import { keychronV5MaxKeyboard } from "../presets";
 import { definitionList, definitionRow, element, layoutBounds, uiButton } from "./primitives";
-export function snapshotScreen(state: EditorState, actions: RenderActions): HTMLElement {
-  return element("main", { className: "snapshot-shell" }, [snapshotContent(state, actions)]);
-}
 
 export function snapshotContent(state: EditorState, actions: RenderActions): HTMLElement {
   const snapshot = state.hardwareSnapshot!;
   if (!isKeychronV5MaxSnapshot(snapshot)) {
     return genericViaSnapshotContent(snapshot, state, actions);
   }
-  const refresh = uiButton({
-    className: "secondary-action",
-    text: state.snapshotReadStatus === "reading" ? "Refreshing device..." : "Refresh device",
-    type: "button",
-    attrs: {
-      "data-device-action": "refresh",
-      ...(state.snapshotReadStatus === "reading" ? { disabled: "" } : {}),
-    },
-  });
-  refresh.addEventListener("click", actions.readDevice);
-  const choose = uiButton({
-    className: "secondary-action",
-    text: "Choose another keyboard",
-    type: "button",
-    attrs: { "data-device-action": "connect" },
-  });
-  choose.addEventListener("click", actions.chooseBrowserKeyboard);
+  const title = snapshot.identity.state === "available" ? snapshot.identity.value.model : "Keyboard";
 
   return element("section", { className: "snapshot-shell", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
-    element("header", { className: "snapshot-header" }, [
-      element("h1", { text: snapshot.identity.state === "available" ? snapshot.identity.value.model : "Keyboard" }),
-      element("div", { className: "snapshot-actions" }, [refresh, choose]),
-    ]),
+    snapshotHeader(title, state, actions),
     element("section", { className: "snapshot-grid" }, [
       snapshotKeymapField(
         snapshot.keymap,
@@ -51,101 +28,43 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
       snapshotLightingField(snapshot.lighting),
       snapshotField("Macros", snapshot.macros, macrosSnapshotRows),
     ]),
-    deviceWritePanel(state, actions),
+    deviceWriteControls(state, actions, {
+      description: `Selected key ${state.snapshotSelectedKey} on layer ${state.snapshotLayerIndex}.`,
+      controls: (confirmed) => {
+        const keycodeInput = element("input", {
+          attrs: {
+            "aria-label": "Keycode (hex)",
+            "data-write-keycode": "true",
+            placeholder: "0046",
+          },
+        });
+        const writeKey = uiButton({
+          className: "secondary-action",
+          type: "button",
+          text: "Write key",
+          attrs: { "data-device-write-key": "true" },
+        });
+        writeKey.addEventListener("click", () => {
+          const value = Number.parseInt(keycodeInput.value.trim(), 16);
+          if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
+            actions.writeSnapshotKeycode(NaN, false);
+            return;
+          }
+          actions.writeSnapshotKeycode(value, confirmed());
+        });
+        return [keycodeInput, writeKey];
+      },
+    }),
   ]);
 }
 
 /**
- * Gated device write controls. Writes are only possible when the operator
- * ticks the confirmation checkbox; "save to EEPROM" is a separate confirmed
- * action. The write allow-list in `qmkui-hid`/`viaWrite` gates every frame.
+ * Shared header for both snapshot variants: device refresh plus "choose
+ * another keyboard". Keeping one builder stops the two snapshot screens from
+ * drifting apart.
  */
-function deviceWritePanel(state: EditorState, actions: RenderActions): HTMLElement {
-  const confirm = element("label", { className: "write-confirm" }, [
-    element("input", {
-      attrs: { "data-write-confirm": "true", type: "checkbox" },
-    }),
-    element("span", { text: "I understand this writes to the live keymap." }),
-  ]);
-
-  const enableWrites = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: state.deviceWriteEnabled ? "Writes enabled" : "Enable device writes",
-    attrs: {
-      "data-device-write-enable": "true",
-      ...(state.deviceWriteEnabled ? { disabled: "" } : {}),
-    },
-  });
-  enableWrites.addEventListener("click", () => {
-    const checked = confirm.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked;
-    actions.enableDeviceWrites(Boolean(checked));
-  });
-
-  const keycodeInput = element("input", {
-    attrs: {
-      "aria-label": "Keycode (hex)",
-      "data-write-keycode": "true",
-      placeholder: "0046",
-    },
-  });
-  const writeKey = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: "Write key",
-    attrs: { "data-device-write-key": "true" },
-  });
-  writeKey.addEventListener("click", () => {
-    const checked = confirm.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked;
-    const value = Number.parseInt(keycodeInput.value.trim(), 16);
-    if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
-      actions.writeSnapshotKeycode(NaN, false);
-      return;
-    }
-    actions.writeSnapshotKeycode(value, Boolean(checked));
-  });
-
-  const save = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: "Save to EEPROM",
-    attrs: { "data-device-save-eeprom": "true" },
-  });
-  save.addEventListener("click", () => {
-    const checked = confirm.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked;
-    actions.saveEepromToDevice(Boolean(checked));
-  });
-
-  return element("section", {
-    className: "device-write-panel",
-    attrs: { "data-device-write-panel": "true" },
-  }, [
-    element("h3", { text: "Device write" }),
-    element("p", {
-      text: `Selected key ${state.snapshotSelectedKey} on layer ${state.snapshotLayerIndex}.`,
-    }),
-    confirm,
-    element("div", { className: "device-write-actions" }, [
-      enableWrites,
-      keycodeInput,
-      writeKey,
-      save,
-    ]),
-  ]);
-}
-
-export function genericViaSnapshotScreen(
-  snapshot: GenericViaStandardState,
-  state: EditorState,
-  actions: RenderActions,
-): HTMLElement {
-  return element("main", { className: "snapshot-shell" }, [
-    genericViaSnapshotContent(snapshot, state, actions),
-  ]);
-}
-
-export function genericViaSnapshotContent(
-  snapshot: GenericViaStandardState,
+function snapshotHeader(
+  title: string,
   state: EditorState,
   actions: RenderActions,
 ): HTMLElement {
@@ -167,11 +86,71 @@ export function genericViaSnapshotContent(
   });
   choose.addEventListener("click", actions.chooseBrowserKeyboard);
 
-  return element("section", { className: "snapshot-shell", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
-    element("header", { className: "snapshot-header" }, [
-      element("h1", { text: "VIA" }),
-      element("div", { className: "snapshot-actions" }, [refresh, choose]),
+  return element("header", { className: "snapshot-header" }, [
+    element("h1", { text: title }),
+    element("div", { className: "snapshot-actions" }, [refresh, choose]),
+  ]);
+}
+
+/**
+ * The one gated device-write surface, shared by the project editor and the
+ * hardware snapshot. Writes only happen after the operator ticks the
+ * confirmation checkbox; "save to EEPROM" is a separate confirmed action. The
+ * write allow-list in `qmkui-hid`/`viaWrite` gates every frame.
+ */
+export function deviceWriteControls(
+  state: EditorState,
+  actions: RenderActions,
+  options: { description: string; controls: (confirmed: () => boolean) => HTMLElement[] },
+): HTMLElement {
+  const confirmInput = element("input", {
+    attrs: { "data-write-confirm": "true", type: "checkbox" },
+  });
+  const confirmed = () => confirmInput.checked;
+  const confirm = element("label", { className: "write-confirm" }, [
+    confirmInput,
+    element("span", { text: "I understand this writes to the live keymap." }),
+  ]);
+  const enable = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: state.deviceWriteEnabled ? "Writes enabled" : "Enable device writes",
+    attrs: {
+      "data-device-write-enable": "true",
+      ...(state.deviceWriteEnabled ? { disabled: "" } : {}),
+    },
+  });
+  enable.addEventListener("click", () => actions.enableDeviceWrites(confirmed()));
+  const save = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: "Save to EEPROM",
+    attrs: { "data-device-save-eeprom": "true" },
+  });
+  save.addEventListener("click", () => actions.saveEepromToDevice(confirmed()));
+
+  return element("section", {
+    className: "device-write-controls",
+    attrs: { "data-device-write-controls": "true" },
+  }, [
+    element("h3", { text: "Device write" }),
+    element("p", { text: options.description }),
+    confirm,
+    element("div", { className: "device-write-actions" }, [
+      enable,
+      ...options.controls(confirmed),
+      save,
     ]),
+  ]);
+}
+
+export function genericViaSnapshotContent(
+  snapshot: GenericViaStandardState,
+  state: EditorState,
+  actions: RenderActions,
+): HTMLElement {
+  return element("section", { className: "snapshot-shell", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
+    snapshotHeader("VIA", state, actions),
     element("section", { className: "snapshot-grid" }, [
       snapshotGroup("Device", [
         snapshotField("Identity", snapshot.identity, () => []),

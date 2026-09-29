@@ -68,27 +68,3 @@ export async function runLocalBuild(
   const output = [result.stderr, result.stdout].filter(Boolean).join("\n");
   return { status: "failed", command, output, durationMs };
 }
-
-/**
- * Content-addressed artifact list, keyed by firmware sha256. Kept in memory for
- * the session; the Tauri shell persists artifacts on disk via the Rust store.
- */
-export class BuildArtifactStore {
-  private readonly artifacts = new Map<string, BuildArtifact>();
-
-  put(artifact: BuildArtifact): BuildArtifact {
-    this.artifacts.set(artifact.id, artifact);
-    return artifact;
-  }
-
-  list(): BuildArtifact[] {
-    return [...this.artifacts.values()].sort((a, b) =>
-      a.createdAt.localeCompare(b.createdAt),
-    );
-  }
-
-  isStale(id: string, currentDigest: string): boolean {
-    const artifact = this.artifacts.get(id);
-    return artifact !== undefined && artifact.projectDigest !== currentDigest;
-  }
-}

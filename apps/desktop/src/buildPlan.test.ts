@@ -20,7 +20,6 @@ describe("build plan", () => {
     ]);
     expect(plan.output).toBe("json");
     expect(plan.localReady).toBe(true);
-    expect(plan.remoteReady).toBe(false);
     expect(plan.selectedReady).toBe(true);
   });
 
@@ -34,7 +33,6 @@ describe("build plan", () => {
 
     expect(plan.output).toBe("c");
     expect(plan.requiresGeneratedC).toBe(true);
-    expect(plan.remoteReady).toBe(false);
     expect(plan.selectedReady).toBe(false);
     expect(plan.blockers).toContain("build.remote.generatedC");
   });

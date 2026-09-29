@@ -463,10 +463,6 @@ fn issue(
     }
 }
 
-pub fn referenced_layers(qmk: &str) -> Vec<u8> {
-    scan_layer_references(qmk).layers
-}
-
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct LayerReferenceScan {
     layers: Vec<u8>,
@@ -540,12 +536,12 @@ mod tests {
 
     #[test]
     fn parses_common_layer_references() {
-        assert_eq!(referenced_layers("MO(2)"), vec![2]);
-        assert_eq!(referenced_layers("TT(2)"), vec![2]);
-        assert_eq!(referenced_layers("OSL(2)"), vec![2]);
-        assert_eq!(referenced_layers("LT(3, KC_SPC)"), vec![3]);
-        assert_eq!(referenced_layers("LM(4, MOD_LSFT)"), vec![4]);
-        assert_eq!(referenced_layers("KC_A"), Vec::<u8>::new());
+        assert_eq!(scan_layer_references("MO(2)").layers, vec![2]);
+        assert_eq!(scan_layer_references("TT(2)").layers, vec![2]);
+        assert_eq!(scan_layer_references("OSL(2)").layers, vec![2]);
+        assert_eq!(scan_layer_references("LT(3, KC_SPC)").layers, vec![3]);
+        assert_eq!(scan_layer_references("LM(4, MOD_LSFT)").layers, vec![4]);
+        assert_eq!(scan_layer_references("KC_A").layers, Vec::<u8>::new());
     }
 
     #[test]

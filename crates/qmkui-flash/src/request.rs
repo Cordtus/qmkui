@@ -31,8 +31,6 @@ pub struct FlashRequest {
 #[serde(rename_all = "camelCase")]
 pub enum FlashStatus {
     Success,
-    Failure,
-    Cancelled,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

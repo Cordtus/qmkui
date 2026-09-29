@@ -6,7 +6,6 @@ import {
   jsonExportBlockers,
   KeyboardDefinition,
   Project,
-  resolveTransparent,
   validateProject,
 } from "./domain";
 
@@ -219,39 +218,6 @@ describe("project validation", () => {
         "assignment.tapHold.unsupported",
       );
     });
-  });
-});
-
-describe("transparent fallthrough", () => {
-  const layers = [
-    {
-      id: "layer_0",
-      index: 0,
-      name: "Base",
-      enabled: true,
-      assignments: [{ id: "a0", visualKeyId: "k", kind: "basic", qmk: "KC_A" }],
-    },
-    {
-      id: "layer_1",
-      index: 1,
-      name: "Fn",
-      enabled: true,
-      assignments: [{ id: "a1", visualKeyId: "k", kind: "transparent", qmk: "KC_TRNS" }],
-    },
-  ];
-
-  it("resolves a transparent key through lower layers", () => {
-    expect(resolveTransparent(layers, 1, "k")).toBe("KC_A");
-    expect(resolveTransparent(layers, 0, "k")).toBe("KC_A");
-  });
-
-  it("returns KC_NO when nothing below is concrete", () => {
-    const allTransparent = layers.map((layer) => ({
-      ...layer,
-      assignments: [{ id: `${layer.id}_t`, visualKeyId: "k", kind: "transparent", qmk: "KC_TRNS" }],
-    }));
-    expect(resolveTransparent(allTransparent, 1, "k")).toBe("KC_NO");
-    expect(resolveTransparent(layers, 1, "missing-key")).toBe("KC_NO");
   });
 });
 

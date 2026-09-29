@@ -18,8 +18,6 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum BuildError {
-    #[error("project validation is not ready: {0}")]
-    NotReady(String),
     #[error("project serialization failed: {0}")]
     Serialize(#[from] serde_json::Error),
     #[error("qmk export failed: {0}")]

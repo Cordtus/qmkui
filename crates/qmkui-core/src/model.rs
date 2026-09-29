@@ -138,21 +138,6 @@ impl LayoutContract {
         }
     }
 
-    pub fn for_layout(
-        layout_id: impl Into<String>,
-        qmk_layout_macro: impl Into<String>,
-        visual_key_order: Vec<String>,
-    ) -> Self {
-        Self {
-            key_count: visual_key_order.len(),
-            keyboard_id: None,
-            qmk_keyboard: None,
-            layout_id: Some(layout_id.into()),
-            qmk_layout_macro: Some(qmk_layout_macro.into()),
-            visual_key_order,
-        }
-    }
-
     pub fn for_keyboard_layout(
         keyboard_id: impl Into<String>,
         qmk_keyboard: impl Into<String>,

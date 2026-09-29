@@ -107,8 +107,8 @@ fn replays_v5_identity_vectors() {
 #[test]
 fn replays_v5_keymap_vector() {
     let transport = VectorTransport::from_vectors("v5-keymap.json");
-    let mut reader = KeychronV5Reader::new(transport);
-    assert_eq!(reader.via_keycode(2, 0, 15).expect("keycode"), 0x0046);
+    let mut via = ViaReadProtocol::new(transport);
+    assert_eq!(via.get_keycode(2, 0, 15).expect("keycode"), 0x0046);
 }
 
 #[test]
@@ -132,8 +132,8 @@ fn read_via_keymap_reads_all_positions() {
     let transport = SequentialTransport {
         next_keycode: std::cell::Cell::new(1),
     };
-    let mut reader = KeychronV5Reader::new(transport);
-    let keymap = reader
+    let mut via = ViaReadProtocol::new(transport);
+    let keymap = via
         .read_via_keymap(KeymapDimensions {
             layer_count: 1,
             rows: 1,

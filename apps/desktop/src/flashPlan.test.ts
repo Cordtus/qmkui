@@ -72,7 +72,6 @@ describe("flash target from artifact", () => {
         createdAt: "2026-08-11T00:00:00.000Z",
       },
       "atmel-dfu",
-      fixtureProject,
     );
     expect(target.qmkKeyboard).toBe("example/one");
     expect(target.bootloader).toBe("atmel-dfu");

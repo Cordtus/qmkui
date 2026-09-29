@@ -107,24 +107,11 @@ export function renameLayer(project: Project, layerIndex: number, name: string):
 }
 
 export function deleteLayer(project: Project, layerIndex: number): DeleteLayerResult {
-  const layer = project.layers.find((item) => item.index === layerIndex);
-  if (!layer) {
-    return { deleted: false, reason: "missing", references: [] };
+  const result = canDeleteLayer(project, layerIndex);
+  if (result.deleted) {
+    project.layers = project.layers.filter((item) => item.index !== layerIndex);
   }
-
-  const references = scanLayerReferences(project, layerIndex);
-  if (layerIndex === 0) {
-    return { deleted: false, reason: "base", references };
-  }
-  if (references.length > 0) {
-    return { deleted: false, reason: "referenced", references };
-  }
-  if (layerIndex !== maxLayerIndex(project)) {
-    return { deleted: false, reason: "notHighest", references };
-  }
-
-  project.layers = project.layers.filter((item) => item.index !== layerIndex);
-  return { deleted: true, removedLayer: layer };
+  return result;
 }
 
 export function canDeleteLayer(project: Project, layerIndex: number): DeleteLayerResult {

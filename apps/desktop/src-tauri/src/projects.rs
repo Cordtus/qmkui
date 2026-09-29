@@ -101,7 +101,11 @@ fn summary_of(value: &serde_json::Value, path: &Path) -> Option<ProjectSummary> 
         id: value.get("id")?.as_str()?.to_owned(),
         name: value.get("name")?.as_str()?.to_owned(),
         keyboard_id: value.get("target")?.get("keyboardId")?.as_str()?.to_owned(),
-        qmk_keyboard: value.get("target")?.get("qmkKeyboard")?.as_str()?.to_owned(),
+        qmk_keyboard: value
+            .get("target")?
+            .get("qmkKeyboard")?
+            .as_str()?
+            .to_owned(),
         updated_at,
     })
 }
@@ -130,7 +134,12 @@ mod tests {
     fn ignores_corrupt_entries() {
         let root = std::env::temp_dir().join(format!("qmkui-store-corrupt-{}", std::process::id()));
         let store = ProjectStore::new(root.clone());
-        store.save("good", r#"{"id":"good","name":"G","target":{"keyboardId":"k","qmkKeyboard":"k/l"}}"#).expect("saves");
+        store
+            .save(
+                "good",
+                r#"{"id":"good","name":"G","target":{"keyboardId":"k","qmkKeyboard":"k/l"}}"#,
+            )
+            .expect("saves");
         fs::create_dir_all(&root).expect("dir");
         fs::write(root.join("bad.json"), "{not json").expect("writes corrupt");
 

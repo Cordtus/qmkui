@@ -1,5 +1,6 @@
 import writeCommands from "../../../../fixtures/protocol/write-commands.json";
-import type { ViaInputReportData, ViaReadTransport } from "./viaReadProtocol";
+import type { ViaReadTransport } from "./viaReadProtocol";
+import { requestReport } from "./transport";
 
 const SET_KEYCODE = writeCommands.viaWriteCommands.setKeycode;
 const SAVE_EEPROM = writeCommands.viaWriteCommands.saveEeprom;
@@ -8,7 +9,7 @@ const DEFAULT_TIMEOUT_MS = 1_000;
 
 export class ViaWriteProtocolError extends Error {
   constructor(
-    readonly code: "command-not-allowed" | "invalid-request" | "timeout" | "transport" | "response-mismatch",
+    readonly code: "command-not-allowed" | "invalid-request" | "timeout" | "transport",
   ) {
     super(`VIA write protocol failed: ${code}`);
     this.name = "ViaWriteProtocolError";
@@ -41,56 +42,19 @@ export class ViaWriteProtocol {
     if (payload.length > REPORT_LENGTH - 1 || !payload.every(isByte)) {
       return Promise.reject(new ViaWriteProtocolError("invalid-request"));
     }
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const finish = (error: ViaWriteProtocolError | null) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timeout);
-        this.transport.removeEventListener("inputreport", onInputReport);
-        if (error) {
-          reject(error);
-        } else {
-          resolve();
-        }
-      };
-      const onInputReport = (event: { reportId: number; data: ViaInputReportData }) => {
-        if (event.reportId !== 0) {
-          return;
-        }
-        const response = normalizeReportData(event.data);
-        if (!response || response.byteLength !== REPORT_LENGTH || response[0] !== command) {
-          return;
-        }
-        finish(null);
-      };
-      const timeout = setTimeout(() => finish(new ViaWriteProtocolError("timeout")), this.timeoutMs);
-      const request = new Uint8Array(REPORT_LENGTH);
-      request[0] = command;
-      request.set(payload, 1);
+    const request = new Uint8Array(REPORT_LENGTH);
+    request[0] = command;
+    request.set(payload, 1);
 
-      this.transport.addEventListener("inputreport", onInputReport);
-      try {
-        Promise.resolve(this.transport.sendReport(0, request)).catch(() =>
-          finish(new ViaWriteProtocolError("transport")),
-        );
-      } catch {
-        finish(new ViaWriteProtocolError("transport"));
-      }
-    });
+    return requestReport(
+      this.transport,
+      0,
+      request,
+      (response) => response.byteLength === REPORT_LENGTH && response[0] === command,
+      ViaWriteProtocolError,
+      this.timeoutMs,
+    ).then(() => undefined);
   }
-}
-
-function normalizeReportData(data: ViaInputReportData): Uint8Array | undefined {
-  if (data instanceof ArrayBuffer) {
-    return new Uint8Array(data);
-  }
-  if (ArrayBuffer.isView(data)) {
-    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  }
-  return undefined;
 }
 
 function isAllowedWriteCommand(command: number): boolean {

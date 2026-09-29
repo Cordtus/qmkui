@@ -4,7 +4,7 @@ import {
   type HidIdentityMetadata,
 } from "./keychronV5MaxContract";
 import { available, unavailable, unverified, type ValueState } from "./hardwareSnapshot";
-import type { DeviceTransport } from "./transport";
+import { requestReport, withOpen, type DeviceTransport } from "./transport";
 import { ViaReadProtocol, readViaKeymap, readViaMacros, type ViaKeymap, type ViaMacros } from "./viaReadProtocol";
 
 const REPORT_ID = 0;
@@ -112,32 +112,24 @@ export async function readKeychronV5MaxSnapshot(
     throw new KeychronV5MaxReaderError("concurrent-read");
   }
   pendingSnapshots.add(device);
-  const openedByQmkui = !device.opened;
   try {
-    if (openedByQmkui) {
-      await device.open();
-    }
-    const identity = await readIdentity(device, timeoutMs);
-    const capabilities = await readCapabilities(device, timeoutMs);
-    const keymap = await readKeymap(device, options.keymap, timeoutMs);
-    const lighting = await readLighting(device, timeoutMs);
-    const macros = await readMacros(device, timeoutMs);
-    return {
-      identity,
-      capabilities,
-      keymap,
-      lighting,
-      macros,
-      readAt: (options.now ?? (() => new Date().toISOString()))(),
-    };
+    return await withOpen(device, async () => {
+      const identity = await readIdentity(device, timeoutMs);
+      const capabilities = await readCapabilities(device, timeoutMs);
+      const keymap = await readKeymap(device, options.keymap, timeoutMs);
+      const lighting = await readLighting(device, timeoutMs);
+      const macros = await readMacros(device, timeoutMs);
+      return {
+        identity,
+        capabilities,
+        keymap,
+        lighting,
+        macros,
+        readAt: (options.now ?? (() => new Date().toISOString()))(),
+      };
+    });
   } finally {
-    try {
-      if (openedByQmkui) {
-        await device.close();
-      }
-    } finally {
-      pendingSnapshots.delete(device);
-    }
+    pendingSnapshots.delete(device);
   }
 }
 
@@ -317,35 +309,18 @@ function requestVendorResponse(
   payload: readonly number[],
   timeoutMs: number,
 ): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (result: Uint8Array | KeychronV5MaxReaderError) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      device.removeEventListener("inputreport", onInputReport);
-      if (result instanceof KeychronV5MaxReaderError) reject(result);
-      else resolve(result);
-    };
-    const onInputReport = (event: { reportId: number; data: ArrayBuffer | ArrayBufferView }) => {
-      if (event.reportId !== REPORT_ID) return;
-      const response = normalizeReportData(event.data);
-      if (!response || response.byteLength !== REPORT_LENGTH || !matchesRequest(response, command, payload)) return;
-      finish(response);
-    };
-    const timeout = setTimeout(() => finish(new KeychronV5MaxReaderError("timeout")), timeoutMs);
-    const request = new Uint8Array(REPORT_LENGTH);
-    request[0] = command;
-    request.set(payload, 1);
-    device.addEventListener("inputreport", onInputReport);
-    try {
-      Promise.resolve(device.sendReport(REPORT_ID, request)).catch(() =>
-        finish(new KeychronV5MaxReaderError("transport")),
-      );
-    } catch {
-      finish(new KeychronV5MaxReaderError("transport"));
-    }
-  });
+  const request = new Uint8Array(REPORT_LENGTH);
+  request[0] = command;
+  request.set(payload, 1);
+
+  return requestReport(
+    device,
+    REPORT_ID,
+    request,
+    (response) => response.byteLength === REPORT_LENGTH && matchesRequest(response, command, payload),
+    KeychronV5MaxReaderError,
+    timeoutMs,
+  );
 }
 
 function matchesRequest(response: Uint8Array, command: number, payload: readonly number[]): boolean {
@@ -372,12 +347,6 @@ function boundedTimeoutMs(timeoutMs: number | undefined): number {
     throw new KeychronV5MaxReaderError("invalid-timeout");
   }
   return value;
-}
-
-function normalizeReportData(data: ArrayBuffer | ArrayBufferView): Uint8Array | undefined {
-  if (data instanceof ArrayBuffer) return new Uint8Array(data);
-  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  return undefined;
 }
 
 function isByte(value: number): boolean {

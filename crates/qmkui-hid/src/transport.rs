@@ -33,8 +33,7 @@ pub trait HidTransport {
 pub fn build_report(command: u8, payload: &[u8]) -> Vec<u8> {
     let mut report = vec![0u8; REPORT_LENGTH];
     report[0] = command;
-    for (index, byte) in payload.iter().take(REPORT_LENGTH - 1).enumerate() {
-        report[1 + index] = *byte;
-    }
+    let payload = &payload[..payload.len().min(REPORT_LENGTH - 1)];
+    report[1..1 + payload.len()].copy_from_slice(payload);
     report
 }

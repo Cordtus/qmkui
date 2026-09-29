@@ -238,14 +238,16 @@ impl<T: HidTransport> ViaReadProtocol<T> {
 }
 
 fn read_uint16(response: &[u8], offset: usize) -> u16 {
-    (u16::from(response[offset]) << 8) | u16::from(response[offset + 1])
+    u16::from_be_bytes([response[offset], response[offset + 1]])
 }
 
 fn read_uint32(response: &[u8], offset: usize) -> u32 {
-    (u32::from(response[offset]) * 0x100_0000)
-        + (u32::from(response[offset + 1]) * 0x1_0000)
-        + (u32::from(response[offset + 2]) * 0x100)
-        + u32::from(response[offset + 3])
+    u32::from_be_bytes([
+        response[offset],
+        response[offset + 1],
+        response[offset + 2],
+        response[offset + 3],
+    ])
 }
 
 const MACRO_ACTION_TAP: u8 = 0x01;

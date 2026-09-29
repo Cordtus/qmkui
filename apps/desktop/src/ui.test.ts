@@ -495,6 +495,14 @@ function deferred<Value>() {
     await flush();
 
     // Writes are gated: without confirmation nothing is sent.
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
+    root.querySelector<HTMLElement>("[data-device-save-eeprom]")?.click();
+    await flush();
+    expect(writeKeycode).not.toHaveBeenCalled();
+    expect(saveEeprom).not.toHaveBeenCalled();
+    expect(root.textContent).toContain("enable device writes first.");
+
     root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
     root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
     await flush();
@@ -503,8 +511,15 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>('[data-hardware-key="0:0"]')?.click();
     await flush();
     root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
-    const input = root.querySelector<HTMLInputElement>("[data-write-keycode]");
-    input!.value = "0046";
+    const input = root.querySelector<HTMLInputElement>("[data-write-keycode]")!;
+    input.value = "zz";
+    root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
+    await flush();
+    expect(writeKeycode).not.toHaveBeenCalled();
+
+    const validInput = root.querySelector<HTMLInputElement>("[data-write-keycode]")!;
+    validInput.value = "0046";
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
     root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
     await flush();
 
@@ -530,6 +545,11 @@ function deferred<Value>() {
     await flush();
     root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
     await flush();
+
+    // Without confirmation the whole-keymap write is refused.
+    root.querySelector<HTMLElement>("[data-write-keymap]")?.click();
+    await flush();
+    expect(writeKeycode).not.toHaveBeenCalled();
 
     root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
     root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
@@ -602,34 +622,6 @@ expect(writeKeycode).toHaveBeenCalled();
 
     expect(buildRunner).toHaveBeenCalled();
     expect(root.querySelector("[data-build-status]")?.textContent).toContain("compiled keymap");
-  });
-
-  it("submits a remote build only after consent and reports the job status", async () => {
-    const root = document.createElement("div");
-    const remoteSubmit = vi.fn(async () => ({ id: "job-1" }));
-    createApp(root, {
-      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
-      remoteSubmit,
-    });
-    await flush();
-
-    root.querySelector<HTMLElement>('[data-view="system"]')?.click();
-    await flush();
-
-    root.querySelector<HTMLElement>("[data-remote-submit]")?.click();
-    await flush();
-    expect(remoteSubmit).not.toHaveBeenCalled();
-    expect(root.querySelector("[data-remote-status]")?.textContent).toContain("Consent");
-
-    const consent = root.querySelector<HTMLInputElement>("[data-remote-consent]")!;
-    consent.checked = true;
-    consent.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
-
-    root.querySelector<HTMLElement>("[data-remote-submit]")?.click();
-    await flush();
-    expect(remoteSubmit).toHaveBeenCalledOnce();
-    expect(root.querySelector("[data-remote-status]")?.textContent).toContain("queued");
   });
 
   it("blocks a flash dry run without an artifact or operator confirmation", async () => {

@@ -33,67 +33,6 @@ export function captureHostKey(
   };
 }
 
-export type KeyEventKind = "down" | "up";
-
-export type KeyEvent = {
-  code: string;
-  key: string;
-  kind: KeyEventKind;
-  at: number;
-};
-
-export type KeyClassification = {
-  chatter: string[];
-  held: string[];
-};
-
-const CHATTER_CYCLE_MS = 30;
-const CHATTER_CYCLES_REQUIRED = 3;
-const HELD_MS = 2_000;
-
-/**
- * Classifies a stream of host key events. A key is flagged as chattering when
- * it completes several very short down/up cycles in sequence, and as held when
- * a down event is never released within the window.
- */
-export function classifyKeyEvents(events: readonly KeyEvent[]): KeyClassification {
-  const byCode = new Map<string, KeyEvent[]>();
-  for (const event of events) {
-    const list = byCode.get(event.code) ?? [];
-    list.push(event);
-    byCode.set(event.code, list);
-  }
-
-  const chatter: string[] = [];
-  const held: string[] = [];
-  for (const [code, sequence] of byCode) {
-    let cycleCount = 0;
-    let index = 0;
-    while (index + 1 < sequence.length) {
-      const down = sequence[index]!;
-      const up = sequence[index + 1]!;
-      if (down.kind === "down" && up.kind === "up") {
-        if (up.at - down.at >= HELD_MS && !held.includes(code)) {
-          held.push(code);
-        }
-        cycleCount = up.at - down.at <= CHATTER_CYCLE_MS ? cycleCount + 1 : 0;
-        if (cycleCount >= CHATTER_CYCLES_REQUIRED && !chatter.includes(code)) {
-          chatter.push(code);
-        }
-        index += 2;
-      } else {
-        index += 1;
-      }
-    }
-    const last = sequence[sequence.length - 1];
-    if (last?.kind === "down" && !held.includes(code)) {
-      held.push(code);
-    }
-  }
-
-  return { chatter, held };
-}
-
 export function qmkFromHostKey(input: HostKeyInput): string | undefined {
   const direct = hostCodeMap[input.code];
   if (direct) {

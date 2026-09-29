@@ -486,43 +486,11 @@ export function exportQmkJson(project: Project, keyboard: KeyboardDefinition) {
   };
 }
 
-export function buildReadinessLabel(issues: UiIssue[], qmkDetected: boolean): string {
-  if (issues.some((issue) => issue.severity === "error")) {
-    return "Fix keymap issues";
-  }
-
-  if (!qmkDetected) {
-    return "Build tools missing";
-  }
-
-  return "Ready";
-}
-
 type LayerReferenceScan = {
   index?: number;
   malformed: boolean;
   wrapper?: string;
 };
-
-/**
- * Resolves the effective keycode for a key on a layer by walking transparent
- * (`KC_TRNS`) assignments downward to the base layer. Returns `KC_NO` when no
- * layer from `layerIndex` down to 0 assigns a non-transparent keycode.
- */
-export function resolveTransparent(
-  layers: readonly Layer[],
-  layerIndex: number,
-  keyId: string,
-): string {
-  for (let index = layerIndex; index >= 0; index -= 1) {
-    const layer = layers.find((item) => item.index === index);
-    const assignment = layer?.assignments.find((item) => item.visualKeyId === keyId);
-    if (assignment && assignment.qmk !== "KC_TRNS") {
-      return assignment.qmk;
-    }
-  }
-  return "KC_NO";
-}
 
 export function scanLayerReference(qmk: string): LayerReferenceScan {  const trimmed = qmk.trim();
   const match = /^([A-Z_]+)\((.*)\)$/.exec(trimmed);

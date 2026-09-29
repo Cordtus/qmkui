@@ -1,18 +1,16 @@
-import { AppView, EditorState, RenderActions, isProtocolVerifiableSelection } from "../appState";
-import { BuildPlan } from "../buildPlan";
-import { chooseBrowserKeyboard } from "../devices/browserKeyboardDiscovery";
-import { KeyboardDefinition, Project, UiIssue, jsonExportBlockers } from "../domain";
+import { AppView, EditorState, RenderActions, isKeychronV5MaxSnapshot, isProtocolVerifiableSelection } from "../appState";
+import { KeyboardDefinition, UiIssue, jsonExportBlockers } from "../domain";
 import { connectionContent, connectionError, connectionScreen } from "./connection";
-import { catalogPanel, projectDetailsDrawer, systemPanel } from "./panels";
+import { catalogPanel, detectedKeyboard, projectDetailsDrawer, systemPanel } from "./panels";
 import { element, uiButton } from "./primitives";
-import { snapshotContent, snapshotScreen } from "./snapshot";
-import { keyboardWorkspace } from "./workspace";
+import { deviceWriteControls, snapshotContent } from "./snapshot";
+import { historyControls, keyboardWorkspace } from "./workspace";
+
 export function mainShell(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
   issues: UiIssue[],
   qmkJson: unknown,
-  buildPlan: BuildPlan,
   actions: RenderActions,
 ): HTMLElement {
   const hasDeviceSession =
@@ -21,7 +19,7 @@ export function mainShell(
     return connectionScreen(state, actions);
   }
 
-  return appShell(state, layout, issues, qmkJson, buildPlan, actions);
+  return appShell(state, layout, issues, qmkJson, actions);
 }
 
 export function appShell(
@@ -29,14 +27,12 @@ export function appShell(
   layout: KeyboardDefinition["layouts"][number],
   issues: UiIssue[],
   qmkJson: unknown,
-  buildPlan: BuildPlan,
   actions: RenderActions,
 ): HTMLElement {
   return element("main", { className: "shell" }, [
     rail(state.activeView, actions.selectView),
     element("section", { className: "workspace" }, [
-      topbar(state, issues, buildPlan, actions),
-      detectionStrip(state, actions.reloadProbe),
+      topbar(state, issues, actions),
       activePanel(state, layout, issues, qmkJson, actions),
       projectDetailsDrawer(state, actions),
     ]),
@@ -76,14 +72,27 @@ export function rail(activeView: AppView, selectView: (view: AppView) => void): 
   ]);
 }
 
+/**
+ * Single header for the whole workbench: project identity, global actions
+ * (undo/redo, save, project details), and the probe/write status. Device
+ * identity is folded into the eyebrow so there is no separate detection band.
+ */
 export function topbar(
   state: EditorState,
   issues: UiIssue[],
-  buildPlan: BuildPlan,
   actions: RenderActions,
 ): HTMLElement {
   const hasErrors = issues.some((issue) => issue.severity === "error");
   const statusClass = hasErrors ? "blocked" : "ready";
+  const detected = detectedKeyboard(state);
+  const connectedLabel = connectedDeviceLabel(state);
+  const deviceName = connectedLabel ?? detected?.displayName ?? state.keyboard.displayName;
+  const deviceId = detected
+    ? `${detected.device.vid}:${detected.device.pid}`
+    : connectedLabel
+      ? "Connected"
+      : "Preset";
+
   const save = uiButton({
     className: "secondary-action",
     text: "Save project",
@@ -98,23 +107,33 @@ export function topbar(
   });
   projectDetails.addEventListener("click", actions.openProjectDetails);
 
+  const refresh = uiButton({
+    className: "secondary-action",
+    text: "Refresh devices",
+    attrs: { "data-probe-refresh": "true" },
+  });
+  refresh.addEventListener("click", actions.reloadProbe);
+
   return element("header", { className: "topbar workspace-header" }, [
     element("div", { className: "project-heading" }, [
-      element("p", { className: "eyebrow", text: state.keyboard.displayName }),
+      element("p", { className: "eyebrow", text: deviceName }),
       element("h1", { text: state.project.name }),
+      element("small", { className: "device-id", text: deviceId }),
     ]),
     element("div", { className: "topbar-actions" }, [
+      historyControls(state, actions),
       save,
       projectDetails,
+      refresh,
       element("div", {
         className: `status ${statusClass}`,
-        text: topbarStatusLabel(issues, buildPlan),
+        text: topbarStatusLabel(issues),
       }),
     ]),
   ]);
 }
 
-export function topbarStatusLabel(issues: UiIssue[], buildPlan: BuildPlan): string {
+export function topbarStatusLabel(issues: UiIssue[]): string {
   if (issues.some((issue) => issue.severity === "error")) {
     return "Fix keymap issues";
   }
@@ -179,49 +198,16 @@ function deviceContent(state: EditorState, actions: RenderActions): HTMLElement 
     : connectionContent(state, actions);
 }
 
-export function detectionStrip(state: EditorState, reloadProbe: () => void): HTMLElement {
-  const detected = state.doctorReport?.snapshot.hardwareProbe.detectedKeyboards?.[0];
-  const connectedLabel = connectedDeviceLabel(state);
-  const keyboardName = connectedLabel ?? detected?.displayName ?? state.keyboard.displayName;
-  const deviceId = detected
-    ? `${detected.device.vid}:${detected.device.pid}`
-    : connectedLabel
-      ? "Connected"
-      : "Preset";
-  const statusText =
-    state.doctorStatus === "loading"
-      ? "Checking"
-      : state.doctorStatus === "missing"
-        ? "Unavailable"
-        : deviceId;
-
-  const refresh = uiButton({ className: "secondary-action", text: "Refresh", type: "button" });
-  refresh.addEventListener("click", reloadProbe);
-
-  return element("section", { className: "probe-strip" }, [
-    element("div", { className: "probe-summary" }, [
-      element("h2", { text: "Keyboard" }),
-      element("p", {
-        text: keyboardName,
-      }),
-    ]),
-    element("div", { className: "probe-meta probe-actions" }, [
-      element("strong", { text: statusText }),
-      refresh,
-    ]),
-  ]);
-}
-
 /**
- * A device-context label for the connection strip. When a device session is
- * active the strip reports the actual device (or a neutral "VIA device" for an
- * unknown one) instead of the bundled preset keyboard, so an unrecognized
- * device is never presented as a known model.
+ * Device-context label for the header. When a device session is active the
+ * header reports the actual device (or a neutral "VIA device" for an unknown
+ * one) instead of the bundled preset, so an unrecognized device is never
+ * presented as a known model.
  */
 function connectedDeviceLabel(state: EditorState): string | null {
   const snapshot = state.hardwareSnapshot;
   if (snapshot) {
-    if (snapshot.identity.state === "available") {
+    if (isKeychronV5MaxSnapshot(snapshot) && snapshot.identity.state === "available") {
       return snapshot.identity.value.model;
     }
     return "VIA device";
@@ -299,8 +285,6 @@ export function editorWorkflow(
     : undefined;
   protocolAction?.addEventListener("click", actions.verifyKeychronV5MaxProtocol);
 
-  const writeControls = deviceWriteControls(state, actions);
-
   const actionGroup = element("div", { className: "workflow-actions", attrs: { "aria-label": "Editor actions" } }, [
     download,
     connect,
@@ -322,64 +306,18 @@ export function editorWorkflow(
   }, [
     actionGroup,
     notices,
-    writeControls,
-  ]);
-}
-
-/**
- * Gated "write the whole project keymap to the device" controls. The
- * confirmation checkbox gates every write; EEPROM save is separate.
- */
-function deviceWriteControls(state: EditorState, actions: RenderActions): HTMLElement {
-  const confirm = element("label", { className: "write-confirm" }, [
-    element("input", {
-      attrs: { "data-write-confirm": "true", type: "checkbox" },
+    deviceWriteControls(state, actions, {
+      description: `Writes the project keymap (${state.project.layers.length} layers) to the connected device.`,
+      controls: (confirmed) => {
+        const writeKeymap = uiButton({
+          className: "secondary-action",
+          type: "button",
+          text: "Write keymap to device",
+          attrs: { "data-write-keymap": "true" },
+        });
+        writeKeymap.addEventListener("click", () => actions.writeKeymapToDevice(confirmed()));
+        return [writeKeymap];
+      },
     }),
-    element("span", { text: "I understand this writes to the live keymap." }),
-  ]);
-  const enable = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: state.deviceWriteEnabled ? "Writes enabled" : "Enable device writes",
-    attrs: {
-      "data-device-write-enable": "true",
-      ...(state.deviceWriteEnabled ? { disabled: "" } : {}),
-    },
-  });
-  enable.addEventListener("click", () => {
-    const checked = confirm.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked;
-    actions.enableDeviceWrites(Boolean(checked));
-  });
-  const writeKeymap = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: "Write keymap to device",
-    attrs: { "data-write-keymap": "true" },
-  });
-  writeKeymap.addEventListener("click", () => {
-    const checked = confirm.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked;
-    actions.writeKeymapToDevice(Boolean(checked));
-  });
-  const save = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: "Save to EEPROM",
-    attrs: { "data-device-save-eeprom": "true" },
-  });
-  save.addEventListener("click", () => {
-    const checked = confirm.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked;
-    actions.saveEepromToDevice(Boolean(checked));
-  });
-
-  return element("section", {
-    className: "device-write-controls",
-    attrs: { "data-editor-write-controls": "true" },
-  }, [
-    element("h3", { text: "Device write" }),
-    element("p", {
-      text: `Writes the project keymap (${state.project.layers.length} layers) to the connected device.`,
-    }),
-    confirm,
-    element("div", { className: "device-write-actions" }, [enable, writeKeymap, save]),
   ]);
 }

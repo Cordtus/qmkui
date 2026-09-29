@@ -1,5 +1,4 @@
 import { BuildArtifact } from "./buildService";
-import { Project } from "./domain";
 
 export type FlashTarget = {
   projectDigest: string;
@@ -77,7 +76,7 @@ export function dryRunFlash(request: FlashRequest): FlashRun {
   return { status: "succeeded", log };
 }
 
-export function flashTargetFromArtifact(artifact: BuildArtifact, bootloader: string, project: Project): FlashTarget {
+export function flashTargetFromArtifact(artifact: BuildArtifact, bootloader: string): FlashTarget {
   return {
     projectDigest: artifact.projectDigest,
     firmwareSha256: artifact.firmwareSha256,

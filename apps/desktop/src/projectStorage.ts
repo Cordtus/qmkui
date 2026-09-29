@@ -23,6 +23,23 @@ type StoredProject = {
   sequence: number;
 };
 
+function storedProjectSummary(stored: StoredProject): ProjectSummary {
+  return {
+    id: stored.project.id,
+    name: stored.project.name,
+    keyboardId: stored.project.target.keyboardId,
+    qmkKeyboard: stored.project.target.qmkKeyboard,
+    updatedAt: stored.updatedAt,
+  };
+}
+
+function byMostRecent(projects: StoredProject[]): StoredProject[] {
+  return projects.sort((left, right) => {
+    const byDate = right.updatedAt.localeCompare(left.updatedAt);
+    return byDate || right.sequence - left.sequence;
+  });
+}
+
 export function createMemoryProjectStorage(
   now: () => string = () => new Date().toISOString(),
 ): ProjectStorage {
@@ -43,18 +60,7 @@ export function createMemoryProjectStorage(
       return stored ? structuredClone(stored.project) : null;
     },
     list() {
-      return [...projects.values()]
-        .sort((left, right) => {
-          const byDate = right.updatedAt.localeCompare(left.updatedAt);
-          return byDate || right.sequence - left.sequence;
-        })
-        .map((stored) => ({
-          id: stored.project.id,
-          name: stored.project.name,
-          keyboardId: stored.project.target.keyboardId,
-          qmkKeyboard: stored.project.target.qmkKeyboard,
-          updatedAt: stored.updatedAt,
-        }));
+      return byMostRecent([...projects.values()]).map(storedProjectSummary);
     },
     remove(projectId) {
       return projects.delete(projectId);
@@ -113,18 +119,7 @@ export function createLocalStorageProjectStorage(
           // Ignore a corrupt entry; it must not break listing or removal.
         }
       }
-      return projects
-        .sort((left, right) => {
-          const byDate = right.updatedAt.localeCompare(left.updatedAt);
-          return byDate || right.sequence - left.sequence;
-        })
-        .map((stored) => ({
-          id: stored.project.id,
-          name: stored.project.name,
-          keyboardId: stored.project.target.keyboardId,
-          qmkKeyboard: stored.project.target.qmkKeyboard,
-          updatedAt: stored.updatedAt,
-        }));
+      return byMostRecent(projects).map(storedProjectSummary);
     },
     remove(projectId) {
       const key = keyFor(projectId);

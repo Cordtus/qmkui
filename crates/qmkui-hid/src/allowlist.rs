@@ -1,5 +1,6 @@
 use serde_json::Value;
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 /// The read-only command allow-list, sourced from
 /// `fixtures/protocol/read-only-commands.json` — the single source of truth
@@ -30,6 +31,12 @@ fn load() -> AllowList {
     }
 }
 
+/// Parses the embedded allow-lists exactly once; every gate reads this cache.
+fn allow_list() -> &'static AllowList {
+    static ALLOW_LIST: OnceLock<AllowList> = OnceLock::new();
+    ALLOW_LIST.get_or_init(load)
+}
+
 fn command_set(object: &Value) -> BTreeSet<u8> {
     object
         .as_object()
@@ -44,21 +51,21 @@ fn command_set(object: &Value) -> BTreeSet<u8> {
 }
 
 pub fn is_read_only_via_command(command: u8) -> bool {
-    load().via_read_commands.contains(&command)
+    allow_list().via_read_commands.contains(&command)
 }
 
 pub fn is_read_only_keychron_command(command: u8) -> bool {
-    load().keychron_read_commands.contains(&command)
+    allow_list().keychron_read_commands.contains(&command)
 }
 
 /// A write command is permitted only when it is in the explicit write
 /// allow-list. Nothing else may be emitted toward the device.
 pub fn is_via_write_command(command: u8) -> bool {
-    load().via_write_commands.contains(&command)
+    allow_list().via_write_commands.contains(&command)
 }
 
 pub fn is_read_only_rgb_op(operation: u8) -> bool {
-    load().keychron_rgb_operations.contains(&operation)
+    allow_list().keychron_rgb_operations.contains(&operation)
 }
 
 #[cfg(test)]

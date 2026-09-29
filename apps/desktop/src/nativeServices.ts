@@ -1,6 +1,5 @@
-import { BuildRunner } from "./buildService";
+import { BuildRunner, unsupportedBrowserRunner } from "./buildService";
 import { FlashRun, PolicyVerdict } from "./flashPlan";
-import { RemoteSubmit } from "./remoteBuild";
 import { isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
 import { Project } from "./domain";
 
@@ -21,12 +20,7 @@ async function nativeInvoke(): Promise<Invoke | null> {
 export async function nativeBuildRunner(project: Project): Promise<BuildRunner> {
   const invoke = await nativeInvoke();
   if (!invoke) {
-    return async () => ({
-      ok: false,
-      stdout: "",
-      stderr: "Local builds are only available in the QMKUI desktop app.",
-      durationMs: 0,
-    });
+    return unsupportedBrowserRunner();
   }
   const projectJson = JSON.stringify(project);
   return async (command: string[]) => {
@@ -46,25 +40,6 @@ export async function nativeBuildRunner(project: Project): Promise<BuildRunner> 
       stderr: result.stderr,
       durationMs: result.durationMs,
     };
-  };
-}
-
-/**
- * Submits a remote build through the Tauri shell. Returns a clear error until a
- * remote endpoint is configured; the injectable browser transport reports the
- * same.
- */
-export async function nativeRemoteSubmit(): Promise<RemoteSubmit> {
-  const invoke = await nativeInvoke();
-  return async (payload) => {
-    if (!invoke) {
-      throw new Error("Remote build is not configured in the browser app.");
-    }
-    const id = (await invoke("submit_remote_build", {
-      keymapJson: payload.keymapJson,
-      keymapName: payload.keymapName,
-    })) as string;
-    return { id };
   };
 }
 

@@ -1,9 +1,8 @@
 import catalog from "../../../fixtures/catalog/keyboards.json";
 import project from "../../../fixtures/projects/example-60.json";
 import { createBuildPlan } from "./buildPlan";
-import { BuildArtifact, BuildRunner, BuildStep, BuildArtifactStore, projectDigest, runLocalBuild, unsupportedBrowserRunner } from "./buildService";
+import { BuildArtifact, BuildRunner, BuildStep, projectDigest, runLocalBuild, unsupportedBrowserRunner } from "./buildService";
 import { importConfiguratorKeymap } from "./configuratorImport";
-import { RemoteBuildJob, RemoteSubmit, remoteBuildEligibility, submitRemoteBuild } from "./remoteBuild";
 import { FlashRun, PolicyVerdict, assessFlashRequest, dryRunFlash, flashTargetFromArtifact } from "./flashPlan";
 import { createMacroRecord } from "./macros";
 import { buildSupportBundle } from "./supportBundle";
@@ -15,7 +14,7 @@ import {
 } from "./commands";
 import { BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
 import { chooseNativeKeyboard, discoverNativeKeyboard, enableNativeDeviceWrites, isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
-import { nativeBuildRunner, nativeFlashDryRun, nativeRemoteSubmit } from "./nativeServices";
+import { nativeBuildRunner, nativeFlashDryRun } from "./nativeServices";
 import { GenericViaStandardState } from "./devices/genericViaReader";
 import { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
 import { loadLocalDoctorReport } from "./doctorReport";
@@ -49,11 +48,9 @@ export type AppOptions = {
   downloadQmkJson?: (output: unknown, project: Project) => void;
   discoverBrowserKeyboard?: () => Promise<BrowserKeyboardSelection>;
   chooseBrowserKeyboard?: () => Promise<BrowserKeyboardSelection>;
-  now?: () => string;
   qmkDetected?: boolean;
   doctorReportLoader?: () => Promise<DoctorReport | null>;
   buildRunner?: BuildRunner;
-  remoteSubmit?: RemoteSubmit;
 };
 
 export type EditorState = {
@@ -85,7 +82,6 @@ export type EditorState = {
   snapshotSelectedKey: string;
   snapshotReadStatus: "idle" | "reading" | "failed";
   deviceWriteEnabled: boolean;
-  now: () => string;
   projectStatus: string;
   projectJsonDraft: string;
   selectedSavedProjectId: string;
@@ -93,12 +89,9 @@ export type EditorState = {
   doctorReport?: DoctorReport;
   doctorStatus: "loading" | "ready" | "missing";
   buildRunner: BuildRunner;
-  remoteSubmit: RemoteSubmit;
   buildStatus: "idle" | "building" | "built" | "failed";
   buildStep?: BuildStep;
   artifacts: BuildArtifact[];
-  remoteBuildConsent: boolean;
-  remoteBuildJob?: RemoteBuildJob;
   flashConfirmed: boolean;
   flashVerdict?: PolicyVerdict;
   flashRun?: FlashRun;
@@ -123,19 +116,6 @@ function defaultDiscoverKeyboard(): () => Promise<BrowserKeyboardSelection> {
   };
 }
 
-function defaultRemoteSubmit(): RemoteSubmit {
-  if (!isNativeRuntime()) {
-    return async () => {
-      throw new Error("Remote build is not configured in the browser app.");
-    };
-  }
-  let submit: RemoteSubmit | null = null;
-  return async (payload) => {
-    submit ??= await nativeRemoteSubmit();
-    return submit(payload);
-  };
-}
-
 function defaultBuildRunner(project: Project): BuildRunner {
   if (!isNativeRuntime()) {
     return unsupportedBrowserRunner();
@@ -157,8 +137,8 @@ function defaultChooseKeyboard(): () => Promise<BrowserKeyboardSelection> {
 }
 
 export function createApp(root: HTMLElement, options: AppOptions = {}): void {
-  const keyboard = structuredClone(options.keyboard ?? keychronV5MaxKeyboard ?? fixtureKeyboard);
-  const currentProject = structuredClone(options.project ?? keychronV5MaxProject ?? fixtureProject);
+  const keyboard = structuredClone(options.keyboard ?? keychronV5MaxKeyboard);
+  const currentProject = structuredClone(options.project ?? keychronV5MaxProject);
   const projectStorage = options.projectStorage ?? defaultProjectStorage();
   const safetyLedgerStorage = options.safetyLedgerStorage ?? defaultSafetyLedgerStorage();
   const doctorReportLoader =
@@ -195,17 +175,14 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     snapshotSelectedKey: "0:0",
     snapshotReadStatus: "idle",
     deviceWriteEnabled: false,
-    now: options.now ?? (() => new Date().toISOString()),
     projectStatus: "Project is not saved in this preview session.",
     projectJsonDraft: JSON.stringify(currentProject, null, 2),
     selectedSavedProjectId: projectStorage.list()[0]?.id ?? "",
     testEvents: [],
     doctorStatus: "loading",
     buildRunner: options.buildRunner ?? defaultBuildRunner(currentProject),
-    remoteSubmit: options.remoteSubmit ?? defaultRemoteSubmit(),
     buildStatus: "idle",
     artifacts: [],
-    remoteBuildConsent: false,
     flashConfirmed: false,
   };
 
@@ -277,10 +254,9 @@ export function createActions(
       const layout = selectedLayout(state.keyboard, state.project);
       const issues = validateProject(state.project, state.keyboard);
       const qmkJson = safeExportQmkJson(state.project, state.keyboard, issues);
-      const buildPlan = createBuildPlan(state.project, issues, state.qmkDetected);
 
       root.replaceChildren(
-        mainShell(state, layout, issues, qmkJson, buildPlan, {
+        mainShell(state, layout, issues, qmkJson, {
           selectLayer: (nextLayerIndex) => {
             state.selectedLayerIndex = nextLayerIndex;
             actions.render();
@@ -694,41 +670,13 @@ export function createActions(
               },
             );
           },
-          setRemoteBuildConsent: (consent) => {
-            state.remoteBuildConsent = consent;
-            actions.render();
-          },
-          submitRemoteBuild: () => {
-            const plan = createBuildPlan(state.project, validateProject(state.project, state.keyboard), state.qmkDetected);
-            const eligibility = remoteBuildEligibility(state.project, validateProject(state.project, state.keyboard));
-            if (!state.remoteBuildConsent) {
-              state.remoteBuildJob = { id: "", status: "failed", keymapName: plan.keymapName, error: "Consent is required before uploading project data." };
-              actions.render();
-              return;
-            }
-            const issues = validateProject(state.project, state.keyboard);
-            const qmkJson = safeExportQmkJson(state.project, state.keyboard, issues);
-            state.remoteBuildJob = undefined;
-            actions.render();
-            submitRemoteBuild(
-              { keymapJson: qmkJson, keymapName: plan.keymapName, consentGranted: state.remoteBuildConsent, blockers: eligibility.blockers },
-              state.remoteSubmit,
-            ).then(
-              (job) => {
-                state.remoteBuildJob = job;
-                actions.render();
-              },
-              (error: unknown) => {
-                state.remoteBuildJob = { id: "", status: "failed", keymapName: plan.keymapName, error: error instanceof Error ? error.message : "Remote build failed." };
-                actions.render();
-              },
-            );
-          },
           setFlashConfirmed: (confirmed) => {
             state.flashConfirmed = confirmed;
             actions.render();
           },
           runFlashDryRun: () => {
+            // Mirrors views/panels.detectedKeyboard; the state layer must not
+            // import the view layer, so the accessor is duplicated here.
             const detected = state.doctorReport?.snapshot.hardwareProbe.detectedKeyboards?.[0];
             const device = detected ? { vendorId: detected.device.vid, productId: detected.device.pid } : null;
             const bootloader = state.keyboard.bootloader ?? null;
@@ -740,7 +688,7 @@ export function createActions(
               return;
             }
             const request = {
-              target: flashTargetFromArtifact(latest, bootloader ?? "atmel-dfu", state.project),
+              target: flashTargetFromArtifact(latest, bootloader ?? "atmel-dfu"),
               expectedDevice: { vendorId: "3434", productId: "0950" },
               operatorConfirmed: state.flashConfirmed,
             };
@@ -958,8 +906,6 @@ export type RenderActions = {
   removeMacro: (macroId: string) => void;
   reloadProbe: () => void;
   runLocalBuild: () => void;
-  setRemoteBuildConsent: (consent: boolean) => void;
-  submitRemoteBuild: () => void;
   setFlashConfirmed: (confirmed: boolean) => void;
   runFlashDryRun: () => void;
 };
@@ -1223,9 +1169,6 @@ export function defaultSafetyLedgerStorage(): SafetyLedgerStorage {
 
 export function downloadQmkJson(output: unknown, currentProject: Project): void {
   const contents = JSON.stringify(output, null, 2);
-  if (typeof contents !== "string") {
-    return;
-  }
   const filename = currentProject.build.keymapName
     .replace(/[^a-z0-9_-]+/gi, "-")
     .toLowerCase();

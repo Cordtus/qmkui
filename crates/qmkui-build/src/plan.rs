@@ -1,7 +1,7 @@
+use crate::artifact::hex_sha256;
 use qmkui_core::model::{KeyboardProject, OutputPreference};
 use qmkui_core::validation::{IssueSeverity, ValidationReport, ValidationStatus};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,8 +26,7 @@ pub struct BuildPlan {
 /// that drives artifact staleness.
 pub fn project_digest(project: &KeyboardProject) -> Result<String, serde_json::Error> {
     let serialized = serde_json::to_vec(project)?;
-    let digest = Sha256::digest(&serialized);
-    Ok(format!("{digest:x}"))
+    Ok(hex_sha256(&serialized))
 }
 
 /// Builds a readiness plan from a validated project. Blockers are critical or

@@ -45,5 +45,5 @@
 
 # Playwright MCP tooling debris
 /.playwright-mcp/
-.vercel
 .env*.local
+/.vercel/

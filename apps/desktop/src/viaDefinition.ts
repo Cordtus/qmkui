@@ -36,26 +36,3 @@ const viaDefinitions: ViaDefinitionSource[] = [
 export function viaDefinitionFor(qmkKeyboard: string): ViaDefinitionSource | undefined {
   return viaDefinitions.find((entry) => entry.qmkKeyboard === qmkKeyboard);
 }
-
-export function viaDefinitionJson(qmkKeyboard: string): string | undefined {
-  const entry = viaDefinitionFor(qmkKeyboard);
-  return entry ? JSON.stringify(entry.definition, null, 2) : undefined;
-}
-
-export function isValidViaDefinition(value: unknown): value is ViaDefinition {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const definition = value as ViaDefinition;
-  return (
-    typeof definition.name === "string" &&
-    typeof definition.vendorId === "string" &&
-    typeof definition.productId === "string" &&
-    typeof definition.matrix?.rows === "number" &&
-    typeof definition.matrix?.cols === "number" &&
-    Array.isArray(definition.layouts?.keymap) &&
-    definition.layouts.keymap.every(
-      (position) => Array.isArray(position) && position.length === 2,
-    )
-  );
-}

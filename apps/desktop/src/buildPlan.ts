@@ -10,13 +10,10 @@ export type GeneratedFeature = {
 export type BuildPlan = {
   keyboardTarget: string;
   keymapName: string;
-  selectedMode: Project["build"]["mode"];
   output: "json" | "c";
   localCommand: string[];
   canExport: boolean;
   localReady: boolean;
-  remoteReady: boolean;
-  remoteAvailable: boolean;
   selectedReady: boolean;
   requiresGeneratedC: boolean;
   blockers: string[];
@@ -48,12 +45,10 @@ export function createBuildPlan(
 
   const uniqueBlockers = [...new Set(blockers)];
   const localReady = canExport && qmkDetected;
-  const remoteReady = false;
 
   return {
     keyboardTarget: project.target.qmkKeyboard,
     keymapName: project.build.keymapName,
-    selectedMode: project.build.mode,
     output,
     localCommand: [
       "qmk",
@@ -65,11 +60,9 @@ export function createBuildPlan(
     ],
     canExport,
     localReady,
-    remoteReady,
-    remoteAvailable,
     selectedReady:
       uniqueBlockers.length === 0 &&
-      (project.build.mode === "localCli" ? localReady : remoteReady),
+      (project.build.mode === "localCli" ? localReady : false),
     requiresGeneratedC,
     blockers: uniqueBlockers,
     features,

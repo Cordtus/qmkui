@@ -5,7 +5,6 @@
 
 use crate::allowlist::{is_read_only_keychron_command, is_read_only_rgb_op};
 use crate::transport::{HidError, HidTransport, REPORT_LENGTH};
-use crate::via::{KeymapDimensions, ViaKeymap};
 
 const COMMAND_IDENTITY_PROTOCOL: u8 = 0xa0;
 const COMMAND_IDENTITY_FIRMWARE: u8 = 0xa1;
@@ -18,9 +17,6 @@ const RGB_OP_LED_COUNT: u8 = 0x05;
 const RGB_OP_LED_INDEX: u8 = 0x06;
 const RGB_OP_LED_EFFECT: u8 = 0x07;
 const RGB_OP_COLORS: u8 = 0x09;
-
-const DYNAMIC_KEYMAP_GET_KEYCODE: u8 = 0x04;
-const DYNAMIC_KEYMAP_GET_LAYER_COUNT: u8 = 0x11;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -187,54 +183,6 @@ impl<T: HidTransport> KeychronV5Reader<T> {
             effects,
             colors,
         })
-    }
-
-    /// Reads the full keymap via the standard VIA commands, mirroring the
-    /// TypeScript `readViaKeymap`.
-    pub fn read_via_keymap(&mut self, dimensions: KeymapDimensions) -> Result<ViaKeymap, HidError> {
-        if dimensions.rows == 0 || dimensions.columns == 0 {
-            return Err(HidError::InvalidDimensions);
-        }
-        let reported = self.via_layer_count()?;
-        if reported != dimensions.layer_count {
-            return Err(HidError::LayerCountMismatch);
-        }
-        let mut keycodes = Vec::with_capacity(usize::from(dimensions.layer_count));
-        for layer in 0..dimensions.layer_count {
-            let mut layer_rows = Vec::with_capacity(usize::from(dimensions.rows));
-            for row in 0..dimensions.rows {
-                let mut row_keycodes = Vec::with_capacity(usize::from(dimensions.columns));
-                for column in 0..dimensions.columns {
-                    row_keycodes.push(self.via_keycode(layer, row, column)?);
-                }
-                layer_rows.push(row_keycodes);
-            }
-            keycodes.push(layer_rows);
-        }
-        Ok(ViaKeymap {
-            layer_count: reported,
-            keycodes,
-        })
-    }
-
-    fn via_layer_count(&mut self) -> Result<u8, HidError> {
-        let response = self
-            .transport
-            .request(DYNAMIC_KEYMAP_GET_LAYER_COUNT, &[])?;
-        if response.len() != REPORT_LENGTH || response[0] != DYNAMIC_KEYMAP_GET_LAYER_COUNT {
-            return Err(HidError::ResponseMismatch);
-        }
-        Ok(response[1])
-    }
-
-    pub fn via_keycode(&mut self, layer: u8, row: u8, column: u8) -> Result<u16, HidError> {
-        let response = self
-            .transport
-            .request(DYNAMIC_KEYMAP_GET_KEYCODE, &[layer, row, column])?;
-        if response.len() != REPORT_LENGTH || response[0] != DYNAMIC_KEYMAP_GET_KEYCODE {
-            return Err(HidError::ResponseMismatch);
-        }
-        Ok((u16::from(response[4]) << 8) | u16::from(response[5]))
     }
 }
 

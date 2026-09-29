@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import project from "../../../fixtures/projects/example-60.json";
-import { migrateProject, type ProjectMigration } from "./migrations";
+import { migrateProject } from "./migrations";
 
 describe("project migration", () => {
   it("passes a current-version project through unchanged", () => {
@@ -25,15 +25,5 @@ describe("project migration", () => {
     expect(() => migrateProject({ ...project, schemaVersion: "99.0.0" })).toThrow(
       "Project schema version 99.0.0 is not supported",
     );
-  });
-
-  it("applies registered migrations stepwise", () => {
-    const first: ProjectMigration = {
-      fromVersion: "0.0.9",
-      toVersion: "0.1.0",
-      migrate: (value) => ({ ...value, schemaVersion: "0.1.0" }),
-    };
-    const result = migrateProject({ ...project, schemaVersion: "0.0.9" }, [first]);
-    expect(result.schemaVersion).toBe("0.1.0");
   });
 });

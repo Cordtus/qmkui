@@ -1,15 +1,15 @@
+use qmkui_build::artifact::{command_log, ArtifactInput, ArtifactStore};
+use qmkui_build::plan::project_digest;
+use qmkui_build::runner::{CommandRunner, SystemCommandRunner};
+use qmkui_flash::dry_run::DryRunAdapter;
+use qmkui_flash::policy::assess_request;
+use qmkui_flash::request::{DeviceIdentity, FlashRequest, FlashTarget};
 use qmkui_hid::hidapi::HidApiTransport;
 use qmkui_hid::keychron_v5::KeychronV5Reader;
 use qmkui_hid::via::{KeymapDimensions, ViaReadProtocol};
 use qmkui_hid::via_write::ViaWriteProtocol;
-use qmkui_build::artifact::{command_log, ArtifactInput, ArtifactStore};
-use qmkui_build::plan::project_digest;
-use qmkui_build::runner::{CommandRunner, SystemCommandRunner};
-use qmkui_flash::dry_run::{DryRunAdapter, FlashAdapter};
-use qmkui_flash::policy::assess_request;
-use qmkui_flash::request::{DeviceIdentity, FlashRequest, FlashTarget};
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::State;
 
 mod projects;
@@ -18,14 +18,11 @@ use projects::{ProjectStore, ProjectSummary};
 
 /// Operator-controlled write gate. Writes are only possible after the UI
 /// explicitly enables them (a confirmed action); every write command checks it.
-struct WriteGate(Mutex<bool>);
+struct WriteGate(AtomicBool);
 
 impl WriteGate {
     fn is_enabled(&self) -> bool {
-        *self
-            .0
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.0.load(Ordering::SeqCst)
     }
 }
 
@@ -77,17 +74,21 @@ fn list_devices() -> Vec<DeviceInfo> {
 /// Reads a full read-only snapshot from the Keychron V5 Max.
 #[tauri::command]
 fn read_v5_snapshot() -> Result<V5Snapshot, String> {
-    let transport = HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
+    let transport =
+        HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
     let mut reader = KeychronV5Reader::new(transport);
     let identity = reader.read_identity().map_err(|error| error.to_string())?;
-    let capabilities = reader.read_capabilities().map_err(|error| error.to_string())?;
+    let capabilities = reader
+        .read_capabilities()
+        .map_err(|error| error.to_string())?;
     let lighting = reader.read_lighting().map_err(|error| error.to_string())?;
-    let keymap = reader
+    drop(reader);
+    let transport =
+        HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
+    let mut via = ViaReadProtocol::new(transport);
+    let keymap = via
         .read_via_keymap(V5_DIMENSIONS)
         .map_err(|error| error.to_string())?;
-    drop(reader);
-    let transport = HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
-    let mut via = ViaReadProtocol::new(transport);
     let macros = via.read_via_macros().map_err(|error| error.to_string())?;
     Ok(V5Snapshot {
         identity,
@@ -101,13 +102,19 @@ fn read_v5_snapshot() -> Result<V5Snapshot, String> {
 /// Verifies the VIA protocol version. Sends only the standard read command.
 #[tauri::command]
 fn verify_protocol() -> Result<u16, String> {
-    let transport = HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
+    let transport =
+        HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
     let mut via = ViaReadProtocol::new(transport);
-    via.get_protocol_version().map_err(|error| error.to_string())
+    via.get_protocol_version()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn save_project(store: State<ProjectStore>, id: String, project_json: String) -> Result<(), String> {
+fn save_project(
+    store: State<ProjectStore>,
+    id: String,
+    project_json: String,
+) -> Result<(), String> {
     store
         .save(&id, &project_json)
         .map_err(|error| error.to_string())
@@ -131,10 +138,7 @@ fn remove_project(store: State<ProjectStore>, id: String) -> Result<bool, String
 /// Enables the write gate. Call only after the operator confirms the intent.
 #[tauri::command]
 fn enable_device_writes(gate: State<WriteGate>) {
-    *gate
-        .0
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = true;
+    gate.0.store(true, Ordering::SeqCst);
 }
 
 fn require_write_gate(gate: &WriteGate) -> Result<(), String> {
@@ -147,9 +151,16 @@ fn require_write_gate(gate: &WriteGate) -> Result<(), String> {
 
 /// Sets a keycode on the live dynamic keymap (volatile until saved).
 #[tauri::command]
-fn set_keycode(gate: State<WriteGate>, layer: u8, row: u8, col: u8, keycode: u16) -> Result<(), String> {
+fn set_keycode(
+    gate: State<WriteGate>,
+    layer: u8,
+    row: u8,
+    col: u8,
+    keycode: u16,
+) -> Result<(), String> {
     require_write_gate(&gate)?;
-    let transport = HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
+    let transport =
+        HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
     let mut write = ViaWriteProtocol::new(transport);
     write
         .set_keycode(layer, row, col, keycode)
@@ -160,7 +171,8 @@ fn set_keycode(gate: State<WriteGate>, layer: u8, row: u8, col: u8, keycode: u16
 #[tauri::command]
 fn save_eeprom(gate: State<WriteGate>) -> Result<(), String> {
     require_write_gate(&gate)?;
-    let transport = HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
+    let transport =
+        HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
     let mut write = ViaWriteProtocol::new(transport);
     write.save_eeprom().map_err(|error| error.to_string())
 }
@@ -207,7 +219,9 @@ fn run_local_build(project_json: String) -> Result<LocalBuildResult, String> {
 
     let started = std::time::Instant::now();
     let mut runner = SystemCommandRunner;
-    let result = runner.run(&command_plan).map_err(|error| error.to_string())?;
+    let result = runner
+        .run(&command_plan)
+        .map_err(|error| error.to_string())?;
     let duration_ms = started.elapsed().as_millis() as u64;
 
     if result.exit_code != Some(0) {
@@ -225,7 +239,10 @@ fn run_local_build(project_json: String) -> Result<LocalBuildResult, String> {
     let artifact = store
         .store(ArtifactInput {
             firmware,
-            keymap_json: serde_json::to_vec(&serde_json::json!({ "keyboard": project.target.qmk_keyboard })).unwrap_or_default(),
+            keymap_json: serde_json::to_vec(
+                &serde_json::json!({ "keyboard": project.target.qmk_keyboard }),
+            )
+            .unwrap_or_default(),
             log: command_log(&command_plan, &result),
             project_digest: digest.clone(),
             qmk_keyboard: project.target.qmk_keyboard.clone(),
@@ -248,7 +265,12 @@ fn run_local_build(project_json: String) -> Result<LocalBuildResult, String> {
 fn layout_contract_for(project: &qmkui_core::model::KeyboardProject) -> qmkui_core::LayoutContract {
     let mut visual_key_order = Vec::new();
     if let Some(layer) = project.layers.first() {
-        visual_key_order.extend(layer.assignments.iter().map(|assignment| assignment.visual_key_id.clone()));
+        visual_key_order.extend(
+            layer
+                .assignments
+                .iter()
+                .map(|assignment| assignment.visual_key_id.clone()),
+        );
     }
     qmkui_core::LayoutContract::for_keyboard_layout(
         project.target.keyboard_id.clone(),
@@ -257,14 +279,6 @@ fn layout_contract_for(project: &qmkui_core::model::KeyboardProject) -> qmkui_co
         project.target.qmk_layout_macro.clone(),
         visual_key_order,
     )
-}
-
-/// Submits a remote build. No remote endpoint is configured, so this returns a
-/// clear error; the injectable browser transport reports the same. A real
-/// backend can be wired here without changing the UI contract.
-#[tauri::command]
-fn submit_remote_build(_keymap_json: String, _keymap_name: String) -> Result<String, String> {
-    Err("Remote build endpoint is not configured.".to_owned())
 }
 
 #[derive(Debug, Serialize)]
@@ -313,7 +327,10 @@ fn flash_dry_run(input: FlashDryRunInput) -> Result<FlashDryRunResult, String> {
             project_digest: artifact.project_digest,
             firmware_sha256: artifact.firmware_sha256,
             qmk_keyboard: artifact.qmk_keyboard,
-            bootloader: input.bootloader.clone().unwrap_or_else(|| "atmel-dfu".to_owned()),
+            bootloader: input
+                .bootloader
+                .clone()
+                .unwrap_or_else(|| "atmel-dfu".to_owned()),
         },
         expected_device: DeviceIdentity {
             vendor_id: input.expected_vendor,
@@ -329,10 +346,15 @@ fn flash_dry_run(input: FlashDryRunInput) -> Result<FlashDryRunResult, String> {
         _ => None,
     };
 
-    let verdict = assess_request(&request, &digest, detected_device.as_ref(), input.bootloader.as_deref());
+    let verdict = assess_request(
+        &request,
+        &digest,
+        detected_device.as_ref(),
+        input.bootloader.as_deref(),
+    );
     let log = if matches!(verdict, qmkui_flash::policy::PolicyVerdict::Pass) {
-        let mut adapter = DryRunAdapter::new();
-        adapter.flash(&request).map_err(|error| error.to_string())?.log
+        let adapter = DryRunAdapter::new();
+        adapter.flash(&request).log
     } else {
         Vec::new()
     };
@@ -363,7 +385,7 @@ fn now_iso() -> String {
 pub fn run() {
     tauri::Builder::default()
         .manage(ProjectStore::new(ProjectStore::default_root()))
-        .manage(WriteGate(Mutex::new(false)))
+        .manage(WriteGate(AtomicBool::new(false)))
         .invoke_handler(tauri::generate_handler![
             list_devices,
             read_v5_snapshot,
@@ -376,7 +398,6 @@ pub fn run() {
             set_keycode,
             save_eeprom,
             run_local_build,
-            submit_remote_build,
             flash_dry_run
         ])
         .run(tauri::generate_context!())

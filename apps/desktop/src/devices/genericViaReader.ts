@@ -1,5 +1,5 @@
 import { available, unavailable, unverified, type ValueState } from "./hardwareSnapshot";
-import type { DeviceTransport } from "./transport";
+import { withOpen, type DeviceTransport } from "./transport";
 import { ViaReadProtocol } from "./viaReadProtocol";
 
 export type GenericViaReaderDevice = DeviceTransport;
@@ -49,12 +49,7 @@ export async function readGenericViaStandardState(
   device: GenericViaReaderDevice,
   options: GenericViaReaderOptions,
 ): Promise<GenericViaStandardState> {
-  const openedByQmkui = !device.opened;
-  if (openedByQmkui) {
-    await device.open();
-  }
-
-  try {
+  return withOpen(device, async () => {
     const protocol = new ViaReadProtocol(device, { timeoutMs: options.timeoutMs });
     return {
       identity: unverified(UNKNOWN_DEFINITION),
@@ -82,11 +77,7 @@ export async function readGenericViaStandardState(
       },
       readAt: (options.now ?? (() => new Date().toISOString()))(),
     };
-  } finally {
-    if (openedByQmkui) {
-      await device.close();
-    }
-  }
+  });
 }
 
 async function standardValue<Value>(

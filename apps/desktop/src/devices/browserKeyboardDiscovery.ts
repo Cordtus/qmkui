@@ -22,6 +22,7 @@ import {
 } from "./genericViaReader";
 import { ViaReadProtocol } from "./viaReadProtocol";
 import { ViaWriteProtocol } from "./viaWrite";
+import { withOpen } from "./transport";
 
 type BrowserHidDevice = BrowserKeyboardIdentity & Partial<KeychronV5MaxReaderDevice>;
 
@@ -134,7 +135,7 @@ function classifySelection(
   }
 
   const classified = devices.map((device) => {
-    const identity = staticIdentity(device);
+    const identity = deviceIdentity(device, true);
     return {
       device,
       identity,
@@ -161,7 +162,7 @@ function classifySelection(
   if (isPossibleViaDevice(selected.identity)) {
     return {
       state: "selected",
-      identity: neutralIdentity(selected.device),
+      identity: deviceIdentity(selected.device),
       contract: { state: "unverified-via" },
       viaSession: genericViaSession(
         selected.device as GenericViaReaderDevice,
@@ -172,7 +173,7 @@ function classifySelection(
 
   return {
     state: "selected",
-    identity: neutralIdentity(selected.device),
+    identity: deviceIdentity(selected.device),
     contract: selected.contract,
   };
 }
@@ -189,32 +190,9 @@ function protocolSession(
     capabilities: { canRead: true, canWrite: false, canFlash: false },
     verifyProtocolVersion: () => verifyProtocolVersion(device as KeychronV5MaxProtocolDevice),
     readSnapshot: () => readSnapshot(device, { keymap: keychronV5MaxReadDefinition.keymap }),
-    writeKeycode: async (layer, row, col, keycode) => {
-      const openedByQmkui = !device.opened;
-      if (openedByQmkui) {
-        await device.open();
-      }
-      try {
-        await new ViaWriteProtocol(device).setKeycode(layer, row, col, keycode);
-      } finally {
-        if (openedByQmkui) {
-          await device.close();
-        }
-      }
-    },
-    saveEeprom: async () => {
-      const openedByQmkui = !device.opened;
-      if (openedByQmkui) {
-        await device.open();
-      }
-      try {
-        await new ViaWriteProtocol(device).saveEeprom();
-      } finally {
-        if (openedByQmkui) {
-          await device.close();
-        }
-      }
-    },
+    writeKeycode: (layer, row, col, keycode) =>
+      withOpen(device, () => new ViaWriteProtocol(device).setKeycode(layer, row, col, keycode)),
+    saveEeprom: () => withOpen(device, () => new ViaWriteProtocol(device).saveEeprom()),
   };
 }
 
@@ -228,18 +206,10 @@ function genericViaSession(
       return { canRead: verifiedProtocolVersion !== undefined, canWrite: false as const, canFlash: false as const };
     },
     async verifyProtocolVersion() {
-      const openedByQmkui = !device.opened;
-      if (openedByQmkui) {
-        await device.open();
-      }
-      try {
+      return withOpen(device, async () => {
         verifiedProtocolVersion = await new ViaReadProtocol(device).getProtocolVersion();
         return { version: verifiedProtocolVersion };
-      } finally {
-        if (openedByQmkui) {
-          await device.close();
-        }
-      }
+      });
     },
     async readStandardState() {
       if (verifiedProtocolVersion === undefined) {
@@ -250,19 +220,14 @@ function genericViaSession(
   };
 }
 
-function staticIdentity(device: BrowserHidDevice): BrowserKeyboardIdentity {
+function deviceIdentity(
+  device: BrowserHidDevice,
+  includeProductName = false,
+): BrowserKeyboardIdentity {
   return {
     vendorId: device.vendorId,
     productId: device.productId,
-    ...(device.productName ? { productName: device.productName } : {}),
-    collections: device.collections.map(({ usagePage, usage }) => ({ usagePage, usage })),
-  };
-}
-
-function neutralIdentity(device: BrowserHidDevice): BrowserKeyboardIdentity {
-  return {
-    vendorId: device.vendorId,
-    productId: device.productId,
+    ...(includeProductName && device.productName ? { productName: device.productName } : {}),
     collections: device.collections.map(({ usagePage, usage }) => ({ usagePage, usage })),
   };
 }

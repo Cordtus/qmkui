@@ -505,7 +505,7 @@ wa-button.nav-item.active::part(base) {
 
 .topbar-actions {
   display: grid;
-  grid-template-columns: auto auto minmax(190px, 1fr);
+  grid-template-columns: auto auto auto auto minmax(150px, 1fr);
   align-items: stretch;
   flex: 0 0 auto;
   gap: 0;
@@ -516,6 +516,19 @@ wa-button.nav-item.active::part(base) {
 .topbar-actions > wa-button {
   border: 0;
   border-right: 1px solid var(--border);
+}
+
+.history-controls {
+  display: flex;
+  align-items: stretch;
+  border-right: 1px solid var(--border);
+}
+
+.device-id {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
 }
 
 .eyebrow {
@@ -619,47 +632,6 @@ h3 {
 
 .workflow-notices small {
   color: var(--text-muted);
-}
-
-.probe-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0;
-  border: 1px solid var(--border-muted);
-  background: rgb(16 25 35 / 0.72);
-  padding: 12px 14px;
-}
-
-.probe-strip p {
-  margin-top: 4px;
-  color: #9aa2ad;
-}
-
-.probe-meta {
-  display: grid;
-  grid-template-columns: minmax(100px, auto) auto;
-  align-items: center;
-  align-self: stretch;
-  gap: 0;
-  text-align: right;
-}
-
-.probe-actions {
-  border-left: 1px solid var(--border-muted);
-}
-
-.probe-actions strong,
-.probe-actions wa-button {
-  display: grid;
-  min-width: 0;
-  place-items: center;
-  padding-inline: 14px;
-}
-
-.probe-actions wa-button {
-  border: 0;
-  border-left: 1px solid var(--border-muted);
 }
 
 .secondary-action {
@@ -1382,14 +1354,6 @@ input[type="color"] {
   min-width: 0;
 }
 
-.export-mode {
-  flex: 0 0 auto;
-  border: 1px solid var(--border);
-  padding: 2px 6px;
-  color: var(--text-muted);
-  font-size: 0.68rem;
-}
-
 .assignment-template-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2070,23 +2034,6 @@ dd {
     width: 100%;
   }
 
-  .probe-strip,
-  .probe-meta {
-    align-items: stretch;
-    grid-template-columns: 1fr;
-    text-align: left;
-  }
-
-  .probe-actions {
-    border-top: 1px solid var(--border-muted);
-    border-left: 0;
-  }
-
-  .probe-actions wa-button {
-    border-left: 0;
-    border-top: 1px solid var(--border-muted);
-  }
-
   .workspace {
     overflow: auto;
     padding: 18px;
@@ -2134,25 +2081,6 @@ wa-drawer::part(dialog) {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-.device-write-panel {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-muted);
-}
-
-.device-write-panel h3 {
-  margin: 0;
-  font-size: 0.9em;
-}
-
-.device-write-panel p {
-  margin: 0;
-  font-size: 0.85em;
-  color: var(--text-muted);
 }
 
 .write-confirm {

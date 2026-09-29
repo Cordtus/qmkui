@@ -1,5 +1,5 @@
 import readOnlyCommands from "../../../../fixtures/protocol/read-only-commands.json";
-import type { DeviceTransport } from "./transport";
+import { requestReport, type DeviceTransport } from "./transport";
 
 const commands = readOnlyCommands.viaReadCommands;
 
@@ -28,14 +28,10 @@ const KEYBOARD_VALUE_KEYCODES_VERSION = 0x06;
 
 const READ_ONLY_COMMANDS = new Set(Object.values(commands));
 
-export type ViaInputReportData = ArrayBuffer | ArrayBufferView;
-
 export type ViaReadTransport = Pick<
   DeviceTransport,
   "sendReport" | "addEventListener" | "removeEventListener"
 >;
-
-export type ViaReadProtocolDevice = DeviceTransport;
 
 export type ViaKeymap = {
   layerCount: number;
@@ -109,15 +105,7 @@ export class ViaReadProtocol {
   ) {}
 
   async read(command: number, payload: readonly number[] = []): Promise<Uint8Array> {
-    if (!READ_ONLY_COMMANDS.has(command)) {
-      throw new ViaReadProtocolError("command-not-allowed");
-    }
-    if (
-      command === CUSTOM_GET_VALUE ||
-      !isByte(command) ||
-      !hasExpectedPayloadShape(command, payload) ||
-      !payload.every(isByte)
-    ) {
+    if (command === CUSTOM_GET_VALUE) {
       throw new ViaReadProtocolError("invalid-request");
     }
     return this.issueRead(command, payload);
@@ -207,8 +195,10 @@ export class ViaReadProtocol {
   }
 
   private async issueRead(command: number, payload: readonly number[]): Promise<Uint8Array> {
+    if (!READ_ONLY_COMMANDS.has(command)) {
+      throw new ViaReadProtocolError("command-not-allowed");
+    }
     if (
-      !READ_ONLY_COMMANDS.has(command) ||
       !isByte(command) ||
       !hasExpectedPayloadShape(command, payload) ||
       !payload.every(isByte)
@@ -281,45 +271,19 @@ function requestRead(
   payload: readonly number[],
   timeoutMs: number,
 ): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (result: Uint8Array | ViaReadProtocolError) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      transport.removeEventListener("inputreport", onInputReport);
-      if (result instanceof ViaReadProtocolError) {
-        reject(result);
-      } else {
-        resolve(result);
-      }
-    };
-    const onInputReport = (event: { reportId: number; data: ViaInputReportData }) => {
-      if (event.reportId !== VIA_REPORT_ID) {
-        return;
-      }
-      const response = normalizeReportData(event.data);
-      if (!response || response.byteLength !== VIA_REPORT_LENGTH || !matchesRequest(response, command, payload)) {
-        return;
-      }
-      finish(response);
-    };
-    const timeout = setTimeout(() => finish(new ViaReadProtocolError("timeout")), timeoutMs);
-    const request = new Uint8Array(VIA_REPORT_LENGTH);
-    request[0] = command;
-    request.set(payload, 1);
+  const request = new Uint8Array(VIA_REPORT_LENGTH);
+  request[0] = command;
+  request.set(payload, 1);
 
-    transport.addEventListener("inputreport", onInputReport);
-    try {
-      Promise.resolve(transport.sendReport(VIA_REPORT_ID, request)).catch(() =>
-        finish(new ViaReadProtocolError("transport")),
-      );
-    } catch {
-      finish(new ViaReadProtocolError("transport"));
-    }
-  });
+  return requestReport(
+    transport,
+    VIA_REPORT_ID,
+    request,
+    (response) =>
+      response.byteLength === VIA_REPORT_LENGTH && matchesRequest(response, command, payload),
+    ViaReadProtocolError,
+    timeoutMs,
+  );
 }
 
 function matchesRequest(response: Uint8Array, command: number, payload: readonly number[]): boolean {
@@ -390,16 +354,6 @@ function boundedTimeoutMs(timeoutMs: number | undefined): number {
     throw new ViaReadProtocolError("invalid-timeout");
   }
   return value;
-}
-
-function normalizeReportData(data: ViaInputReportData): Uint8Array | undefined {
-  if (data instanceof ArrayBuffer) {
-    return new Uint8Array(data);
-  }
-  if (ArrayBuffer.isView(data)) {
-    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  }
-  return undefined;
 }
 
 function isByte(value: number): boolean {

@@ -2,7 +2,7 @@ import {
   classifyKeychronV5MaxIdentity,
   type HidIdentityMetadata,
 } from "./keychronV5MaxContract";
-import type { DeviceTransport } from "./transport";
+import { withOpen, type DeviceTransport } from "./transport";
 
 const PROTOCOL_VERSION_COMMAND = 0x01;
 const PROTOCOL_VERSION_RESPONSE_LENGTH = 32;
@@ -43,18 +43,9 @@ export async function verifyKeychronV5MaxProtocolVersion(
     throw new KeychronV5MaxProtocolError("identity");
   }
 
-  const openedByQmkui = !device.opened;
-  if (openedByQmkui) {
-    await device.open();
-  }
-
-  try {
-    return await requestProtocolVersion(device, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  } finally {
-    if (openedByQmkui) {
-      await device.close();
-    }
-  }
+  return withOpen(device, () =>
+    requestProtocolVersion(device, options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+  );
 }
 
 function requestProtocolVersion(

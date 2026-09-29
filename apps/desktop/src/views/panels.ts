@@ -1,21 +1,18 @@
 import { ContextPanel, EditorState, RenderActions, activeLightingProfile, bundledKeyboards, currentLayer, selectedLayout } from "../appState";
 import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
-import { RemoteBuildJob } from "../remoteBuild";
 import { Assignment, CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, Project, UiIssue, validateProject } from "../domain";
 import { buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { HostKeyCapture, captureHostKey } from "../keyTester";
 import { canDeleteLayer, scanLayerReferences } from "../layerActions";
 import { lightingSystemsForKeyboard, supportedLightingSystems } from "../lightingCapabilities";
 import { ProjectSummary } from "../projectStorage";
-import { contextDisclosure, controlGroup, definitionList, element, fieldControl, parameterBlock, rangeInput, uiButton } from "./primitives";
-import { inspector, keyLightingDetails } from "./workspace";
+import { contextDisclosure, controlGroup, definitionList, element, fieldControl, optionSelect, parameterBlock, rangeInput, uiButton } from "./primitives";
+import { inspector, keyLightingDetails, macroEditor } from "./workspace";
 import { viaDefinitionFor } from "../viaDefinition";
 
 export type BuildActions = {
   runLocalBuild: () => void;
-  setRemoteBuildConsent: (consent: boolean) => void;
-  submitRemoteBuild: () => void;
   setFlashConfirmed: (confirmed: boolean) => void;
   runFlashDryRun: () => void;
 };
@@ -71,7 +68,7 @@ export function contextTabs(activePanel: ContextPanel, actions: RenderActions): 
       }
 
       event.preventDefault();
-      const nextPanel = nextContextPanel(panels.map((item) => item.id), position, event.key);
+      const nextPanel = nextInRing(panels.map((item) => item.id), position, event.key);
       actions.selectContextPanel(nextPanel);
       requestAnimationFrame(() => {
         document.querySelector<HTMLElement>(`#context-tab-${nextPanel}`)?.focus();
@@ -110,25 +107,20 @@ export function projectPanel(
     (project) => project.id === state.selectedSavedProjectId,
   );
 
-  const savedSelect = element("select", {
-    attrs: {
-      "aria-label": "Saved projects",
-      "data-focus-id": "saved-project-select",
-    },
-  });
-  if (savedProjects.length === 0) {
-    savedSelect.append(element("option", { text: "No saved projects", attrs: { value: "" } }));
-  } else {
-    savedProjects.forEach((project) => {
-      savedSelect.append(
-        element("option", {
-          text: `${project.name} - ${project.qmkKeyboard}`,
-          attrs: { value: project.id },
-        }),
-      );
-    });
-  }
-  savedSelect.value = state.selectedSavedProjectId;
+  const savedOptions =
+    savedProjects.length > 0
+      ? savedProjects.map((project) => ({
+          value: project.id,
+          label: `${project.name} - ${project.qmkKeyboard}`,
+        }))
+      : [{ value: "", label: "No saved projects" }];
+  const savedSelect = optionSelect(
+    "Saved projects",
+    "saved-project",
+    savedOptions,
+    state.selectedSavedProjectId,
+  );
+  savedSelect.setAttribute("data-focus-id", "saved-project-select");
   savedSelect.addEventListener("change", () => {
     actions.selectSavedProject(savedSelect.value);
   });
@@ -271,6 +263,13 @@ export function projectPanel(
               element("div", { className: "project-actions" }, [open, rename, duplicate, remove]),
             ]
           : []),
+      ]),
+      element("section", {
+        className: "project-section",
+        attrs: { "data-project-section": "macros" },
+      }, [
+        element("h2", { text: "Macros" }),
+        macroEditor(state, actions),
       ]),
       transfer,
     ]),
@@ -565,8 +564,7 @@ export function testEventList(events: HostKeyCapture[]): HTMLElement {
       ]),
     );
   });
-  if (events.length === 0) {
-  }
+
   return list;
 }
 
@@ -588,8 +586,6 @@ export function catalogPanel(state: EditorState, actions: RenderActions): HTMLEl
   results.forEach((keyboard) => {
     list.append(catalogRow(keyboard, state, actions));
   });
-  if (results.length === 0) {
-  }
 
   return element("section", { className: "tab-panel catalog-panel", attrs: { "data-panel": "catalog" } }, [
     element("div", { className: "panel-heading" }, [
@@ -679,8 +675,6 @@ export function systemPanel(
   commands.forEach((command) => {
     commandList.append(commandRow(command));
   });
-  if (commands.length === 0) {
-  }
 
   const findings = report?.findings ?? [];
   const findingList = element("ul", { className: "issues", attrs: { "data-finding-count": String(findings.length) } });
@@ -695,8 +689,6 @@ export function systemPanel(
       ]),
     );
   });
-  if (findings.length === 0) {
-  }
 
   const refresh = uiButton({ className: "secondary-action", text: "Refresh", type: "button" });
   refresh.addEventListener("click", reloadProbe);
@@ -738,8 +730,6 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
       ]),
     );
   });
-  if (plan.blockers.length === 0) {
-  }
 
   const buildButton = uiButton({
     className: "secondary-action",
@@ -765,32 +755,6 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
   if (state.artifacts.length === 0) {
     artifacts.append(element("li", { className: "muted", text: "No artifacts yet." }));
   }
-
-  const remoteConsent = element("label", { className: "remote-consent" }, [
-    element("input", {
-      attrs: {
-        "data-remote-consent": "true",
-        type: "checkbox",
-        ...(state.remoteBuildConsent ? { checked: "" } : {}),
-      },
-    }),
-    element("span", { text: "I consent to uploading project JSON to a remote build service." }),
-  ]);
-  remoteConsent.querySelector<HTMLInputElement>("input")!.addEventListener("change", (event) => {
-    actions.setRemoteBuildConsent((event.target as HTMLInputElement).checked);
-  });
-
-  const remoteButton = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: "Submit remote build",
-    attrs: { "data-remote-submit": "true" },
-  });
-  remoteButton.addEventListener("click", actions.submitRemoteBuild);
-
-  const remoteStatus = state.remoteBuildJob
-    ? element("p", { className: `remote-status ${state.remoteBuildJob.status}`, attrs: { "data-remote-status": state.remoteBuildJob.status }, text: remoteJobLabel(state.remoteBuildJob) })
-    : element("p", { className: "muted", text: "No remote build submitted." });
 
   const flashConfirm = element("label", { className: "flash-confirm" }, [
     element("input", {
@@ -837,7 +801,6 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
         ["Keys", String(keyCount)],
         ["Output", plan.output.toUpperCase()],
         ["Local", plan.localReady ? "Ready" : "Blocked"],
-        ["Remote", plan.remoteAvailable ? "Available" : "Blocked"],
       ]),
       element("code", {
         className: "command-preview",
@@ -849,9 +812,6 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
       buildOutput,
       element("h3", { className: "build-subheading", text: "Artifacts" }),
       artifacts,
-      element("h3", { className: "build-subheading", text: "Remote build" }),
-      element("div", { className: "remote-controls" }, [remoteConsent, remoteButton]),
-      remoteStatus,
       element("h3", { className: "build-subheading", text: "Flash (dry run)" }),
       element("div", { className: "flash-controls" }, [flashConfirm, flashButton]),
       flashStatus,
@@ -863,13 +823,6 @@ function buildStepLabel(step: BuildStep): string {
   return step.status === "succeeded" || step.status === "failed"
     ? `${step.command}\n${step.output}`
     : `${step.command} (${step.status})`;
-}
-
-function remoteJobLabel(job: RemoteBuildJob): string {
-  if (job.status === "failed") {
-    return `Remote build failed: ${job.error ?? "unknown error"}`;
-  }
-  return `Remote build ${job.status} (id: ${job.id || "n/a"}).`;
 }
 
 function flashVerdictLabel(state: EditorState): string {
@@ -1010,7 +963,7 @@ export function layerTabs(state: EditorState, actions: RenderActions): HTMLEleme
       }
 
       event.preventDefault();
-      const nextIndex = nextLayerIndex(layerIndexes, position, event.key);
+      const nextIndex = nextInRing(layerIndexes, position, event.key);
       actions.selectLayer(nextIndex);
       requestAnimationFrame(() => {
         document.querySelector<HTMLElement>(`#layer-tab-${nextIndex}`)?.focus();
@@ -1109,30 +1062,16 @@ export function deleteStateLabel(state: ReturnType<typeof canDeleteLayer>): stri
   return "Missing";
 }
 
-export function nextLayerIndex(layerIndexes: number[], position: number, key: string): number {
+function nextInRing<T>(items: T[], position: number, key: string): T {
   if (key === "Home") {
-    return layerIndexes[0];
+    return items[0];
   }
   if (key === "End") {
-    return layerIndexes[layerIndexes.length - 1];
+    return items[items.length - 1];
   }
 
   const direction = key === "ArrowRight" || key === "ArrowDown" ? 1 : -1;
-  const nextPosition = (position + direction + layerIndexes.length) % layerIndexes.length;
-  return layerIndexes[nextPosition];
-}
-
-export function nextContextPanel(panels: ContextPanel[], position: number, key: string): ContextPanel {
-  if (key === "Home") {
-    return panels[0];
-  }
-  if (key === "End") {
-    return panels[panels.length - 1];
-  }
-
-  const direction = key === "ArrowRight" || key === "ArrowDown" ? 1 : -1;
-  const nextPosition = (position + direction + panels.length) % panels.length;
-  return panels[nextPosition];
+  return items[(position + direction + items.length) % items.length];
 }
 
 export function supportDetails(
@@ -1141,7 +1080,7 @@ export function supportDetails(
   state: EditorState,
   downloadSupportBundle: () => void,
 ): HTMLElement {
-  const detected = state.doctorReport?.snapshot.hardwareProbe.detectedKeyboards?.[0];
+  const detected = detectedKeyboard(state);
   return element("wa-details", {
     className: "support-details",
     attrs: {

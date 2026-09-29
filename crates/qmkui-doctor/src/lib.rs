@@ -9,7 +9,6 @@ pub struct DoctorSnapshot {
     pub distro_id: Option<String>,
     pub package_manager: Option<String>,
     pub commands: Vec<CommandStatus>,
-    pub qmk_package: Option<ArchPackageStatus>,
     pub hardware_probe: HardwareProbeStatus,
 }
 
@@ -27,14 +26,6 @@ pub enum Requirement {
     LocalBuild,
     Flashing,
     CatalogSync,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ArchPackageStatus {
-    pub name: String,
-    pub version: Option<String>,
-    pub installed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -225,7 +216,6 @@ fn snapshot_base() -> DoctorSnapshot {
         distro_id,
         package_manager,
         commands,
-        qmk_package: None,
         hardware_probe: HardwareProbeStatus {
             status: ProbeState::Blocked,
             reason: "USB descriptor probe has not run yet.".to_owned(),
@@ -525,7 +515,6 @@ mod tests {
                 path: None,
                 required_for: Requirement::LocalBuild,
             }],
-            qmk_package: None,
             hardware_probe: HardwareProbeStatus {
                 status: ProbeState::Skipped,
                 reason: "test does not probe hardware".to_owned(),

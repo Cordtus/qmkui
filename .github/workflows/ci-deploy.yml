@@ -18,8 +18,6 @@ jobs:
     concurrency:
       group: qmkui-ci-${{ github.ref }}
       cancel-in-progress: true
-    permissions:
-      contents: read
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
     steps:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { captureHostKey, classifyKeyEvents, qmkFromHostKey } from "./keyTester";
+import { captureHostKey, qmkFromHostKey } from "./keyTester";
 import { keychronV5MaxProject } from "./presets";
 
 describe("host key tester", () => {
@@ -24,43 +24,5 @@ describe("host key tester", () => {
     const numpad = captureHostKey(keychronV5MaxProject, 2, { code: "Numpad1", key: "1" });
     expect(numpad.qmk).toBe("KC_P1");
     expect(numpad.matchedKeyIds.length).toBeGreaterThan(0);
-  });
-});
-
-describe("key event classification", () => {
-  it("flags a key that chatters with rapid cycles", () => {
-    const events = [
-      { code: "KeyA", key: "a", kind: "down" as const, at: 0 },
-      { code: "KeyA", key: "a", kind: "up" as const, at: 10 },
-      { code: "KeyA", key: "a", kind: "down" as const, at: 20 },
-      { code: "KeyA", key: "a", kind: "up" as const, at: 28 },
-      { code: "KeyA", key: "a", kind: "down" as const, at: 35 },
-      { code: "KeyA", key: "a", kind: "up" as const, at: 42 },
-      { code: "KeyB", key: "b", kind: "down" as const, at: 50 },
-      { code: "KeyB", key: "b", kind: "up" as const, at: 60 },
-    ];
-    const result = classifyKeyEvents(events);
-    expect(result.chatter).toEqual(["KeyA"]);
-    expect(result.held).toEqual([]);
-  });
-
-  it("flags a key that is held without release", () => {
-    const events = [
-      { code: "KeyA", key: "a", kind: "down" as const, at: 0 },
-      { code: "KeyA", key: "a", kind: "up" as const, at: 2500 },
-    ];
-    const result = classifyKeyEvents(events);
-    expect(result.chatter).toEqual([]);
-    expect(result.held).toEqual(["KeyA"]);
-  });
-
-  it("leaves a healthy key unflagged", () => {
-    const events = [
-      { code: "KeyA", key: "a", kind: "down" as const, at: 0 },
-      { code: "KeyA", key: "a", kind: "up" as const, at: 60 },
-      { code: "KeyA", key: "a", kind: "down" as const, at: 200 },
-      { code: "KeyA", key: "a", kind: "up" as const, at: 260 },
-    ];
-    expect(classifyKeyEvents(events)).toEqual({ chatter: [], held: [] });
   });
 });

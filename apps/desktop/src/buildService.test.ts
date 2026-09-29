@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { BuildArtifactStore, runLocalBuild, unsupportedBrowserRunner } from "./buildService";
+import { runLocalBuild, unsupportedBrowserRunner } from "./buildService";
 import { createBuildPlan } from "./buildPlan";
 import project from "../../../fixtures/projects/example-60.json";
 import { Project } from "./domain";
@@ -52,23 +52,5 @@ describe("local build execution", () => {
     if (step.status === "failed") {
       expect(step.output).toContain("desktop app");
     }
-  });
-});
-
-describe("build artifact store", () => {
-  it("content-addresses artifacts and reports staleness", () => {
-    const store = new BuildArtifactStore();
-    const artifact = store.put({
-      id: "sha256-a",
-      projectDigest: "digest-a",
-      firmwareSha256: "sha256-a",
-      qmkKeyboard: "example/keyboard",
-      createdAt: "2026-08-11T00:00:00.000Z",
-    });
-
-    expect(store.list()).toEqual([artifact]);
-    expect(store.isStale("sha256-a", "digest-a")).toBe(false);
-    expect(store.isStale("sha256-a", "digest-changed")).toBe(true);
-    expect(store.isStale("missing", "digest-a")).toBe(false);
   });
 });
