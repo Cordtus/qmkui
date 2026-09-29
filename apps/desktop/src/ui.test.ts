@@ -61,9 +61,9 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector('[data-hardware-key="0:2"]')?.textContent).toContain("B");
     expect(root.querySelector("[data-hardware-snapshot]")?.textContent).not.toContain("KC_ESC");
     expect(root.querySelector("[data-lighting-swatches]")).not.toBeNull();
-    expect(root.querySelector("[data-lighting-swatches] [data-led='0']")?.getAttribute("data-hue")).toBe("12");
-    expect(root.querySelector("[data-lighting-swatches] [data-led='0']")?.getAttribute("data-saturation")).toBe("34");
-    expect(root.querySelector("[data-lighting-swatches] [data-led='0']")?.getAttribute("data-value")).toBe("56");
+    expect(root.querySelector("[data-lighting-swatches] [data-hue]")?.getAttribute("data-hue")).toBe("12");
+    expect(root.querySelector("[data-lighting-swatches] [data-hue]")?.getAttribute("data-saturation")).toBe("34");
+    expect(root.querySelector("[data-lighting-swatches] [data-hue]")?.getAttribute("data-value")).toBe("56");
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
   });
 
@@ -310,14 +310,7 @@ function availableSnapshot(): KeychronV5MaxReadSnapshot {
     keymap: { state: "available", value: { layerCount: 1, keycodes: [[[4, 0, 5]]] } },
     lighting: {
       state: "available",
-      value: {
-        rgbProtocol: [1, 2],
-        indicators: [1],
-        ledCount: 1,
-        ledIndices: [{ led: 0, matrix: { row: 0, column: 0 } }],
-        effects: [{ led: 0, effect: 7 }],
-        colors: [{ led: 0, hue: 12, saturation: 34, value: 56 }],
-      },
+      value: { brightness: 56, effect: 7, effectSpeed: 8, hue: 12, saturation: 34 },
     },
     macros: {
       state: "available",
