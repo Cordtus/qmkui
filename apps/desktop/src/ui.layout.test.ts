@@ -162,10 +162,13 @@ async function openReadResultPage(viewport: { width: number; height: number }): 
       if (request[0] === 0xa3) return report([0xa3, 0x02]);
       if (request[0] === 0x11) return report([0x11, 0x04]);
       if (request[0] === 0x04) return report([0x04, request[1]!, request[2]!, request[3]!, 0x12, 0x34]);
-      if (request[0] !== 0xa8) return undefined;
-      if (request[1] === 0x01) return report([0xa8, 0x01, 0x01, 0x00]);
-      if (request[1] === 0x03) return report([0xa8, 0x03, 0x11]);
-      if (request[1] === 0x05) return report([0xa8, 0x05, 0]);
+      // VIA RGB-matrix channel 3 (the V5 has no 0xa8 vendor RGB protocol).
+      if (request[0] === 0x08 && request[1] === 0x03) {
+        if (request[2] === 0x01) return report([0x08, 0x03, 0x01, 200]);
+        if (request[2] === 0x02) return report([0x08, 0x03, 0x02, 7]);
+        if (request[2] === 0x03) return report([0x08, 0x03, 0x03, 128]);
+        if (request[2] === 0x04) return report([0x08, 0x03, 0x04, 113, 221]);
+      }
       return undefined;
     };
     const device = {

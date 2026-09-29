@@ -2032,6 +2032,20 @@ dd {
   }
 }
 
+/* The header title and the action strip cannot share a row between roughly
+   861–1180px without wrapping the title to several lines. Stack them there. */
+@media (min-width: 861px) and (max-width: 1180px) {
+  .topbar {
+    align-items: flex-start;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 860px) {
   .shell {
     grid-template-columns: 1fr;
@@ -2049,12 +2063,22 @@ dd {
 
   .workflow-actions {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    border-top: 1px solid var(--border-muted);
-    border-left: 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
   }
 
-  .workflow-actions > wa-button {
+  .workflow-label {
+    padding: 10px 14px 0;
+  }
+
+  .workflow-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    margin-top: 8px;
+  }
+
+  .workflow-buttons > wa-button {
+    border-left: 0;
     border-bottom: 1px solid var(--border-muted);
   }
 
@@ -2119,8 +2143,18 @@ dd {
   }
 
   .topbar-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
+    justify-content: flex-start;
+  }
+
+  .action-group,
+  .history-controls {
+    flex: 1 1 auto;
+  }
+
+  .action-group > wa-button,
+  .history-controls > wa-button {
+    flex: 1 1 auto;
   }
 
   .workspace {
