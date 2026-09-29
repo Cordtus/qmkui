@@ -40,8 +40,19 @@
 *.bak
 .DS_Store
 
-# Claude-created working files (universal issue tracker pointer)
-.claude/
+# LLM / agentic tooling config and state (local only, never committed)
+/opencode.json
+/opencode.jsonc
+/AGENTS.md
+/CLAUDE.md
+/.claude/
+/.cursor/
+/.continue/
+/.aider*
+/.gemini/
+/.codex/
+/.superpowers/
+/.agents/
 
 # Playwright MCP tooling debris
 /.playwright-mcp/
