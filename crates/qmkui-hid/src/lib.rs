@@ -17,9 +17,8 @@ pub mod via_write;
 pub mod hidapi;
 
 pub use allowlist::{
-    is_read_only_keychron_command, is_read_only_rgb_op, is_read_only_via_command,
-    is_via_write_command,
+    is_read_only_keychron_command, is_read_only_via_command, is_via_write_command,
 };
 pub use transport::{HidError, HidTransport};
-pub use via::{ViaKeymap, ViaReadProtocol};
+pub use via::{ViaKeymap, ViaReadProtocol, ViaRgbMatrixState};
 pub use via_write::ViaWriteProtocol;

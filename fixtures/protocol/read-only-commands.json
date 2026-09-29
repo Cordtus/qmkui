@@ -15,15 +15,6 @@
     "identityProtocol": 160,
     "identityFirmware": 161,
     "capabilities": 162,
-    "defaultLayer": 163,
-    "rgb": 168
-  },
-  "keychronRgbReadOperations": {
-    "rgbProtocol": 1,
-    "rgbIndicators": 3,
-    "ledCount": 5,
-    "ledIndex": 6,
-    "ledEffect": 7,
-    "colors": 9
+    "defaultLayer": 163
   }
 }

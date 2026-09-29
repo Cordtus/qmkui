@@ -47,7 +47,7 @@ struct DeviceInfo {
 struct V5Snapshot {
     identity: qmkui_hid::keychron_v5::V5Identity,
     capabilities: qmkui_hid::keychron_v5::V5Capabilities,
-    lighting: qmkui_hid::keychron_v5::V5Lighting,
+    lighting: qmkui_hid::via::ViaRgbMatrixState,
     keymap: qmkui_hid::via::ViaKeymap,
     macros: qmkui_hid::via::ViaMacros,
 }
@@ -81,11 +81,14 @@ fn read_v5_snapshot() -> Result<V5Snapshot, String> {
     let capabilities = reader
         .read_capabilities()
         .map_err(|error| error.to_string())?;
-    let lighting = reader.read_lighting().map_err(|error| error.to_string())?;
     drop(reader);
     let transport =
         HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
     let mut via = ViaReadProtocol::new(transport);
+    // Lighting is standard VIA RGB-matrix channel 3, not a Keychron command.
+    let lighting = via
+        .read_rgb_matrix_state()
+        .map_err(|error| error.to_string())?;
     let keymap = via
         .read_via_keymap(V5_DIMENSIONS)
         .map_err(|error| error.to_string())?;

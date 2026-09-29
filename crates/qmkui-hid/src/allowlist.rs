@@ -10,7 +10,6 @@ use std::sync::OnceLock;
 struct AllowList {
     via_read_commands: BTreeSet<u8>,
     keychron_read_commands: BTreeSet<u8>,
-    keychron_rgb_operations: BTreeSet<u8>,
     via_write_commands: BTreeSet<u8>,
 }
 
@@ -26,7 +25,6 @@ fn load() -> AllowList {
     AllowList {
         via_read_commands: command_set(&value["viaReadCommands"]),
         keychron_read_commands: command_set(&value["keychronReadCommands"]),
-        keychron_rgb_operations: command_set(&value["keychronRgbReadOperations"]),
         via_write_commands: command_set(&write_value["viaWriteCommands"]),
     }
 }
@@ -64,10 +62,6 @@ pub fn is_via_write_command(command: u8) -> bool {
     allow_list().via_write_commands.contains(&command)
 }
 
-pub fn is_read_only_rgb_op(operation: u8) -> bool {
-    allow_list().keychron_rgb_operations.contains(&operation)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,16 +71,12 @@ mod tests {
         for command in [0x01u8, 0x02, 0x04, 0x08, 0x0c, 0x0d, 0x0e, 0x11, 0x12, 0x14] {
             assert!(is_read_only_via_command(command), "VIA read {command:#x}");
         }
-        for command in [0xa0u8, 0xa1, 0xa2, 0xa3, 0xa8] {
+        // No 0xa8: the V5 Max answers it with VIA id_unhandled; lighting is
+        // read through the standard VIA RGB-matrix channel.
+        for command in [0xa0u8, 0xa1, 0xa2, 0xa3] {
             assert!(
                 is_read_only_keychron_command(command),
                 "Keychron read {command:#x}"
-            );
-        }
-        for operation in [0x01u8, 0x03, 0x05, 0x06, 0x07, 0x09] {
-            assert!(
-                is_read_only_rgb_op(operation),
-                "Keychron RGB op {operation:#x}"
             );
         }
     }

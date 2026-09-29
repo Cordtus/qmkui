@@ -12,7 +12,7 @@ const exactV5MaxAnsiKnob = {
 };
 
 describe("Keychron V5 Max reader", () => {
-  it("frames only read queries, decodes a recorded response, and batches per-key RGB colors at nine keys", async () => {
+  it("frames only read queries and reads lighting over the standard VIA RGB-matrix channel", async () => {
     const device = createTranscriptDevice();
 
     const snapshot = await readKeychronV5MaxSnapshot(device, {
@@ -37,22 +37,12 @@ describe("Keychron V5 Max reader", () => {
       state: "available",
       value: { layerCount: 1, keycodes: [[[0x1234]]] },
     });
-    expect(snapshot.lighting).toMatchObject({
+    // Lighting is standard VIA RGB-matrix channel 3, not the Keychron 0xa8
+    // protocol (which this firmware answers with id_unhandled).
+    expect(snapshot.lighting).toEqual({
       state: "available",
-      value: {
-        rgbProtocol: [0x01, 0x00],
-        indicators: [0x11],
-        ledCount: 10,
-      },
+      value: { brightness: 200, effect: 7, effectSpeed: 128, hue: 12, saturation: 240 },
     });
-    if (snapshot.lighting.state !== "available") throw new Error("Expected RGB state");
-    expect(snapshot.lighting.value.ledIndices).toHaveLength(10);
-    expect(snapshot.lighting.value.effects).toHaveLength(10);
-    expect(snapshot.lighting.value.colors).toHaveLength(10);
-    expect(snapshot.lighting.value.ledIndices).toContainEqual({ led: 0, matrix: { row: 0, column: 0 } });
-    expect(snapshot.lighting.value.effects).toContainEqual({ led: 0, effect: 1 });
-    expect(snapshot.lighting.value.colors).toContainEqual({ led: 0, hue: 12, saturation: 240, value: 255 });
-    expect(snapshot.lighting.value.colors).toContainEqual({ led: 9, hue: 21, saturation: 249, value: 255 });
     expect(snapshot.readAt).toBe("2026-07-18T12:00:00.000Z");
     const expectedRequests = [
       [0xa0],
@@ -61,12 +51,10 @@ describe("Keychron V5 Max reader", () => {
       [0xa2],
       [0x11],
       [0x04, 0, 0, 0],
-      [0xa8, 0x01],
-      [0xa8, 0x03],
-      [0xa8, 0x05],
-      ...Array.from({ length: 10 }, (_, led) => [[0xa8, 0x06, led], [0xa8, 0x07, led]]).flat(),
-      [0xa8, 0x09, 0, 9],
-      [0xa8, 0x09, 9, 1],
+      [0x08, 0x03, 0x01],
+      [0x08, 0x03, 0x02],
+      [0x08, 0x03, 0x03],
+      [0x08, 0x03, 0x04],
       [0x0c],
     ];
     expect(sentFrames(device)).toEqual(expectedRequests.map((bytes) => [0, [...report(bytes)]]));
@@ -99,11 +87,13 @@ describe("Keychron V5 Max reader", () => {
     expect(device.sendReport).not.toHaveBeenCalled();
   });
 
-  it("rejects an unsupported RGB operation before it can reach HID", async () => {
+  it("rejects the non-existent Keychron 0xa8 RGB command before it can reach HID", async () => {
     const device = createTranscriptDevice();
 
+    // The V5 Max firmware does not implement 0xa8 (it answers id_unhandled),
+    // so it is not in the read allow-list.
     await expect(requestKeychronV5MaxRead(device, 0xa8, [0x02])).rejects.toMatchObject({
-      code: "rgb-operation-not-allowed",
+      code: "command-not-allowed",
     });
 
     expect(device.sendReport).not.toHaveBeenCalled();
@@ -124,17 +114,17 @@ describe("Keychron V5 Max reader", () => {
     expect(device.listenerCount()).toBe(0);
   });
 
-  it("ignores wrong report IDs and cross-matched reports until the exact vendor response arrives", async () => {
+  it("ignores wrong report IDs and wrong-length reports until the matching response arrives", async () => {
     const device = createDevice();
-    const pending = requestKeychronV5MaxRead(device, 0xa8, [0x09, 0, 1]);
+    const pending = requestKeychronV5MaxRead(device, 0xa0);
 
-    device.emit({ reportId: 1, data: report([0xa8, 0x09, 0, 1, 10, 20, 30]) });
+    device.emit({ reportId: 1, data: report([0xa0, 0x02, 0x00, 0x02]) });
     device.emit({ reportId: 0, data: new Uint8Array(31) });
-    device.emit({ reportId: 0, data: report([0xa8, 0x09, 1, 1, 10, 20, 30]) });
+    device.emit({ reportId: 0, data: report([0xa1, 0x09]) });
     expect(device.listenerCount()).toBe(1);
-    device.emit({ reportId: 0, data: report([0xa8, 0x09, 0, 1, 10, 20, 30]) });
+    device.emit({ reportId: 0, data: report([0xa0, 0x02, 0x00, 0x02]) });
 
-    await expect(pending).resolves.toEqual(report([0xa8, 0x09, 0, 1, 10, 20, 30]));
+    await expect(pending).resolves.toEqual(report([0xa0, 0x02, 0x00, 0x02]));
     expect(device.listenerCount()).toBe(0);
   });
 
@@ -191,17 +181,12 @@ function responseFor(request: Uint8Array, firmware: number[]): Uint8Array | unde
   if (request[0] === 0x11) return report([0x11, 1]);
   if (request[0] === 0x04) return report([0x04, request[1]!, request[2]!, request[3]!, 0x12, 0x34]);
   if (request[0] === 0x0c) return report([0x0c, 0]);
-  if (request[0] !== 0xa8) return undefined;
-
-  if (request[1] === 0x01) return report([0xa8, 0x01, 0x01, 0x00]);
-  if (request[1] === 0x03) return report([0xa8, 0x03, 0x11]);
-  if (request[1] === 0x05) return report([0xa8, 0x05, 10]);
-  if (request[1] === 0x06) return report([0xa8, 0x06, request[2]!, 0, 0]);
-  if (request[1] === 0x07) return report([0xa8, 0x07, request[2]!, 1]);
-  if (request[1] === 0x09 && request[2] === 0) {
-    return report([0xa8, 0x09, 0, 9, 12, 240, 255, 13, 241, 255, 14, 242, 255, 15, 243, 255, 16, 244, 255, 17, 245, 255, 18, 246, 255, 19, 247, 255, 20, 248, 255]);
+  if (request[0] === 0x08 && request[1] === 0x03) {
+    if (request[2] === 0x01) return report([0x08, 0x03, 0x01, 200]);
+    if (request[2] === 0x02) return report([0x08, 0x03, 0x02, 7]);
+    if (request[2] === 0x03) return report([0x08, 0x03, 0x03, 128]);
+    if (request[2] === 0x04) return report([0x08, 0x03, 0x04, 12, 240]);
   }
-  if (request[1] === 0x09 && request[2] === 9) return report([0xa8, 0x09, 9, 1, 21, 249, 255]);
   return undefined;
 }
 

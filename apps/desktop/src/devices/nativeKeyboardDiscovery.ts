@@ -15,12 +15,11 @@ type NativeV5Snapshot = {
   identity: { protocolVersion: number[]; firmwareVersion: string; defaultLayer: number };
   capabilities: { featureBitmap: number[] };
   lighting: {
-    rgbProtocol: number[];
-    indicators: number;
-    ledCount: number;
-    ledIndices: Array<{ led: number; row: number; column: number }>;
-    effects: Array<{ led: number; effect: number }>;
-    colors: Array<{ led: number; hue: number; saturation: number; value: number }>;
+    brightness: number;
+    effect: number;
+    effectSpeed: number;
+    hue: number;
+    saturation: number;
   };
   keymap: { layerCount: number; keycodes: number[][][] };
   macros: NativeMacros;
@@ -126,15 +125,11 @@ function nativeSnapshot(data: NativeV5Snapshot): KeychronV5MaxReadSnapshot {
     }),
     keymap: available({ layerCount: data.keymap.layerCount, keycodes: data.keymap.keycodes }),
     lighting: available({
-      rgbProtocol: data.lighting.rgbProtocol as [number, number],
-      indicators: [data.lighting.indicators],
-      ledCount: data.lighting.ledCount,
-      ledIndices: data.lighting.ledIndices.map((index) => ({
-        led: index.led,
-        matrix: { row: index.row, column: index.column },
-      })),
-      effects: data.lighting.effects,
-      colors: data.lighting.colors,
+      brightness: data.lighting.brightness,
+      effect: data.lighting.effect,
+      effectSpeed: data.lighting.effectSpeed,
+      hue: data.lighting.hue,
+      saturation: data.lighting.saturation,
     }),
     macros: available({
       count: data.macros.count,

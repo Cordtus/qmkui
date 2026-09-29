@@ -1,22 +1,16 @@
-//! Keychron V5 Max read commands, mirroring `keychronV5MaxReader.ts`. Identity,
-//! capabilities, and lighting reads are Keychron vendor commands (`0xa0`-`0xa8`)
-//! gated by the shared allow-list; the keymap read uses the standard VIA
-//! commands.
+//! Keychron V5 Max read commands, mirroring `keychronV5MaxReader.ts`. Only
+//! identity and capabilities are Keychron vendor commands (`0xa0`-`0xa3`) gated
+//! by the shared allow-list. Lighting and the keymap use the standard VIA
+//! commands (`via.rs`): the never-implemented `0xa8` RGB protocol is not in the
+//! allow-list and cannot be emitted.
 
-use crate::allowlist::{is_read_only_keychron_command, is_read_only_rgb_op};
+use crate::allowlist::is_read_only_keychron_command;
 use crate::transport::{HidError, HidTransport, REPORT_LENGTH};
 
 const COMMAND_IDENTITY_PROTOCOL: u8 = 0xa0;
 const COMMAND_IDENTITY_FIRMWARE: u8 = 0xa1;
 const COMMAND_CAPABILITIES: u8 = 0xa2;
 const COMMAND_DEFAULT_LAYER: u8 = 0xa3;
-const COMMAND_RGB: u8 = 0xa8;
-const RGB_OP_PROTOCOL: u8 = 0x01;
-const RGB_OP_INDICATORS: u8 = 0x03;
-const RGB_OP_LED_COUNT: u8 = 0x05;
-const RGB_OP_LED_INDEX: u8 = 0x06;
-const RGB_OP_LED_EFFECT: u8 = 0x07;
-const RGB_OP_COLORS: u8 = 0x09;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,41 +26,6 @@ pub struct V5Capabilities {
     pub feature_bitmap: [u8; 2],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LedIndex {
-    pub led: u8,
-    pub row: u8,
-    pub column: u8,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LedColor {
-    pub led: u8,
-    pub hue: u8,
-    pub saturation: u8,
-    pub value: u8,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LedEffect {
-    pub led: u8,
-    pub effect: u8,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct V5Lighting {
-    pub rgb_protocol: [u8; 2],
-    pub indicators: u8,
-    pub led_count: u8,
-    pub led_indices: Vec<LedIndex>,
-    pub effects: Vec<LedEffect>,
-    pub colors: Vec<LedColor>,
-}
-
 pub struct KeychronV5Reader<T: HidTransport> {
     transport: T,
 }
@@ -78,9 +37,6 @@ impl<T: HidTransport> KeychronV5Reader<T> {
 
     pub fn read(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
         if !is_read_only_keychron_command(command) {
-            return Err(HidError::CommandNotAllowed);
-        }
-        if command == COMMAND_RGB && (payload.is_empty() || !is_read_only_rgb_op(payload[0])) {
             return Err(HidError::CommandNotAllowed);
         }
         let response = self.transport.request(command, payload)?;
@@ -105,83 +61,6 @@ impl<T: HidTransport> KeychronV5Reader<T> {
         let response = self.read(COMMAND_CAPABILITIES, &[])?;
         Ok(V5Capabilities {
             feature_bitmap: [response[1], response[2]],
-        })
-    }
-
-    pub fn rgb_protocol(&mut self) -> Result<[u8; 2], HidError> {
-        let response = self.read(COMMAND_RGB, &[RGB_OP_PROTOCOL])?;
-        Ok([response[2], response[3]])
-    }
-
-    pub fn rgb_indicators(&mut self) -> Result<u8, HidError> {
-        let response = self.read(COMMAND_RGB, &[RGB_OP_INDICATORS])?;
-        Ok(response[2])
-    }
-
-    pub fn led_count(&mut self) -> Result<u8, HidError> {
-        let response = self.read(COMMAND_RGB, &[RGB_OP_LED_COUNT])?;
-        Ok(response[2])
-    }
-
-    pub fn led_index(&mut self, led: u8) -> Result<LedIndex, HidError> {
-        let response = self.read(COMMAND_RGB, &[RGB_OP_LED_INDEX, led])?;
-        Ok(LedIndex {
-            led,
-            row: response[3],
-            column: response[4],
-        })
-    }
-
-    pub fn led_effect(&mut self, led: u8) -> Result<u8, HidError> {
-        let response = self.read(COMMAND_RGB, &[RGB_OP_LED_EFFECT, led])?;
-        Ok(response[3])
-    }
-
-    pub fn led_colors(&mut self, start: u8, count: u8) -> Result<Vec<LedColor>, HidError> {
-        let response = self.read(COMMAND_RGB, &[RGB_OP_COLORS, start, count])?;
-        if response[3] != count {
-            return Err(HidError::InvalidRequest);
-        }
-        let mut colors = Vec::with_capacity(usize::from(count));
-        for offset in 0..count {
-            let byte_offset = 4 + usize::from(offset) * 3;
-            colors.push(LedColor {
-                led: start + offset,
-                hue: response[byte_offset],
-                saturation: response[byte_offset + 1],
-                value: response[byte_offset + 2],
-            });
-        }
-        Ok(colors)
-    }
-
-    pub fn read_lighting(&mut self) -> Result<V5Lighting, HidError> {
-        let rgb_protocol = self.rgb_protocol()?;
-        let indicators = self.rgb_indicators()?;
-        let led_count = self.led_count()?;
-        let mut led_indices = Vec::with_capacity(usize::from(led_count));
-        let mut effects = Vec::with_capacity(usize::from(led_count));
-        for led in 0..led_count {
-            led_indices.push(self.led_index(led)?);
-            effects.push(LedEffect {
-                led,
-                effect: self.led_effect(led)?,
-            });
-        }
-        let mut colors = Vec::new();
-        let mut start = 0u8;
-        while start < led_count {
-            let batch = (led_count - start).min(9);
-            colors.extend(self.led_colors(start, batch)?);
-            start += batch;
-        }
-        Ok(V5Lighting {
-            rgb_protocol,
-            indicators,
-            led_count,
-            led_indices,
-            effects,
-            colors,
         })
     }
 }

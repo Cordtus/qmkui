@@ -5,16 +5,32 @@ import {
 } from "./keychronV5MaxContract";
 import { available, unavailable, unverified, type ValueState } from "./hardwareSnapshot";
 import { requestReport, withOpen, type DeviceTransport } from "./transport";
-import { ViaReadProtocol, readViaKeymap, readViaMacros, type ViaKeymap, type ViaMacros } from "./viaReadProtocol";
+import {
+  ViaReadProtocol,
+  ViaReadProtocolError,
+  readViaKeymap,
+  readViaMacros,
+  type ViaKeymap,
+  type ViaMacros,
+} from "./viaReadProtocol";
 
 const REPORT_ID = 0;
 const REPORT_LENGTH = 32;
 const DEFAULT_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 10_000;
-const MAX_RGB_COLOR_BATCH_SIZE = 9;
+
+// VIA RGB-matrix custom channel and value ids (`quantum/via.h`), the only
+// lighting surface this firmware exposes. The Keychron `0xa8` "RGB state"
+// protocol does not exist in the V5 Max firmware: every `0xa8` frame is
+// answered with VIA `id_unhandled` (0xff), so lighting must be read through the
+// standard VIA custom-value channel.
+const RGB_MATRIX_CHANNEL = 3;
+const RGB_MATRIX_BRIGHTNESS = 1;
+const RGB_MATRIX_EFFECT = 2;
+const RGB_MATRIX_EFFECT_SPEED = 3;
+const RGB_MATRIX_COLOR = 4;
 
 const KEYCHRON_READ_COMMANDS = new Set(Object.values(readOnlyCommands.keychronReadCommands));
-const KEYCHRON_RGB_READ_OPERATIONS = new Set(Object.values(readOnlyCommands.keychronRgbReadOperations));
 const pendingVendorReads = new WeakSet<object>();
 const pendingSnapshots = new WeakSet<object>();
 
@@ -31,13 +47,17 @@ export type KeychronV5MaxCapabilities = {
   featureBitmap: readonly [number, number];
 };
 
+/**
+ * Standard VIA RGB-matrix state (channel 3). `effect` is the firmware's RGB
+ * matrix mode id; `hue`/`saturation` are the global colour, brightness and
+ * effect speed are 0–255. There is no per-LED colour map over VIA.
+ */
 export type KeychronV5MaxLighting = {
-  rgbProtocol: readonly [number, number];
-  indicators: readonly number[];
-  ledCount: number;
-  ledIndices: readonly { led: number; matrix: { row: number; column: number } }[];
-  effects: readonly { led: number; effect: number }[];
-  colors: readonly { led: number; hue: number; saturation: number; value: number }[];
+  brightness: number;
+  effect: number;
+  effectSpeed: number;
+  hue: number;
+  saturation: number;
 };
 
 export type KeychronV5MaxReadSnapshot = {
@@ -60,7 +80,6 @@ export class KeychronV5MaxReaderError extends Error {
     readonly code:
       | "identity"
       | "command-not-allowed"
-      | "rgb-operation-not-allowed"
       | "invalid-request"
       | "invalid-timeout"
       | "concurrent-read"
@@ -183,89 +202,31 @@ async function readKeymap(
   }
 }
 
+/**
+ * Reads the V5 Max lighting over the standard VIA RGB-matrix channel. The
+ * Keychron vendor `0xa8` RGB protocol is not implemented by this firmware
+ * (it answers `id_unhandled`), so a vendor read can never succeed.
+ */
 async function readLighting(
   device: KeychronV5MaxReaderDevice,
   timeoutMs: number,
 ): Promise<ValueState<KeychronV5MaxLighting>> {
   try {
-    const rgbProtocol = await readRgbProtocol(device, timeoutMs);
-    const indicators = await readRgbIndicators(device, timeoutMs);
-    const ledCount = await readLedCount(device, timeoutMs);
-    const ledIndices = [] as { led: number; matrix: { row: number; column: number } }[];
-    const effects = [] as { led: number; effect: number }[];
-    for (let led = 0; led < ledCount; led += 1) {
-      ledIndices.push(await readLedIndex(device, led, timeoutMs));
-      effects.push(await readLedEffect(device, led, timeoutMs));
-    }
-    const colors = await readLedColors(device, ledCount, timeoutMs);
-    return available({ rgbProtocol, indicators, ledCount, ledIndices, effects, colors });
+    const protocol = new ViaReadProtocol(device, { timeoutMs });
+    const brightness = await protocol.getCustomValue({ channel: RGB_MATRIX_CHANNEL, valueId: RGB_MATRIX_BRIGHTNESS });
+    const effect = await protocol.getCustomValue({ channel: RGB_MATRIX_CHANNEL, valueId: RGB_MATRIX_EFFECT });
+    const effectSpeed = await protocol.getCustomValue({ channel: RGB_MATRIX_CHANNEL, valueId: RGB_MATRIX_EFFECT_SPEED });
+    const color = await protocol.getCustomValue({ channel: RGB_MATRIX_CHANNEL, valueId: RGB_MATRIX_COLOR });
+    return available({
+      brightness: brightness.bytes[0]!,
+      effect: effect.bytes[0]!,
+      effectSpeed: effectSpeed.bytes[0]!,
+      hue: color.bytes[0]!,
+      saturation: color.bytes[1]!,
+    });
   } catch (error) {
-    return unavailable(readFailureReason("RGB state", error));
+    return unavailable(readFailureReason("Lighting", error));
   }
-}
-
-async function readRgbProtocol(
-  device: KeychronV5MaxReaderDevice,
-  timeoutMs: number,
-): Promise<[number, number]> {
-  const response = await requestKeychronV5MaxRead(device, 0xa8, [0x01], { timeoutMs });
-  return [response[2]!, response[3]!];
-}
-
-async function readRgbIndicators(
-  device: KeychronV5MaxReaderDevice,
-  timeoutMs: number,
-): Promise<number[]> {
-  const response = await requestKeychronV5MaxRead(device, 0xa8, [0x03], { timeoutMs });
-  return Array.from(response.slice(2, 3));
-}
-
-async function readLedCount(device: KeychronV5MaxReaderDevice, timeoutMs: number): Promise<number> {
-  const response = await requestKeychronV5MaxRead(device, 0xa8, [0x05], { timeoutMs });
-  return response[2]!;
-}
-
-async function readLedIndex(
-  device: KeychronV5MaxReaderDevice,
-  led: number,
-  timeoutMs: number,
-): Promise<{ led: number; matrix: { row: number; column: number } }> {
-  const response = await requestKeychronV5MaxRead(device, 0xa8, [0x06, led], { timeoutMs });
-  return { led: response[2]!, matrix: { row: response[3]!, column: response[4]! } };
-}
-
-async function readLedEffect(
-  device: KeychronV5MaxReaderDevice,
-  led: number,
-  timeoutMs: number,
-): Promise<{ led: number; effect: number }> {
-  const response = await requestKeychronV5MaxRead(device, 0xa8, [0x07, led], { timeoutMs });
-  return { led: response[2]!, effect: response[3]! };
-}
-
-async function readLedColors(
-  device: KeychronV5MaxReaderDevice,
-  ledCount: number,
-  timeoutMs: number,
-): Promise<{ led: number; hue: number; saturation: number; value: number }[]> {
-  const colors: { led: number; hue: number; saturation: number; value: number }[] = [];
-  for (let start = 0; start < ledCount; start += MAX_RGB_COLOR_BATCH_SIZE) {
-    const count = Math.min(MAX_RGB_COLOR_BATCH_SIZE, ledCount - start);
-    const response = await requestKeychronV5MaxRead(device, 0xa8, [0x09, start, count], { timeoutMs });
-    if (response[3] !== count) {
-      throw new KeychronV5MaxReaderError("invalid-response");
-    }
-    for (let offset = 0; offset < count; offset += 1) {
-      const byteOffset = 4 + offset * 3;
-      colors.push({
-        led: start + offset,
-        hue: response[byteOffset]!,
-        saturation: response[byteOffset + 1]!,
-        value: response[byteOffset + 2]!,
-      });
-    }
-  }
-  return colors;
 }
 
 async function readMacros(
@@ -283,22 +244,8 @@ function validateReadRequest(command: number, payload: readonly number[]): void 
   if (!KEYCHRON_READ_COMMANDS.has(command)) {
     throw new KeychronV5MaxReaderError("command-not-allowed");
   }
-  if (!isByte(command) || !payload.every(isByte)) {
-    throw new KeychronV5MaxReaderError("invalid-request");
-  }
-  if (command !== 0xa8) {
-    if (payload.length !== 0) throw new KeychronV5MaxReaderError("invalid-request");
-    return;
-  }
-  const operation = payload[0];
-  if (!KEYCHRON_RGB_READ_OPERATIONS.has(operation ?? -1)) {
-    throw new KeychronV5MaxReaderError("rgb-operation-not-allowed");
-  }
-  const validPayload =
-    ([0x01, 0x03, 0x05].includes(operation!) && payload.length === 1) ||
-    ([0x06, 0x07].includes(operation!) && payload.length === 2) ||
-    (operation === 0x09 && payload.length === 3 && payload[2]! > 0 && payload[2]! <= MAX_RGB_COLOR_BATCH_SIZE);
-  if (!validPayload) {
+  // The Keychron identity/capability commands are parameterless.
+  if (!isByte(command) || payload.length !== 0 || !payload.every(isByte)) {
     throw new KeychronV5MaxReaderError("invalid-request");
   }
 }
@@ -323,12 +270,9 @@ function requestVendorResponse(
   );
 }
 
-function matchesRequest(response: Uint8Array, command: number, payload: readonly number[]): boolean {
-  if (response[0] !== command) return false;
-  if (command !== 0xa8) return true;
-  if (response[1] !== payload[0]) return false;
-  if ((payload[0] === 0x06 || payload[0] === 0x07) && response[2] !== payload[1]) return false;
-  return payload[0] !== 0x09 || (response[2] === payload[1] && response[3] === payload[2]);
+function matchesRequest(response: Uint8Array, command: number, _payload: readonly number[]): boolean {
+  // Keychron identity/capability frames echo the command byte.
+  return response[0] === command;
 }
 
 function decodeFirmwareVersion(response: Uint8Array): string | undefined {
@@ -354,7 +298,11 @@ function isByte(value: number): boolean {
 }
 
 function readFailureReason(area: string, error: unknown): string {
-  return error instanceof KeychronV5MaxReaderError
-    ? `${area} read failed: ${error.code}.`
-    : `${area} read failed: unverified transport error.`;
+  const code =
+    error instanceof KeychronV5MaxReaderError
+      ? error.code
+      : error instanceof ViaReadProtocolError
+        ? error.code
+        : undefined;
+  return code ? `${area} read failed: ${code}.` : `${area} read failed: unverified transport error.`;
 }

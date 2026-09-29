@@ -305,9 +305,12 @@ export function editorWorkflow(
   protocolAction?.addEventListener("click", actions.verifyKeychronV5MaxProtocol);
 
   const actionGroup = element("div", { className: "workflow-actions", attrs: { "aria-label": "Editor actions" } }, [
-    download,
-    connect,
-    ...(protocolAction ? [protocolAction] : []),
+    element("p", { className: "workflow-label", text: "Project actions" }),
+    element("div", { className: "workflow-buttons" }, [
+      download,
+      connect,
+      ...(protocolAction ? [protocolAction] : []),
+    ]),
   ]);
   const notices = element("div", { className: "workflow-notices" }, [
     ...(invalid

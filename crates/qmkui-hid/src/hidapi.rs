@@ -20,14 +20,35 @@ impl HidApiTransport {
         Self::open_with_timeout(vendor_id, product_id, Duration::from_millis(1_000))
     }
 
+    /// Opens the VIA raw-HID interface (usage page `0xFF60`, usage `0x0061`)
+    /// for the given VID/PID. A keyboard exposes several HID interfaces under
+    /// the same IDs; opening the first one (a keyboard/consumer interface)
+    /// silently swallows vendor reports, so the interface must be selected by
+    /// usage.
     pub fn open_with_timeout(
         vendor_id: u16,
         product_id: u16,
         timeout: Duration,
     ) -> Result<Self, HidError> {
+        const VIA_USAGE_PAGE: u16 = 0xff60;
+        const VIA_USAGE: u16 = 0x0061;
+
         let api = HidApi::new().map_err(|error| HidError::Transport(error.to_string()))?;
+        let info = api
+            .device_list()
+            .find(|info| {
+                info.vendor_id() == vendor_id
+                    && info.product_id() == product_id
+                    && info.usage_page() == VIA_USAGE_PAGE
+                    && info.usage() == VIA_USAGE
+            })
+            .ok_or_else(|| {
+                HidError::Transport(format!(
+                    "no VIA raw-HID interface (usage page 0x{VIA_USAGE_PAGE:04x}) for {vendor_id:04x}:{product_id:04x}"
+                ))
+            })?;
         let device = api
-            .open(vendor_id, product_id)
+            .open_path(info.path())
             .map_err(|error| HidError::Transport(error.to_string()))?;
         device
             .set_blocking_mode(false)
@@ -70,12 +91,13 @@ impl HidTransport for HidApiTransport {
 }
 
 fn matches_response(response: &[u8], command: u8, payload: &[u8]) -> bool {
+    // Standard VIA and Keychron identity/capability frames echo the command
+    // byte. Custom-get-value frames additionally echo channel and value id.
     if response[0] != command {
         return false;
     }
-    // Keychron RGB commands echo their operation byte.
-    if command == 0xa8 {
-        return payload.first() == Some(&response[1]);
+    if command == 0x08 {
+        return payload.first() == response.get(1) && payload.get(1) == response.get(2);
     }
     true
 }

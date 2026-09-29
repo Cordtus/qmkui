@@ -16,14 +16,10 @@ describe("read-only command allow-list", () => {
   });
 
   it("contains the Keychron V5 Max read commands", () => {
+    // No 0xa8: the V5 Max firmware answers it with VIA id_unhandled. Lighting
+    // is read through the standard VIA RGB-matrix channel (0x08, channel 3).
     expect(Object.values(readOnlyCommands.keychronReadCommands).sort((a, b) => a - b)).toEqual([
-      0xa0, 0xa1, 0xa2, 0xa3, 0xa8,
-    ]);
-  });
-
-  it("contains the Keychron RGB read operations", () => {
-    expect(Object.values(readOnlyCommands.keychronRgbReadOperations).sort((a, b) => a - b)).toEqual([
-      0x01, 0x03, 0x05, 0x06, 0x07, 0x09,
+      0xa0, 0xa1, 0xa2, 0xa3,
     ]);
   });
 

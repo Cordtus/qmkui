@@ -38,18 +38,31 @@ describe("protocol fixture corpus conformance", () => {
     expect(custom.verification).toBe("verified");
   });
 
-  it("keeps every Keychron vector on a documented read command", () => {
+  it("keeps every fixture vector on a documented read command", () => {
     const keychronRead = new Set(Object.values(readOnlyCommands.keychronReadCommands));
     const viaRead = new Set(Object.values(readOnlyCommands.viaReadCommands));
-    const rgbOps = new Set(Object.values(readOnlyCommands.keychronRgbReadOperations));
-    for (const vector of [...v5Identity, ...v5Lighting]) {
+    for (const vector of v5Identity) {
       expect(keychronRead.has(vector.request[0])).toBe(true);
-      if (vector.request[0] === 0xa8) {
-        expect(rgbOps.has(vector.request[1])).toBe(true);
-      }
     }
     for (const vector of v5Keymap) {
       expect(viaRead.has(vector.request[0])).toBe(true);
+    }
+    // V5 lighting is standard VIA custom-get-value on the RGB-matrix channel.
+    for (const vector of v5Lighting) {
+      expect(viaRead.has(vector.request[0])).toBe(true);
+      expect(vector.request[1]).toBe(0x03);
+    }
+  });
+
+  it("replays the V5 lighting vectors through ViaReadProtocol.getCustomValue", async () => {
+    for (const vector of v5Lighting) {
+      const value = await new ViaReadProtocol(
+        transportFor(vector.request, vector.response),
+      ).getCustomValue({ channel: 3, valueId: vector.request[2] as 1 | 2 | 3 | 4 });
+      const width = vector.name === "rgbMatrixColor" ? 2 : 1;
+      expect(Array.from(value.bytes.slice(0, width))).toEqual(
+        Array.from(vector.response.slice(3, 3 + width)),
+      );
     }
   });
 
@@ -59,10 +72,7 @@ describe("protocol fixture corpus conformance", () => {
     const capabilities = identity.capabilities!;
     const defaultLayer = identity.defaultLayer!;
     const keycode = v5Keymap[0]!;
-    const rgbProtocol = v5Lighting[0]!;
-    const ledCount = v5Lighting[1]!;
-    const ledIndex = v5Lighting[2]!;
-    const colors = v5Lighting[3]!;
+    const [brightness, effect, effectSpeed, color] = v5Lighting;
 
     expect(protocol.decoded.protocolVersion).toEqual([
       protocol.response[1],
@@ -72,10 +82,11 @@ describe("protocol fixture corpus conformance", () => {
     expect(capabilities.decoded.featureBitmap).toEqual([capabilities.response[1], capabilities.response[2]]);
     expect(defaultLayer.decoded.defaultLayer).toBe(defaultLayer.response[1]);
     expect(keycode.decoded.keycode).toBe((keycode.response[4]! << 8) | keycode.response[5]!);
-    expect(rgbProtocol.decoded.rgbProtocol).toEqual([rgbProtocol.response[2], rgbProtocol.response[3]]);
-    expect(ledCount.decoded.ledCount).toBe(ledCount.response[2]);
-    expect(ledIndex.decoded.matrix).toEqual({ row: ledIndex.response[3], column: ledIndex.response[4] });
-    expect(colors.decoded.colors).toHaveLength(colors.response[3]);
+    expect(brightness!.decoded.brightness).toBe(brightness!.response[3]);
+    expect(effect!.decoded.effect).toBe(effect!.response[3]);
+    expect(effectSpeed!.decoded.effectSpeed).toBe(effectSpeed!.response[3]);
+    expect(color!.decoded.hue).toBe(color!.response[3]);
+    expect(color!.decoded.saturation).toBe(color!.response[4]);
   });
 });
 

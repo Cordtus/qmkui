@@ -20,6 +20,13 @@ const KEYBOARD_VALUE_LAYOUT_OPTIONS: u8 = 0x02;
 const KEYBOARD_VALUE_FIRMWARE_VERSION: u8 = 0x04;
 const KEYBOARD_VALUE_KEYCODES_VERSION: u8 = 0x06;
 
+// Standard VIA RGB-matrix custom channel and value ids (`quantum/via.h`).
+const RGB_MATRIX_CHANNEL: u8 = 3;
+const RGB_MATRIX_BRIGHTNESS: u8 = 1;
+const RGB_MATRIX_EFFECT: u8 = 2;
+const RGB_MATRIX_EFFECT_SPEED: u8 = 3;
+const RGB_MATRIX_COLOR: u8 = 4;
+
 const MAX_MACRO_BUFFER_CHUNK: u8 = 28;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -63,6 +70,19 @@ pub struct ViaMacros {
     pub macros: Vec<Vec<ViaMacroStep>>,
 }
 
+/// Standard VIA RGB-matrix state (channel 3). `effect` is the firmware's RGB
+/// matrix mode id; `hue`/`saturation` are the global colour; brightness and
+/// effect speed are 0–255. VIA exposes no per-LED colour map.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViaRgbMatrixState {
+    pub brightness: u8,
+    pub effect: u8,
+    pub effect_speed: u8,
+    pub hue: u8,
+    pub saturation: u8,
+}
+
 /// A bounded, read-only VIA adapter with no path for set, save, reset,
 /// bootloader, or firmware commands.
 pub struct ViaReadProtocol<T: HidTransport> {
@@ -104,6 +124,23 @@ impl<T: HidTransport> ViaReadProtocol<T> {
     pub fn get_custom_value(&mut self, channel: u8, value_id: u8) -> Result<Vec<u8>, HidError> {
         let response = self.read(CUSTOM_GET_VALUE, &[channel, value_id])?;
         Ok(response[3..].to_vec())
+    }
+
+    /// Reads the global VIA RGB-matrix state (channel 3). Mirrors the
+    /// TypeScript `readLighting` for the V5 Max: value id 4 is a hue/saturation
+    /// pair in one response.
+    pub fn read_rgb_matrix_state(&mut self) -> Result<ViaRgbMatrixState, HidError> {
+        let brightness = self.get_custom_value(RGB_MATRIX_CHANNEL, RGB_MATRIX_BRIGHTNESS)?;
+        let effect = self.get_custom_value(RGB_MATRIX_CHANNEL, RGB_MATRIX_EFFECT)?;
+        let effect_speed = self.get_custom_value(RGB_MATRIX_CHANNEL, RGB_MATRIX_EFFECT_SPEED)?;
+        let color = self.get_custom_value(RGB_MATRIX_CHANNEL, RGB_MATRIX_COLOR)?;
+        Ok(ViaRgbMatrixState {
+            brightness: brightness[0],
+            effect: effect[0],
+            effect_speed: effect_speed[0],
+            hue: color[0],
+            saturation: color[1],
+        })
     }
 
     pub fn get_uptime(&mut self) -> Result<u32, HidError> {

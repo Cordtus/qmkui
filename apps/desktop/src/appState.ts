@@ -11,6 +11,7 @@ import {
   createCommandHistory,
   type Command,
   type CommandHistory,
+  type LightingProfileState,
 } from "./commands";
 import { BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
 import { chooseNativeKeyboard, discoverNativeKeyboard, enableNativeDeviceWrites, isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
@@ -83,6 +84,8 @@ export type EditorState = {
   snapshotReadStatus: "idle" | "reading" | "failed";
   deviceWriteEnabled: boolean;
   projectStatus: string;
+  /** Write-gate/result message, surfaced next to the write controls. */
+  deviceWriteStatus: string;
   projectJsonDraft: string;
   selectedSavedProjectId: string;
   testEvents: HostKeyCapture[];
@@ -176,6 +179,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     snapshotReadStatus: "idle",
     deviceWriteEnabled: false,
     projectStatus: "Project is not saved in this preview session.",
+    deviceWriteStatus: "",
     projectJsonDraft: JSON.stringify(currentProject, null, 2),
     selectedSavedProjectId: projectStorage.list()[0]?.id ?? "",
     testEvents: [],
@@ -433,6 +437,8 @@ export function createActions(
           },
           enableDeviceWrites: (confirmed) => {
             if (!confirmed) {
+              noteWriteStatus(state, "Confirm the checkbox, then enable device writes.");
+              actions.render();
               return;
             }
             state.deviceWriteEnabled = true;
@@ -441,23 +447,23 @@ export function createActions(
                 state.deviceWriteEnabled = false;
               });
             }
-            state.projectStatus = "Device writes enabled; use caution.";
+            noteWriteStatus(state, "Device writes enabled; use caution.");
             actions.render();
           },
           writeSnapshotKeycode: (keycode, confirmed) => {
             if (!confirmed || !state.deviceWriteEnabled) {
-              state.projectStatus = "Confirm the write and enable device writes first.";
+              noteWriteStatus(state, "Confirm the write and enable device writes first.");
               actions.render();
               return;
             }
             if (!isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
-              state.projectStatus = "No device keymap snapshot to write to.";
+              noteWriteStatus(state, "No device keymap snapshot to write to.");
               actions.render();
               return;
             }
             const session = currentWriteSession(state);
             if (!session) {
-              state.projectStatus = "The connected device does not support writes.";
+              noteWriteStatus(state, "The connected device does not support writes.");
               actions.render();
               return;
             }
@@ -465,59 +471,62 @@ export function createActions(
             const row = Number(rowText);
             const col = Number(colText);
             if (!Number.isInteger(row) || !Number.isInteger(col)) {
-              state.projectStatus = "Select a key on the device keymap first.";
+              noteWriteStatus(state, "Select a key on the device keymap first.");
               actions.render();
               return;
             }
             session
               .writeKeycode(state.snapshotLayerIndex, row, col, keycode)
               .then(() => {
-                state.projectStatus = `Wrote keycode 0x${keycode.toString(16).padStart(4, "0")} to layer ${state.snapshotLayerIndex} position ${row}:${col}.`;
+                noteWriteStatus(
+                  state,
+                  `Wrote keycode 0x${keycode.toString(16).padStart(4, "0")} to layer ${state.snapshotLayerIndex} position ${row}:${col}.`,
+                );
                 actions.render();
               })
               .catch(() => {
-                state.projectStatus = "Device write failed.";
+                noteWriteStatus(state, "Device write failed.");
                 actions.render();
               });
           },
           saveEepromToDevice: (confirmed) => {
             if (!confirmed || !state.deviceWriteEnabled) {
-              state.projectStatus = "Confirm the EEPROM save and enable device writes first.";
+              noteWriteStatus(state, "Confirm the EEPROM save and enable device writes first.");
               actions.render();
               return;
             }
             const session = currentWriteSession(state);
             if (!session) {
-              state.projectStatus = "The connected device does not support writes.";
+              noteWriteStatus(state, "The connected device does not support writes.");
               actions.render();
               return;
             }
             session
               .saveEeprom()
               .then(() => {
-                state.projectStatus = "Keymap saved to device EEPROM.";
+                noteWriteStatus(state, "Keymap saved to device EEPROM.");
                 actions.render();
               })
               .catch(() => {
-                state.projectStatus = "EEPROM save failed.";
+                noteWriteStatus(state, "EEPROM save failed.");
                 actions.render();
               });
           },
           writeKeymapToDevice: (confirmed) => {
             if (!confirmed || !state.deviceWriteEnabled) {
-              state.projectStatus = "Confirm the keymap write and enable device writes first.";
+              noteWriteStatus(state, "Confirm the keymap write and enable device writes first.");
               actions.render();
               return;
             }
             const session = currentWriteSession(state);
             if (!session) {
-              state.projectStatus = "The connected device does not support writes.";
+              noteWriteStatus(state, "The connected device does not support writes.");
               actions.render();
               return;
             }
             const writes = projectKeymapWrites(state);
             if (writes.entries.length === 0) {
-              state.projectStatus = "No writable keycodes in the project keymap.";
+              noteWriteStatus(state, "No writable keycodes in the project keymap.");
               actions.render();
               return;
             }
@@ -533,13 +542,15 @@ export function createActions(
             runNext()
               .then(() => {
                 const skipped = writes.skipped.length;
-                state.projectStatus =
+                noteWriteStatus(
+                  state,
                   `Wrote ${writes.entries.length} keycodes to the device` +
-                  (skipped > 0 ? `; ${skipped} unmappable keycodes were skipped.` : ".");
+                    (skipped > 0 ? `; ${skipped} unmappable keycodes were skipped.` : "."),
+                );
                 actions.render();
               })
               .catch(() => {
-                state.projectStatus = `Keymap write failed at entry ${index} of ${writes.entries.length}.`;
+                noteWriteStatus(state, `Keymap write failed at entry ${index} of ${writes.entries.length}.`);
                 actions.render();
               });
           },
@@ -800,11 +811,25 @@ export function createActions(
             actions.render();
           },
           updateLightingMode: (mode) => {
+            const before = lightingProfileState(state.project);
             activeLightingProfile(state.project).mode = mode;
+            state.commandHistory.push({
+              kind: "set-lighting-profile",
+              field: "mode",
+              before,
+              after: lightingProfileState(state.project),
+            });
             actions.render();
           },
           updateLightingGlobal: (key, value) => {
+            const before = lightingProfileState(state.project);
             updateLightingGlobal(state.project, key, value);
+            state.commandHistory.push({
+              kind: "set-lighting-profile",
+              field: `global:${key}`,
+              before,
+              after: lightingProfileState(state.project),
+            });
             actions.render();
           },
           addLayer: () => {
@@ -1259,6 +1284,21 @@ export function activeLightingProfile(currentProject: Project): LightingProfile 
   return currentProject.lightingProfiles[0];
 }
 
+/**
+ * Record a write-gate or write-result message. It goes to the shared project
+ * status (Project details drawer) and to `deviceWriteStatus`, which renders
+ * next to the write controls so a refused write is not silently invisible.
+ */
+function noteWriteStatus(state: EditorState, message: string): void {
+  state.projectStatus = message;
+  state.deviceWriteStatus = message;
+}
+
+export function lightingProfileState(currentProject: Project): LightingProfileState {
+  const profile = activeLightingProfile(currentProject);
+  return { mode: profile.mode, global: structuredClone(profile.global ?? {}) };
+}
+
 export function updateAssignment(state: EditorState, qmk: string): void {
   setAssignmentQmk(state.project, state.selectedLayerIndex, state.selectedKeyId, qmk);
 }
@@ -1303,6 +1343,13 @@ function applyCommand(state: EditorState, command: Command, direction: "forward"
         direction === "forward" ? command.after : command.before,
       );
       break;
+    case "set-lighting-profile": {
+      const profile = activeLightingProfile(state.project);
+      const snapshot = direction === "forward" ? command.after : command.before;
+      profile.mode = snapshot.mode;
+      profile.global = structuredClone(snapshot.global);
+      break;
+    }
     case "layers":
       state.project.layers = structuredClone(
         direction === "forward" ? command.after : command.before,

@@ -29,18 +29,16 @@ fn response_bytes(entry: &Value) -> Vec<u8> {
         .collect()
 }
 
-/// Serves fixture responses keyed by command (and by RGB operation for `0xa8`),
-/// so multi-command readers like `read_identity` receive the correct response
-/// for each request.
+/// Serves fixture responses keyed by the full request frame, so multi-command
+/// readers (and the four `0x08` custom-get-value channel-3 lighting vectors)
+/// receive the correct response for each request.
 struct VectorTransport {
-    by_command: BTreeMap<u8, Vec<u8>>,
-    by_rgb_op: BTreeMap<u8, Vec<u8>>,
+    by_request: BTreeMap<Vec<u8>, Vec<u8>>,
 }
 
 impl VectorTransport {
     fn from_vectors(file: &str) -> Self {
-        let mut by_command = BTreeMap::new();
-        let mut by_rgb_op = BTreeMap::new();
+        let mut by_request = BTreeMap::new();
         for entry in read_vectors(file) {
             let request: Vec<u8> = entry["request"]
                 .as_array()
@@ -48,33 +46,21 @@ impl VectorTransport {
                 .iter()
                 .map(|value| value.as_u64().expect("byte") as u8)
                 .collect();
-            let response = response_bytes(&entry);
-            if request[0] == 0xa8 {
-                by_rgb_op.insert(request[1], response);
-            } else {
-                by_command.insert(request[0], response);
-            }
+            by_request.insert(request, response_bytes(&entry));
         }
-        Self {
-            by_command,
-            by_rgb_op,
-        }
+        Self { by_request }
     }
 }
 
 impl HidTransport for VectorTransport {
     fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        if command == 0xa8 {
-            self.by_rgb_op
-                .get(&payload[0])
-                .cloned()
-                .ok_or(HidError::ResponseMismatch)
-        } else {
-            self.by_command
-                .get(&command)
-                .cloned()
-                .ok_or(HidError::ResponseMismatch)
-        }
+        let mut request = vec![0u8; 32];
+        request[0] = command;
+        request[1..1 + payload.len()].copy_from_slice(payload);
+        self.by_request
+            .get(&request)
+            .cloned()
+            .ok_or(HidError::ResponseMismatch)
     }
 }
 
@@ -113,17 +99,20 @@ fn replays_v5_keymap_vector() {
 
 #[test]
 fn replays_v5_lighting_vectors() {
+    // V5 lighting is standard VIA RGB-matrix channel 3, not the Keychron 0xa8
+    // protocol (which the firmware answers with id_unhandled).
     let transport = VectorTransport::from_vectors("v5-lighting.json");
-    let mut reader = KeychronV5Reader::new(transport);
-    assert_eq!(reader.rgb_protocol().expect("rgb protocol"), [1, 0]);
-    assert_eq!(reader.led_count().expect("led count"), 84);
-    let index = reader.led_index(0).expect("led index");
-    assert_eq!((index.row, index.column), (0, 1));
-    let colors = reader.led_colors(0, 3).expect("led colors");
-    assert_eq!(colors.len(), 3);
+    let mut via = ViaReadProtocol::new(transport);
+    let state = via.read_rgb_matrix_state().expect("rgb matrix state");
     assert_eq!(
-        (colors[0].hue, colors[0].saturation, colors[0].value),
-        (12, 34, 56)
+        state,
+        qmkui_hid::via::ViaRgbMatrixState {
+            brightness: 255,
+            effect: 1,
+            effect_speed: 127,
+            hue: 113,
+            saturation: 221,
+        }
     );
 }
 
