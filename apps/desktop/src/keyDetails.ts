@@ -47,6 +47,8 @@ export type KeyLightingDetail = {
   profileName: string;
   mode: LightingProfile["mode"];
   color: string;
+  /** Profile-level RGB Matrix brightness, 0–255. */
+  brightness: number;
   hasPerKeyColor: boolean;
   conditions: Array<{
     id: string;
@@ -285,10 +287,12 @@ function uniqueRelations(relations: KeyRelation[]): KeyRelation[] {
 
 export function lightingForKey(profile: LightingProfile, visualKeyId: string): KeyLightingDetail {
   const color = profile.perKey[visualKeyId] ?? "#5fb99a";
+  const brightness = Number(profile.global?.brightness ?? 180);
   return {
     profileName: profile.name,
     mode: profile.mode,
     color,
+    brightness: Number.isFinite(brightness) ? Math.max(0, Math.min(255, brightness)) : 180,
     hasPerKeyColor: Object.hasOwn(profile.perKey, visualKeyId),
     conditions:
       profile.conditions

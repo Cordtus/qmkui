@@ -79,7 +79,7 @@ export function workspaceControls(
     settingsGroup("layers", "Layers", [
       layerStrip(state, actions),
     ]),
-    settingsGroup("selection", "Selection", [
+    settingsGroup("editing", "Editing", [
       combinedWorkspacePanel(state, layout, actions),
     ]),
   ]);
@@ -703,13 +703,17 @@ export function keyboardKey({
     lighting.mode === "off" ? "lighting off" : `${lighting.mode} lighting active`,
     effectSummary ? `effects: ${effectSummary}` : "no effects",
   ].join("; ");
+  // Mirror the profile's actual lighting state: the key tint carries the
+  // configured color scaled by RGB Matrix brightness, and a key only reads as
+  // lit when the mode is on and brightness is above zero.
+  const lit = lighting.mode !== "off" && lighting.brightness > 0;
   const keyButton = element("qmk-key", {
     className: `key ${selected ? "selected" : ""}`,
     attrs: {
       "aria-label": `${keyAriaLabel(selectedLayer, key, assignment)}. ${lightingSummary}.`,
       "aria-pressed": String(selected),
       "data-key": key.id,
-      "data-lighting-active": String(lighting.mode !== "off"),
+      "data-lighting-active": String(lit),
       "data-lighting-color": lighting.color,
       "data-lighting-effects": effectSummary,
       "data-lighting-mode": lighting.mode,
@@ -722,7 +726,7 @@ export function keyboardKey({
   keyButton.style.top = `${(key.y / bounds.height) * 100}%`;
   keyButton.style.width = `calc(${((key.w ?? 1) / bounds.width) * 100}% - var(--key-gap))`;
   keyButton.style.height = `calc(${((key.h ?? 1) / bounds.height) * 100}% - var(--key-gap))`;
-  keyButton.style.setProperty("--key-light", lighting.color);
+  keyButton.style.setProperty("--key-light", dimHex(lighting.color, lighting.brightness / 255));
   const label = keycapLabel(assignment, { compact: true });
   keyButton.style.setProperty("--key-label-size", keyLabelSize(label, key));
   keyButton.append(element("strong", { text: label }));
@@ -747,6 +751,26 @@ export function keyboardKey({
     keyButton.click();
   });
   return keyButton;
+}
+
+/**
+ * Scale a hex color toward the board's dark base by `factor` (0 = base, 1 =
+ * unchanged), so the keymap mirrors the profile's brightness.
+ */
+export function dimHex(hex: string, factor: number): string {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) {
+    return hex;
+  }
+  const clamped = Math.max(0, Math.min(1, factor));
+  const value = Number.parseInt(match[1], 16);
+  const base = 0x182631;
+  const channel = (shift: number) => {
+    const source = (value >> shift) & 0xff;
+    const target = (base >> shift) & 0xff;
+    return Math.round(target + (source - target) * clamped);
+  };
+  return `#${((channel(16) << 16) | (channel(8) << 8) | channel(0)).toString(16).padStart(6, "0")}`;
 }
 
 export function keyLabelSize(label: string, key: VisualKey): string {

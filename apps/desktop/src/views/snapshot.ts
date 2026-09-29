@@ -141,6 +141,15 @@ export function deviceWriteControls(
       ...options.controls(confirmed),
       save,
     ]),
+    ...(state.deviceWriteStatus
+      ? [
+          element("p", {
+            className: "device-write-status",
+            text: state.deviceWriteStatus,
+            attrs: { "data-write-status": "true" },
+          }),
+        ]
+      : []),
   ]);
 }
 

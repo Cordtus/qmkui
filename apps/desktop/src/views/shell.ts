@@ -230,7 +230,24 @@ export function editor(
   }, [
     editorWorkflow(state, issues, actions),
     keyboardWorkspace(state, layout, actions),
+    editorDeviceWrite(state, actions),
   ]);
+}
+
+function editorDeviceWrite(state: EditorState, actions: RenderActions): HTMLElement {
+  return deviceWriteControls(state, actions, {
+    description: `Writes the project keymap (${state.project.layers.length} layers) to the connected device.`,
+    controls: (confirmed) => {
+      const writeKeymap = uiButton({
+        className: "secondary-action",
+        type: "button",
+        text: "Write keymap to device",
+        attrs: { "data-write-keymap": "true" },
+      });
+      writeKeymap.addEventListener("click", () => actions.writeKeymapToDevice(confirmed()));
+      return [writeKeymap];
+    },
+  });
 }
 
 export function editorWorkflow(

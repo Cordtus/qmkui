@@ -481,6 +481,49 @@ function deferred<Value>() {
     expect(root.textContent).toContain("VIA definition exported for keychron/v5_max/ansi_encoder");
   });
 
+  it("undoes a lighting mode change", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-context-tab="lighting"]')?.click();
+    await flush();
+
+    const activeMode = () =>
+      root
+        .querySelector('[data-lighting-mode][aria-pressed="true"]')
+        ?.getAttribute("data-lighting-mode");
+    expect(activeMode()).toBe("reactive");
+    root.querySelector<HTMLElement>('[data-lighting-mode="static"]')?.click();
+    await flush();
+    expect(activeMode()).toBe("static");
+    root.querySelector<HTMLElement>("[data-editor-undo]")?.click();
+    await flush();
+    expect(activeMode()).toBe("reactive");
+  });
+
+  it("shows a refused device write next to the write controls", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+
+    // No confirmation ticked: the refusal must be visible, not drawer-only.
+    root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
+    await flush();
+    expect(root.querySelector("[data-write-status]")?.textContent).toContain(
+      "enable device writes first",
+    );
+  });
+
   it("writes a keycode to the device and saves EEPROM behind confirmation", async () => {
     const root = document.createElement("div");
     const writeKeycode = vi.fn(async () => {});

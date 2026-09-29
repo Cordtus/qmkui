@@ -610,22 +610,46 @@ h3 {
   display: flex;
   align-items: stretch;
   min-width: 0;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.workflow-actions > wa-button {
+.workflow-label {
+  align-self: center;
+  padding-left: 14px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 760;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.workflow-buttons {
+  display: flex;
+  align-items: stretch;
+}
+
+.workflow-buttons > wa-button {
   border: 0;
-  border-right: 1px solid var(--border-muted);
+  border-left: 1px solid var(--border-muted);
 }
 
-.workflow-actions > wa-button:last-child {
-  border-right: 0;
+.workflow-buttons > wa-button:first-child {
+  border-left: 0;
+}
+
+.layer-tabs-block .layers {
+  margin: 0;
 }
 
 .workflow-notices {
   display: grid;
   grid-column: 1 / -1;
   gap: 4px;
+}
+
+/* Only draw the notice band when there is an actual notice to show. */
+.workflow-notices:has(small:not(:empty)) {
   border-top: 1px solid var(--border-muted);
   padding: 8px 14px;
 }
@@ -1064,8 +1088,9 @@ wa-button.keycode-option {
   border-color: #324554;
   border-radius: 6px;
   color: var(--text);
+  /* Unlit keys are neutral; only data-lighting-active keys carry the color. */
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--key-light) 21%, #243542), #182631 64%),
+    linear-gradient(180deg, #243542, #182631 64%),
     #182631;
   text-align: center;
   cursor: pointer;
@@ -1083,9 +1108,15 @@ wa-button.keycode-option {
 .key:hover {
   border-color: var(--accent);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--key-light) 34%, #2a4150), #1c2d38 64%),
+    linear-gradient(180deg, #2a4150, #1c2d38 64%),
     #1c2d38;
   transform: translateY(-1px);
+}
+
+.key[data-lighting-active="true"]:hover {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--key-light) 34%, #2a4150), #1c2d38 64%),
+    #1c2d38;
 }
 
 .key.selected {
@@ -2087,7 +2118,20 @@ wa-drawer::part(dialog) {
   display: flex;
   align-items: center;
   gap: 8px;
+  color: var(--text);
   font-size: 0.85em;
+}
+
+/* The generic `input` rule below stretches form controls to full width; a
+   confirmation checkbox must stay small and inline. */
+.write-confirm input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 16px;
+  min-width: 16px;
+  min-height: 0;
+  height: 16px;
+  padding: 0;
+  accent-color: var(--accent);
 }
 
 .device-write-actions {
@@ -2109,9 +2153,9 @@ wa-drawer::part(dialog) {
 .device-write-controls {
   display: grid;
   gap: 10px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-muted);
+  border: 1px solid var(--border-muted);
+  background: rgb(16 25 35 / 0.72);
+  padding: 14px;
 }
 
 .device-write-controls h3 {
@@ -2123,4 +2167,10 @@ wa-drawer::part(dialog) {
   margin: 0;
   font-size: 0.85em;
   color: var(--text-muted);
+}
+
+.device-write-status {
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  color: var(--text) !important;
 }

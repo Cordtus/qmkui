@@ -1,4 +1,4 @@
-import type { Layer } from "./domain";
+import type { Layer, LightingProfile } from "./domain";
 
 /**
  * Pure-data editor commands for undo/redo. Each command describes a mutation
@@ -22,13 +22,30 @@ export type SetLightingCommand = {
   after: string;
 };
 
+export type LightingProfileState = {
+  mode: LightingProfile["mode"];
+  global: Record<string, string | number | boolean>;
+};
+
+export type SetLightingProfileCommand = {
+  kind: "set-lighting-profile";
+  /** Which field changed ("mode" or "global:<key>"); used to coalesce drags. */
+  field: string;
+  before: LightingProfileState;
+  after: LightingProfileState;
+};
+
 export type LayersCommand = {
   kind: "layers";
   before: Layer[];
   after: Layer[];
 };
 
-export type Command = AssignKeycodeCommand | SetLightingCommand | LayersCommand;
+export type Command =
+  | AssignKeycodeCommand
+  | SetLightingCommand
+  | SetLightingProfileCommand
+  | LayersCommand;
 
 export type CommandHistory = {
   push(command: Command): void;
@@ -45,7 +62,26 @@ export function createCommandHistory(): CommandHistory {
 
   return {
     push(command) {
-      undoStack.push(command);
+      // Coalesce consecutive edits to the same lighting control so a colour
+      // drag or a brightness slider is one undo step, not dozens.
+      const last = undoStack[undoStack.length - 1];
+      if (
+        last &&
+        last.kind === "set-lighting" &&
+        command.kind === "set-lighting" &&
+        last.keyId === command.keyId
+      ) {
+        last.after = command.after;
+      } else if (
+        last &&
+        last.kind === "set-lighting-profile" &&
+        command.kind === "set-lighting-profile" &&
+        last.field === command.field
+      ) {
+        last.after = command.after;
+      } else {
+        undoStack.push(command);
+      }
       redoStack.length = 0;
     },
     undo() {
