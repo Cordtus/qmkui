@@ -64,27 +64,6 @@ impl ArtifactStore {
         let artifact: Artifact = serde_json::from_slice(&fs::read(path)?)?;
         Ok(Some(artifact))
     }
-
-    pub fn firmware_path(&self, id: &str) -> PathBuf {
-        self.root.join(id).join("firmware")
-    }
-
-    pub fn firmware_bytes(&self, id: &str) -> Result<Vec<u8>, BuildError> {
-        let path = self.firmware_path(id);
-        if !path.exists() {
-            return Err(BuildError::MissingArtifact(id.to_owned()));
-        }
-        Ok(fs::read(path)?)
-    }
-
-    /// An artifact is stale when its recorded project digest no longer matches
-    /// the current project's digest.
-    pub fn is_stale(&self, id: &str, current_project_digest: &str) -> Result<bool, BuildError> {
-        Ok(match self.load(id)? {
-            Some(artifact) => artifact.project_digest != current_project_digest,
-            None => false,
-        })
-    }
 }
 
 pub struct ArtifactInput {

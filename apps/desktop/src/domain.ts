@@ -145,11 +145,6 @@ export type DoctorReport = {
     commands?: CommandStatus[];
     distroId?: string;
     packageManager?: string;
-    qmkPackage?: {
-      name: string;
-      version?: string;
-      installed: boolean;
-    } | null;
     hardwareProbe: {
       status: "skipped" | "ready" | "blocked";
       reason: string;
@@ -192,7 +187,8 @@ export type UiIssue = {
   path: string;
 };
 
-const supportedSchemaVersions = new Set(["0.1.0"]);
+export const SUPPORTED_PROJECT_SCHEMA_VERSION = "0.1.0";
+const supportedSchemaVersions = new Set([SUPPORTED_PROJECT_SCHEMA_VERSION]);
 const maxQmkLayerIndex = 31;
 
 export function validateProject(project: Project, keyboard: KeyboardDefinition): UiIssue[] {

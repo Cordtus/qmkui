@@ -53,4 +53,39 @@ describe("build plan", () => {
     expect(missingQmkPlan.selectedReady).toBe(false);
     expect(missingQmkPlan.blockers).toContain("command.qmk.missing");
   });
+
+  it("forces generated C for a combo/tap-dance/encoder assignment reference", () => {
+    const project = structuredClone(keychronV5MaxProject);
+    project.build.outputPreference = "json";
+    project.layers[0]!.assignments[0]!.kind = "comboRef";
+
+    const plan = createBuildPlan(project, [], true);
+
+    expect(plan.requiresGeneratedC).toBe(true);
+    expect(plan.output).toBe("c");
+  });
+
+  it("forces generated C for a JSON-incompatible macro, tap dance, or encoder record", () => {
+    const project = structuredClone(keychronV5MaxProject);
+    project.build.outputPreference = "json";
+    project.macros = [{ id: "m_off", exportMode: "c", enabled: false }];
+    project.tapDances = [{ id: "td", exportMode: "c" }];
+    project.encoders = [{ id: "enc", exportMode: "json" }];
+
+    const plan = createBuildPlan(project, [], true);
+
+    expect(plan.requiresGeneratedC).toBe(true);
+    expect(plan.output).toBe("c");
+  });
+
+  it("does not force generated C when only disabled non-JSON records exist", () => {
+    const project = structuredClone(keychronV5MaxProject);
+    project.build.outputPreference = "json";
+    project.encoders = [{ id: "enc", exportMode: "c", enabled: false }];
+
+    const plan = createBuildPlan(project, [], true);
+
+    expect(plan.requiresGeneratedC).toBe(false);
+    expect(plan.output).toBe("json");
+  });
 });

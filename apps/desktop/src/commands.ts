@@ -3,8 +3,7 @@ import type { Layer, LightingProfile } from "./domain";
 /**
  * Pure-data editor commands for undo/redo. Each command describes a mutation
  * with enough information to apply it forward or backward; the executor lives
- * in `appState.ts`. Keeping the commands as data means a future Rust-mutation
- * backend only needs to implement the same command types.
+ * in `appState.ts`.
  */
 
 export type AssignKeycodeCommand = {

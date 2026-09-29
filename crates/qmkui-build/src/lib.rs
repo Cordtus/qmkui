@@ -26,6 +26,4 @@ pub enum BuildError {
     Io(#[from] std::io::Error),
     #[error("metadata is missing: {0}")]
     Metadata(String),
-    #[error("artifact {0} does not exist")]
-    MissingArtifact(String),
 }

@@ -60,9 +60,15 @@ describe("project storage", () => {
     });
 
     expect(() => importProjectJson("{bad json")).toThrow("Project JSON is invalid");
+    expect(() => importProjectJson(JSON.stringify("x"))).toThrow(
+      "Project JSON is not an object",
+    );
     expect(() => importProjectJson(JSON.stringify({ id: "missing-fields" }))).toThrow(
       "Project JSON is missing schemaVersion",
     );
+    expect(() =>
+      importProjectJson(JSON.stringify({ ...fixtureProject, schemaVersion: "99.0.0" })),
+    ).toThrow("Project schema version 99.0.0 is not supported");
   });
 
   it("rejects a project whose build settings are incomplete", () => {

@@ -114,7 +114,7 @@ fn stages_exported_keymap_json() {
 }
 
 #[test]
-fn artifact_store_is_immutable_and_reports_staleness() {
+fn artifact_store_is_content_addressed_and_immutable() {
     let dir = std::env::temp_dir().join(format!("qmkui-artifacts-{}", std::process::id()));
     let store = ArtifactStore::new(dir.clone());
     let digest_a = project_digest(&example_project()).expect("digest");
@@ -149,13 +149,9 @@ fn artifact_store_is_immutable_and_reports_staleness() {
     assert_eq!(again.id, artifact.id);
 
     assert_eq!(
-        store.firmware_bytes(&artifact.id).expect("firmware"),
+        std::fs::read(dir.join(&artifact.id).join("firmware")).expect("firmware"),
         b"firmware-bytes"
     );
-    assert!(!store.is_stale(&artifact.id, &digest_a).expect("fresh"));
-    assert!(store
-        .is_stale(&artifact.id, "changed-digest")
-        .expect("stale"));
 
     let _ = std::fs::remove_dir_all(&dir);
 }

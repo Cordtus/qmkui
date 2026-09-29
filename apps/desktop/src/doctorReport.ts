@@ -33,7 +33,6 @@ function isDoctorReport(value: unknown): value is DoctorReport {
     isOptionalArray(snapshot.commands, isCommandStatus) &&
     isOptionalString(snapshot.distroId) &&
     isOptionalString(snapshot.packageManager) &&
-    isQmkPackage(snapshot.qmkPackage) &&
     isHardwareProbe(snapshot.hardwareProbe)
   );
 }
@@ -56,17 +55,6 @@ function isCommandStatus(value: unknown): boolean {
     (value.requiredFor === "localBuild" ||
       value.requiredFor === "flashing" ||
       value.requiredFor === "catalogSync")
-  );
-}
-
-function isQmkPackage(value: unknown): boolean {
-  return (
-    value === undefined ||
-    value === null ||
-    (isRecord(value) &&
-      typeof value.name === "string" &&
-      isOptionalString(value.version) &&
-      typeof value.installed === "boolean")
   );
 }
 

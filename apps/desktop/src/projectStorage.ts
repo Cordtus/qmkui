@@ -1,5 +1,4 @@
-import type { Project } from "./domain";
-import { migrateProject } from "./migrations";
+import { SUPPORTED_PROJECT_SCHEMA_VERSION, type Project } from "./domain";
 import { isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
 
 export type ProjectSummary = {
@@ -137,9 +136,8 @@ export function importProjectJson(json: string): Project {
     throw new Error("Project JSON is invalid", { cause: error });
   }
 
-  const migrated = migrateProject(parsed);
-  assertProjectPayload(migrated);
-  return structuredClone(migrated);
+  assertProjectPayload(parsed);
+  return structuredClone(parsed);
 }
 
 function assertProjectPayload(value: unknown): asserts value is Project {
@@ -149,6 +147,9 @@ function assertProjectPayload(value: unknown): asserts value is Project {
 
   if (typeof value.schemaVersion !== "string") {
     throw new Error("Project JSON is missing schemaVersion");
+  }
+  if (value.schemaVersion !== SUPPORTED_PROJECT_SCHEMA_VERSION) {
+    throw new Error(`Project schema version ${value.schemaVersion} is not supported`);
   }
   if (typeof value.id !== "string") {
     throw new Error("Project JSON is missing id");

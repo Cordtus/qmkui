@@ -1,12 +1,5 @@
 import type { Project, UiIssue } from "./domain";
 
-export type GeneratedFeature = {
-  kind: "macro" | "combo" | "tapDance" | "encoder" | "assignment";
-  id: string;
-  label: string;
-  requiresGeneratedC: boolean;
-};
-
 export type BuildPlan = {
   keyboardTarget: string;
   keymapName: string;
@@ -17,7 +10,6 @@ export type BuildPlan = {
   selectedReady: boolean;
   requiresGeneratedC: boolean;
   blockers: string[];
-  features: GeneratedFeature[];
 };
 
 export function createBuildPlan(
@@ -28,11 +20,8 @@ export function createBuildPlan(
   const blockers = issues
     .filter((issue) => issue.severity === "error")
     .map((issue) => issue.code);
-  const features = generatedFeatures(project);
-  const requiresGeneratedC =
-    project.build.outputPreference === "c" ||
-    features.some((feature) => feature.requiresGeneratedC);
-  const output = requiresGeneratedC ? "c" : "json";
+  const requiresC = requiresGeneratedC(project);
+  const output = requiresC ? "c" : "json";
   const canExport = blockers.length === 0;
   const remoteAvailable = output === "json";
 
@@ -63,51 +52,27 @@ export function createBuildPlan(
     selectedReady:
       uniqueBlockers.length === 0 &&
       (project.build.mode === "localCli" ? localReady : false),
-    requiresGeneratedC,
+    requiresGeneratedC: requiresC,
     blockers: uniqueBlockers,
-    features,
   };
 }
 
-function generatedFeatures(project: Project): GeneratedFeature[] {
-  return [
-    ...featureRecords("macro", project.macros ?? []),
-    ...featureRecords("combo", project.combos ?? []),
-    ...featureRecords("tapDance", project.tapDances ?? []),
-    ...featureRecords("encoder", project.encoders ?? []),
-    ...assignmentFeatures(project),
+function requiresGeneratedC(project: Project): boolean {
+  if (project.build.outputPreference === "c") {
+    return true;
+  }
+  const records = [
+    ...(project.macros ?? []),
+    ...(project.combos ?? []),
+    ...(project.tapDances ?? []),
+    ...(project.encoders ?? []),
   ];
-}
-
-function featureRecords(
-  kind: GeneratedFeature["kind"],
-  records: NonNullable<Project["macros"]>,
-): GeneratedFeature[] {
-  return records
-    .filter((record) => record.enabled !== false)
-    .map((record) => ({
-      kind,
-      id: record.id,
-      label: record.name ?? record.id,
-      requiresGeneratedC: record.exportMode !== "json",
-    }));
-}
-
-function assignmentFeatures(project: Project): GeneratedFeature[] {
-  return project.layers.flatMap((layer) =>
-    layer.assignments.flatMap((assignment) => {
-      if (!["comboRef", "tapDance", "encoderAction"].includes(assignment.kind)) {
-        return [];
-      }
-
-      return [
-        {
-          kind: "assignment" as const,
-          id: assignment.id,
-          label: assignment.qmk,
-          requiresGeneratedC: true,
-        },
-      ];
-    }),
+  if (records.some((record) => record.enabled !== false && record.exportMode !== "json")) {
+    return true;
+  }
+  return project.layers.some((layer) =>
+    layer.assignments.some((assignment) =>
+      ["comboRef", "tapDance", "encoderAction"].includes(assignment.kind),
+    ),
   );
 }
