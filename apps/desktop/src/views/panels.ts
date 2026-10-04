@@ -1,14 +1,15 @@
-import { ContextPanel, EditorState, RenderActions, activeLightingProfile, bundledKeyboards, currentLayer, selectedLayout } from "../appState";
+import { EditorState, RenderActions, activeLightingProfile, bundledKeyboards, currentLayer, selectedLayout } from "../appState";
 import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
 import { Assignment, CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, Project, UiIssue, validateProject } from "../domain";
+import { illuminationBase } from "../illumination";
 import { buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { HostKeyCapture, captureHostKey } from "../keyTester";
 import { canDeleteLayer, scanLayerReferences } from "../layerActions";
 import { lightingSystemsForKeyboard, supportedLightingSystems } from "../lightingCapabilities";
 import { ProjectSummary } from "../projectStorage";
-import { contextDisclosure, controlGroup, definitionList, element, fieldControl, optionSelect, parameterBlock, rangeInput, uiButton } from "./primitives";
-import { inspector, keyLightingDetails, macroEditor } from "./workspace";
+import { colorPicker, colorSwatch, contextDisclosure, controlGroup, definitionList, definitionRow, element, fieldControl, optionSelect, parameterBlock, rangeInput, uiButton } from "./primitives";
+import { inspector, keyLightingDetails, macroEditor, previewLightingColor } from "./workspace";
 import { viaDefinitionFor } from "../viaDefinition";
 
 export type BuildActions = {
@@ -16,85 +17,6 @@ export type BuildActions = {
   setFlashConfirmed: (confirmed: boolean) => void;
   runFlashDryRun: () => void;
 };
-export function combinedWorkspacePanel(
-  state: EditorState,
-  layout: KeyboardDefinition["layouts"][number],
-  actions: RenderActions,
-): HTMLElement {
-  const activeSection = contextPanelSection(state.activeContextPanel, state, layout, actions);
-  activeSection.setAttribute("id", `context-panel-${state.activeContextPanel}`);
-  activeSection.setAttribute("role", "tabpanel");
-  activeSection.setAttribute("aria-labelledby", `context-tab-${state.activeContextPanel}`);
-
-  return element("section", {
-    className: "context-dock",
-    attrs: { "data-context-slot": "true", "data-context-dock": "true" },
-  }, [
-    contextTabs(state.activeContextPanel, actions),
-    activeSection,
-  ]);
-}
-
-export function contextTabs(activePanel: ContextPanel, actions: RenderActions): HTMLElement {
-  const tabs = element("div", {
-    className: "context-tabs",
-    attrs: { "aria-label": "Workspace tools", role: "tablist" },
-  });
-  const panels: Array<{ id: ContextPanel; label: string }> = [
-    { id: "assignment", label: "Assignment" },
-    { id: "lighting", label: "Lighting" },
-    { id: "test", label: "Host key test" },
-  ];
-
-  panels.forEach((panel, position) => {
-    const selected = panel.id === activePanel;
-    const tab = uiButton({
-      className: `context-tab ${selected ? "active" : ""}`,
-      text: panel.label,
-      type: "button",
-      attrs: {
-        "aria-controls": `context-panel-${panel.id}`,
-        "aria-selected": String(selected),
-        "data-context-tab": panel.id,
-        id: `context-tab-${panel.id}`,
-        role: "tab",
-        tabindex: selected ? "0" : "-1",
-      },
-    });
-    tab.addEventListener("click", () => actions.selectContextPanel(panel.id));
-    tab.addEventListener("keydown", (event) => {
-      if (!["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"].includes(event.key)) {
-        return;
-      }
-
-      event.preventDefault();
-      const nextPanel = nextInRing(panels.map((item) => item.id), position, event.key);
-      actions.selectContextPanel(nextPanel);
-      requestAnimationFrame(() => {
-        document.querySelector<HTMLElement>(`#context-tab-${nextPanel}`)?.focus();
-      });
-    });
-    tabs.append(tab);
-  });
-
-  return tabs;
-}
-
-export function contextPanelSection(
-  panel: ContextPanel,
-  state: EditorState,
-  layout: KeyboardDefinition["layouts"][number],
-  actions: RenderActions,
-): HTMLElement {
-  if (panel === "lighting") {
-    return lightingPanel(state, layout, actions);
-  }
-  if (panel === "test") {
-    return testPanel(state, layout, actions);
-  }
-  return inspector(state, layout, actions);
-}
-
 export function projectPanel(
   state: EditorState,
   actions: RenderActions,
@@ -336,13 +258,15 @@ export function lightingPanel(
   const profile = activeLightingProfile(state.project);
   const lightingSystems = lightingSystemsForKeyboard(state.keyboard);
   const supportedSystems = supportedLightingSystems(state.keyboard);
+  const base = illuminationBase(state.hardwareSnapshot);
   const context = buildSelectedKeyContext(
     state.project,
     layout.keys,
     state.selectedLayerIndex,
     state.selectedKeyId,
+    base,
   );
-  const selectedLighting = context?.lighting ?? lightingForKey(profile, state.selectedKeyId);
+  const selectedLighting = context?.lighting ?? lightingForKey(profile, state.selectedKeyId, base);
   const modeButtons = element("div", {
     className: "segmented",
     attrs: { "aria-label": "Lighting mode" },
@@ -362,33 +286,67 @@ export function lightingPanel(
     modeButtons.append(button);
   });
 
-  const color = selectedLighting.color;
-  const colorInput = element("input", {
+  const selectedCount = state.selectedKeyIds.length;
+  const picker = colorPicker({
+    label: "Selected keys colour",
+    value: selectedLighting.color,
+    focusId: "selected-lighting-color",
+    onPreview: previewLightingColor,
+    onCommit: actions.updateSelectedLighting,
+  });
+  const selectAll = uiButton({
+    className: `secondary-action ${selectedCount === layout.keys.length ? "active" : ""}`,
+    text: "All keys",
+    type: "button",
     attrs: {
-      "aria-label": "Selected key color",
-      "data-focus-id": "selected-lighting-color",
-      type: "color",
-      value: color,
+      "aria-pressed": String(selectedCount === layout.keys.length),
+      "data-lighting-select-all": "true",
     },
   });
-  colorInput.addEventListener("input", () => {
-    actions.updateSelectedLighting(colorInput.value);
-  });
+  selectAll.addEventListener("click", actions.selectAllKeys);
 
-  return element("section", { className: "context-section lighting-panel", attrs: { "data-context-section": "lighting" } }, [
+  return element("section", { className: "lighting-panel", attrs: { "data-context-section": "lighting" } }, [
     element("div", { className: "panel-heading" }, [
       element("h2", { text: "Lighting" }),
       element("small", { text: profile.name }),
     ]),
     controlGroup("lighting-mode", "Mode", [modeButtons]),
-    controlGroup("selected-key-lighting", "Selected key", [
+    controlGroup("selected-key-lighting", "Selected keys", [
       element("div", { className: "lighting-quick-row" }, [
-        fieldControl("Selected color", colorInput),
-        definitionList([
-          ["Configured", selectedLighting.color],
-          ["Effects", selectedLighting.conditions.map((condition) => condition.name).join(", ") || "None"],
-          ["Mapped keys", String(Object.keys(profile.perKey).length)],
-          ["Profile effects", String(profile.conditions?.length ?? 0)],
+        fieldControl("Selected keys colour", picker),
+        element("div", { className: "lighting-selection" }, [
+          element("div", { className: "lighting-selection-actions" }, [selectAll]),
+          element("dl", { className: "lighting-readouts" }, [
+            definitionRow("Selected keys", String(selectedCount)),
+            element("div", {}, [
+              element("dt", { text: "Configured" }),
+              element("dd", {
+                text: selectedLighting.color || "Not set",
+                attrs: { "data-lighting-color-readout": "true" },
+              }),
+            ]),
+            definitionRow("Effects", selectedLighting.conditions.map((condition) => condition.name).join(", ") || "None"),
+            definitionRow("Per-key overrides", String(Object.keys(profile.perKey).length)),
+          ]),
+        ]),
+      ]),
+      element("p", {
+        className: "lighting-hint muted",
+        text: "Click a key to target it; Shift or Ctrl-click to add/remove; All keys colours the whole board.",
+      }),
+    ]),
+    controlGroup("lighting-source", "Actual illumination", [
+      element("div", { className: "lighting-live" }, [
+        base
+          ? colorSwatch(base.color)
+          : element("span", { className: "color-swatch muted-swatch", text: "?" }),
+        element("div", {}, [
+          element("strong", { text: base ? base.color : "Unavailable" }),
+          element("small", {
+            text: base
+              ? `${base.source} · brightness ${base.brightness}`
+              : "Connect and read a device to mirror its colour.",
+          }),
         ]),
       ]),
     ]),
@@ -513,7 +471,7 @@ export function testPanel(
     actions.captureHostKey({ code: event.code, key: event.key });
   });
 
-  return element("section", { className: "context-section test-panel", attrs: { "data-context-section": "test" } }, [
+  return element("section", { className: "test-panel", attrs: { "data-context-section": "test" } }, [
     element("div", { className: "panel-heading" }, [
       element("h2", { text: "Host key test" }),
       element("small", {

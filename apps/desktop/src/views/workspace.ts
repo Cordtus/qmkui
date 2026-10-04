@@ -2,11 +2,13 @@ import { AdvancedAssignment, LayerAssignmentAction, layerAssignmentActions, laye
 import { EditorState, RenderActions, activeLightingProfile, currentLayer } from "../appState";
 import { Assignment, KeyboardDefinition, VisualKey } from "../domain";
 import { MacroRecord } from "../macros";
+import { illuminationBase } from "../illumination";
 import { KeyLayerDetail, KeyLightingDetail, KeyRelation, KeyShortcut, SelectedKeyContext, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { KeycodeEntry, formatKeycap, keycodeCategories } from "../keycodes";
-import { combinedWorkspacePanel, layerStrip } from "./panels";
-import { KEY_LABEL_INSET, KEY_LABEL_UNIT, colorSwatch, contextDisclosure, controlGroup, definitionRow, element, fieldControl, keycapLabel, layoutBounds, optionSelect, parameterBlock, settingsGroup, textInput, uiButton } from "./primitives";
-export function keyboardWorkspace(
+import { layerStrip } from "./panels";
+import { KEY_LABEL_INSET, KEY_LABEL_UNIT, colorPicker, colorSwatch, contextDisclosure, controlGroup, definitionRow, element, fieldControl, keycapLabel, layoutBounds, optionSelect, parameterBlock, settingsGroup, textInput, uiButton } from "./primitives";
+/** Board only, no side rail — used where the surrounding view owns the rail. */
+export function keyboardBoard(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
   actions: RenderActions,
@@ -25,12 +27,19 @@ export function keyboardWorkspace(
     selectedKeyInfoPanel(state, layout),
   ]);
   stage.style.width = "100%";
+  return stage;
+}
 
+export function keyboardWorkspace(
+  state: EditorState,
+  layout: KeyboardDefinition["layouts"][number],
+  actions: RenderActions,
+): HTMLElement {
   return element("section", {
     className: "keyboard-workspace",
     attrs: { "data-keyboard-workspace": "true" },
   }, [
-    stage,
+    keyboardBoard(state, layout, actions),
     workspaceControls(state, layout, actions),
   ]);
 }
@@ -44,6 +53,7 @@ export function selectedKeyInfoPanel(
     layout.keys,
     state.selectedLayerIndex,
     state.selectedKeyId,
+    illuminationBase(state.hardwareSnapshot),
   );
   const fallbackKey = layout.keys[0];
 
@@ -67,6 +77,11 @@ export function selectedKeyInfoPanel(
   ]);
 }
 
+/**
+ * The keymap view's right rail: pick a layer, assign a keycode to the selected
+ * key, and see what that key does on every layer. No tabs — the board is the
+ * primary surface and this only ever talks about the selected key.
+ */
 export function workspaceControls(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
@@ -79,8 +94,11 @@ export function workspaceControls(
     settingsGroup("layers", "Layers", [
       layerStrip(state, actions),
     ]),
-    settingsGroup("editing", "Editing", [
-      combinedWorkspacePanel(state, layout, actions),
+    settingsGroup("assignment", "Assign keycode", [
+      inspector(state, layout, actions),
+    ]),
+    settingsGroup("key", "Selected key", [
+      selectedKeyInfoPanel(state, layout),
     ]),
   ]);
 }
@@ -153,10 +171,11 @@ export function historyControls(state: EditorState, actions: RenderActions): HTM
 export function board(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
-  selectKey: (keyId: string) => void,
+  selectKey: (keyId: string, additive?: boolean) => void,
 ): HTMLElement {
   const selectedLayer = currentLayer(state);
   const profile = activeLightingProfile(state.project);
+  const base = illuminationBase(state.hardwareSnapshot);
   const bounds = layoutBounds(layout.keys);
   const panel = element("div", {
     className: "board",
@@ -171,16 +190,18 @@ export function board(
 
   layout.keys.forEach((key) => {
     const assignment = selectedLayer?.assignments.find((item) => item.visualKeyId === key.id);
-    const selected = key.id === state.selectedKeyId;
+    const selected = state.selectedKeyIds.includes(key.id);
     const keyButton = keyboardKey({
       assignment,
       key,
-      lighting: lightingForKey(profile, key.id),
+      lighting: lightingForKey(profile, key.id, base),
       selected,
       selectedLayer,
       bounds,
     });
-    keyButton.addEventListener("click", () => selectKey(key.id));
+    keyButton.addEventListener("click", (event) => {
+      selectKey(key.id, event.ctrlKey || event.metaKey || event.shiftKey);
+    });
     panel.append(keyButton);
   });
 
@@ -250,16 +271,19 @@ export function inspector(
   layout: KeyboardDefinition["layouts"][number],
   actions: RenderActions,
 ): HTMLElement {
+  const base = illuminationBase(state.hardwareSnapshot);
   const context = buildSelectedKeyContext(
     state.project,
     layout.keys,
     state.selectedLayerIndex,
     state.selectedKeyId,
+    base,
   );
   const key = context?.key ?? layout.keys[0];
   const layer = currentLayer(state);
   const assignment = layer?.assignments.find((item) => item.visualKeyId === key.id);
-  const color = context?.lighting.color ?? lightingForKey(activeLightingProfile(state.project), key.id).color;
+  const color =
+    context?.lighting.color ?? lightingForKey(activeLightingProfile(state.project), key.id, base).color;
 
   const keycodeInput = element("input", {
     attrs: {
@@ -272,24 +296,20 @@ export function inspector(
     actions.updateSelectedKeycode(keycodeInput.value.trim().toUpperCase());
   });
 
-  const colorInput = element("input", {
-    attrs: {
-      "aria-label": "Key lighting color",
-      "data-focus-id": "selected-lighting-color",
-      type: "color",
-      value: color,
-    },
-  });
-  colorInput.addEventListener("input", () => {
-    actions.updateSelectedLighting(colorInput.value);
+  const picker = colorPicker({
+    label: "Selected keys colour",
+    value: color,
+    focusId: "selected-lighting-color",
+    onPreview: previewLightingColor,
+    onCommit: actions.updateSelectedLighting,
   });
 
-  return element("section", { className: "context-section inspector", attrs: { "data-context-section": "assignment" } }, [
+  return element("section", { className: "inspector", attrs: { "data-context-section": "assignment" } }, [
     controlGroup("key-assignment", "Key assignment", [
       element("div", { className: "selected-command-row" }, [
         fieldControl("QMK keycode", keycodeInput),
-        fieldControl("Light", colorInput),
       ]),
+      fieldControl("Selected keys colour", picker),
     ]),
     controlGroup("assignment-tools", "Assignment tools", [
       element("div", { className: "context-disclosures" }, [
@@ -714,6 +734,7 @@ export function keyboardKey({
       "aria-pressed": String(selected),
       "data-key": key.id,
       "data-lighting-active": String(lit),
+      "data-lighting-brightness": String(lighting.brightness),
       "data-lighting-color": lighting.color,
       "data-lighting-effects": effectSummary,
       "data-lighting-mode": lighting.mode,
@@ -726,7 +747,9 @@ export function keyboardKey({
   keyButton.style.top = `${(key.y / bounds.height) * 100}%`;
   keyButton.style.width = `calc(${((key.w ?? 1) / bounds.width) * 100}% - var(--key-gap))`;
   keyButton.style.height = `calc(${((key.h ?? 1) / bounds.height) * 100}% - var(--key-gap))`;
-  keyButton.style.setProperty("--key-light", dimHex(lighting.color, lighting.brightness / 255));
+  if (lighting.color) {
+    keyButton.style.setProperty("--key-light", dimHex(lighting.color, lighting.brightness / 255));
+  }
   const label = keycapLabel(assignment, { compact: true });
   keyButton.style.setProperty("--key-label-size", keyLabelSize(label, key));
   keyButton.append(element("strong", { text: label }));
@@ -751,6 +774,26 @@ export function keyboardKey({
     keyButton.click();
   });
   return keyButton;
+}
+
+/**
+ * Repaint the selected keys and colour readouts while the picker is being
+ * dragged. Deliberately touches the DOM directly instead of re-rendering, so
+ * the picker keeps pointer capture and the gesture is not interrupted.
+ */
+export function previewLightingColor(color: string): void {
+  document.querySelectorAll<HTMLElement>("[data-key].selected").forEach((key) => {
+    // Only lit keys carry the tint, matching the committed render.
+    if (key.dataset.lightingActive !== "true") {
+      return;
+    }
+    const brightness = Number(key.dataset.lightingBrightness);
+    key.style.setProperty("--key-light", dimHex(color, brightness / 255));
+    key.setAttribute("data-lighting-color", color);
+  });
+  document.querySelectorAll<HTMLElement>("[data-lighting-color-readout]").forEach((node) => {
+    node.textContent = color;
+  });
 }
 
 /**

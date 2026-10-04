@@ -1,50 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { classifyKeychronV5MaxIdentity } from "./keychronV5MaxContract";
+import { classifyViaIdentity } from "./keychronV5MaxContract";
 
-const exactV5MaxAnsiKnob = {
+const v5MaxAnsiKnob = {
   vendorId: 0x3434,
   productId: 0x0950,
   collections: [{ usagePage: 0xff60, usage: 0x0061 }],
 };
 
-describe("Keychron V5 Max identity contract", () => {
-  it("recognizes the exact ANSI Knob HID identity as partial and permits only read operations", () => {
-    expect(classifyKeychronV5MaxIdentity(exactV5MaxAnsiKnob)).toEqual({
-      state: "partial",
-      capabilities: {
-        protocolVersion: true,
-        read: true,
-        write: false,
-        flash: false,
-      },
+describe("VIA identity contract", () => {
+  it("recognizes a known Keychron model and permits only read operations", () => {
+    expect(classifyViaIdentity(v5MaxAnsiKnob)).toEqual({
+      state: "via",
+      model: expect.objectContaining({ qmkKeyboard: "keychron/v5_max/ansi_encoder" }),
+      capabilities: { protocolVersion: true, read: true, write: false, flash: false },
     });
   });
 
-  it("rejects a different Keychron product ID", () => {
-    expect(
-      classifyKeychronV5MaxIdentity({
-        ...exactV5MaxAnsiKnob,
-        productId: 0x0951,
-      }),
-    ).toEqual({ state: "unsupported" });
+  it("recognizes any Keychron PID as VIA, without a model", () => {
+    const contract = classifyViaIdentity({ ...v5MaxAnsiKnob, productId: 0x0999 });
+    expect(contract).toMatchObject({ state: "via", capabilities: { read: false } });
+    expect(contract).not.toHaveProperty("model");
   });
 
-  it("rejects a non-Keychron vendor ID", () => {
-    expect(
-      classifyKeychronV5MaxIdentity({
-        ...exactV5MaxAnsiKnob,
-        vendorId: 0x1234,
-      }),
-    ).toEqual({ state: "unsupported" });
+  it("recognizes a non-Keychron vendor that exposes the VIA collection", () => {
+    expect(classifyViaIdentity({ ...v5MaxAnsiKnob, vendorId: 0x1234 })).toMatchObject({
+      state: "via",
+      capabilities: { read: false },
+    });
   });
 
-  it("rejects the matching USB ID when the required vendor collection is absent", () => {
+  it("is unsupported when the VIA collection is absent", () => {
     expect(
-      classifyKeychronV5MaxIdentity({
-        ...exactV5MaxAnsiKnob,
+      classifyViaIdentity({
+        ...v5MaxAnsiKnob,
         collections: [{ usagePage: 0x0001, usage: 0x0006 }],
       }),
     ).toEqual({ state: "unsupported" });
   });
-
 });

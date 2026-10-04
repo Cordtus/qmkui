@@ -74,7 +74,7 @@ describe("QMK metadata conversion", () => {
     ).toThrow("has 0 keycodes for 1 layout keys");
   });
 
-  it("uses the dedicated Fn lighting color when building default profiles", () => {
+  it("leaves default profiles without decorative per-key colours", () => {
     const keyboard = keyboardFromQmkMetadata(
       {
         id: "example/source",
@@ -101,6 +101,6 @@ describe("QMK metadata conversion", () => {
       layers: [{ id: "layer_0", index: 0, name: "Base", keycodes: ["MO(1)"] }],
     });
 
-    expect(project.lightingProfiles?.[0]?.perKey.src_000).toBe("#f2c94c");
+    expect(project.lightingProfiles?.[0]?.perKey).toEqual({});
   });
 });

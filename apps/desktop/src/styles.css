@@ -441,17 +441,46 @@ small {
 }
 
 .nav-item {
-  min-height: 44px;
+  display: grid;
+  gap: 1px;
+  align-content: center;
+  min-height: 52px;
   overflow: hidden;
   border: 0;
   border-bottom: 1px solid var(--border-muted);
-  padding: 0 14px;
+  padding: 8px 14px;
   color: var(--text-muted);
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   font-weight: 650;
   text-align: left;
+}
+
+.nav-label {
+  display: block;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.nav-hint {
+  display: block;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 500;
+  opacity: 0.7;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-group-label {
+  margin: 0;
+  padding: 12px 14px 6px;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
 .nav-item.active,
@@ -655,65 +684,8 @@ h3 {
   align-items: stretch;
 }
 
-.editor-workflow {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0;
-  min-width: 0;
-  border: 1px solid var(--border-muted);
-  background: rgb(16 25 35 / 0.72);
-}
-
-.workflow-actions {
-  display: flex;
-  align-items: stretch;
-  min-width: 0;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.workflow-label {
-  align-self: center;
-  padding-left: 14px;
-  color: var(--text-muted);
-  font-size: 0.68rem;
-  font-weight: 760;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-
-.workflow-buttons {
-  display: flex;
-  align-items: stretch;
-}
-
-.workflow-buttons > wa-button {
-  border: 0;
-  border-left: 1px solid var(--border-muted);
-}
-
-.workflow-buttons > wa-button:first-child {
-  border-left: 0;
-}
-
 .layer-tabs-block .layers {
   margin: 0;
-}
-
-.workflow-notices {
-  display: grid;
-  grid-column: 1 / -1;
-  gap: 4px;
-}
-
-/* Only draw the notice band when there is an actual notice to show. */
-.workflow-notices:has(small:not(:empty)) {
-  border-top: 1px solid var(--border-muted);
-  padding: 8px 14px;
-}
-
-.workflow-notices small {
-  color: var(--text-muted);
 }
 
 .secondary-action {
@@ -793,10 +765,6 @@ wa-button.nav-item,
 wa-button.layer-tab {
   justify-content: flex-start;
   padding: 0 10px;
-}
-
-wa-button.context-tab {
-  justify-content: center;
 }
 
 wa-button.layer-tab::part(label) {
@@ -1216,57 +1184,9 @@ wa-button.keycode-option {
   pointer-events: none;
 }
 
-.context-dock {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  min-width: 0;
-  overflow: visible;
-}
-
-.context-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0;
-  min-width: 0;
-  border: 1px solid var(--border-muted);
-  overflow: hidden;
-}
-
-.context-tab {
-  min-width: 0;
-  min-height: 34px;
-  overflow: hidden;
-  border: 0;
-  border-right: 1px solid var(--border-muted);
-  background: var(--panel);
-  color: var(--text-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.context-tab:last-child {
-  border-right: 0;
-}
-
-wa-button.context-tab {
-  border: 0;
-  border-right: 1px solid var(--border-muted);
-  padding: 0 8px;
-}
-
-wa-button.context-tab:last-child {
-  border-right: 0;
-}
-
-.context-tab.active {
-  border-color: color-mix(in srgb, var(--accent) 78%, var(--border));
-  background: color-mix(in srgb, var(--panel-strong) 86%, var(--accent));
-  color: var(--text);
-}
-
-.context-section {
+.inspector,
+.lighting-panel,
+.test-panel {
   display: grid;
   gap: 10px;
   align-content: start;
@@ -1278,9 +1198,43 @@ wa-button.context-tab:last-child {
   padding: 0;
 }
 
-.context-dock .panel-heading {
+.inspector .panel-heading,
+.lighting-panel .panel-heading {
   border-bottom: 1px solid var(--border-muted);
   padding-bottom: 10px;
+}
+
+/* Lighting is a first-class view: board on the left, controls on the right. */
+.lighting-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+
+.lighting-view-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+}
+
+@media (min-width: 1240px) {
+  .lighting-view {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+    align-items: start;
+  }
+}
+
+.device-view {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.device-tester {
+  min-width: 0;
 }
 
 .selected-command-row {
@@ -1323,7 +1277,7 @@ wa-button.context-tab:last-child {
 
 .context-disclosures {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: 0;
   min-width: 0;
   border: 1px solid var(--border-muted);
@@ -1331,11 +1285,13 @@ wa-button.context-tab:last-child {
 
 .context-disclosure {
   min-width: 0;
+  border-bottom: 1px solid var(--border-muted);
   border-right: 1px solid var(--border-muted);
   --spacing: 8px;
 }
 
 .context-disclosure:last-child {
+  border-bottom: 0;
   border-right: 0;
 }
 
@@ -1362,23 +1318,156 @@ wa-button.context-tab:last-child {
   overflow: auto;
 }
 
-.context-dock .assignment-editor {
-  grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
-  align-items: center;
-  border-top: 0;
-  padding-top: 0;
-}
-
-.context-dock .assignment-template-grid {
-  grid-template-columns: repeat(5, minmax(88px, 1fr));
-}
-
-.lighting-quick-row {
+/* The lighting panel is a narrow column; keep its inner grids single-column so
+   nothing overflows the container. */
+.lighting-quick-row,
+.lighting-systems {
   display: grid;
-  grid-template-columns: minmax(160px, 220px) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-  align-items: end;
+  align-items: start;
   min-width: 0;
+}
+
+.lighting-selection {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.lighting-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lighting-selection-actions > wa-button {
+  flex: 1 1 auto;
+  justify-content: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lighting-readouts {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lighting-readouts div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.lighting-readouts dt,
+.lighting-readouts dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lighting-hint {
+  margin: 10px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.lighting-live {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.lighting-live strong,
+.lighting-live small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lighting-live small {
+  color: var(--text-muted);
+}
+
+.muted-swatch {
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+/* --- Inline HSV colour picker ------------------------------------------- */
+
+.color-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.color-picker-pad {
+  position: relative;
+  height: 120px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.color-picker-pad:focus-visible {
+  outline: 2px solid var(--accent-warn);
+  outline-offset: 2px;
+}
+
+.color-picker-cursor {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.6);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.color-picker-controls {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.color-picker-controls input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.color-picker-readout {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.color-picker-preview {
+  height: 32px;
+  border: 1px solid var(--border);
+}
+
+.color-picker-readout input {
+  min-height: 32px;
+  font-family: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", monospace;
+  text-transform: uppercase;
 }
 
 .lighting-quick-row dl {
@@ -1682,7 +1771,7 @@ input[type="color"] {
 
 .lighting-systems {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
   gap: 8px;
   min-width: 0;
 }
@@ -2014,9 +2103,14 @@ dd {
 
 @media (min-width: 1240px) {
   .keyboard-workspace {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
     grid-template-rows: auto;
     gap: 14px;
+  }
+
+  .keyboard-scroll {
+    /* Keep the board from demanding more than its (now narrower) column. */
+    width: min(100%, clamp(600px, 58vw, 1120px));
   }
 
   .keyboard-stage {
@@ -2055,31 +2149,6 @@ dd {
   .editor {
     grid-template-columns: 1fr;
     justify-content: stretch;
-  }
-
-  .editor-workflow {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .workflow-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
-
-  .workflow-label {
-    padding: 10px 14px 0;
-  }
-
-  .workflow-buttons {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    margin-top: 8px;
-  }
-
-  .workflow-buttons > wa-button {
-    border-left: 0;
-    border-bottom: 1px solid var(--border-muted);
   }
 
   .catalog-row {
@@ -2127,9 +2196,7 @@ dd {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .context-disclosures,
-  .lighting-panel .context-disclosures,
-  .context-dock .assignment-template-grid {
+  .context-disclosures {
     grid-template-columns: 1fr;
   }
 

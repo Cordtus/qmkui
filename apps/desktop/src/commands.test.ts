@@ -65,14 +65,14 @@ describe("command history", () => {
     const history = createCommandHistory();
     const color = (after: string): Command => ({
       kind: "set-lighting",
-      keyId: "v5_000",
-      before: "#000000",
+      keyIds: ["v5_000"],
+      before: ["#000000"],
       after,
     });
     history.push(color("#111111"));
     history.push(color("#222222"));
 
-    expect(history.undo()).toMatchObject({ keyId: "v5_000", after: "#222222" });
+    expect(history.undo()).toMatchObject({ keyIds: ["v5_000"], after: "#222222" });
     expect(history.canUndo()).toBe(false);
   });
 });

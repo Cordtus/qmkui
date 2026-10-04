@@ -1,4 +1,5 @@
 import { EditorState, RenderActions, isKeychronV5MaxSnapshot } from "../appState";
+import { hsv255ToHex } from "../color";
 import { GenericViaStandardState } from "../devices/genericViaReader";
 import { KeychronV5MaxCapabilities, KeychronV5MaxIdentityFacts, KeychronV5MaxLighting, KeychronV5MaxReadSnapshot } from "../devices/keychronV5MaxReader";
 import { ViaKeymap, ViaMacros, ViaMacroStep } from "../devices/viaReadProtocol";
@@ -437,7 +438,8 @@ export function snapshotLightingField(field: KeychronV5MaxReadSnapshot["lighting
       "data-value": String(field.value.brightness),
     },
   });
-  swatch.style.backgroundColor = hsvToCss(field.value.hue, field.value.saturation, field.value.brightness);
+  // Same conversion the keymap uses, so the swatch and the keys never disagree.
+  swatch.style.backgroundColor = hsv255ToHex(field.value.hue, field.value.saturation, field.value.brightness);
   return element("section", {
     className: "snapshot-field lighting available",
     attrs: { "data-snapshot-field": "lighting", "data-snapshot-state": "available" },
@@ -446,10 +448,6 @@ export function snapshotLightingField(field: KeychronV5MaxReadSnapshot["lighting
     element("div", { className: "lighting-swatches", attrs: { "data-lighting-swatches": "true" } }, [swatch]),
     definitionList(lightingSnapshotRows(field.value)),
   ]);
-}
-
-function hsvToCss(hue: number, saturation: number, value: number): string {
-  return `hsl(${Math.round((hue / 255) * 360)} ${Math.round((saturation / 255) * 100)}% ${Math.round((value / 255) * 100)}%)`;
 }
 
 export function macrosSnapshotRows(value: ViaMacros): Array<[string, string]> {

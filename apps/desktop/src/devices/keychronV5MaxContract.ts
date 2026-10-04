@@ -1,3 +1,9 @@
+import {
+  type ViaKeyboardModel,
+  isKeychronVendor,
+  viaModelFor,
+} from "./keychronModels";
+
 export type HidCollectionMetadata = {
   usagePage: number;
   usage: number;
@@ -9,10 +15,20 @@ export type HidIdentityMetadata = {
   collections: readonly HidCollectionMetadata[];
 };
 
-export type KeychronV5MaxIdentityContract =
+export type RawHidCollection = { usagePage: number; usage: number };
+
+/**
+ * How much of QMKUI can talk to a device, decided purely from its USB identity
+ * and HID collections. `read` is true for any VIA-capable board (the vendor
+ * usage page 0xff60/0x0061 collection); `model` is present only when the
+ * bundled VIA definitions can supply a keymap matrix and name.
+ */
+export type ViaIdentityContract =
   | { state: "unsupported" }
   | {
-      state: "partial";
+      state: "via";
+      /** The matched model, or undefined for an unrecognized VIA board. */
+      model?: ViaKeyboardModel;
       capabilities: {
         protocolVersion: true;
         read: boolean;
@@ -21,44 +37,43 @@ export type KeychronV5MaxIdentityContract =
       };
     };
 
-const KEYCHRON_VENDOR_ID = 0x3434;
-const V5_MAX_ANSI_KNOB_PRODUCT_ID = 0x0950;
-const VENDOR_COLLECTION = { usagePage: 0xff60, usage: 0x0061 };
+/** The VIA / QMK Raw HID interface collection every VIA keyboard exposes. */
+const VIA_COLLECTION: RawHidCollection = { usagePage: 0xff60, usage: 0x0061 };
 
 /**
- * Verified from the bundled V5 Max ANSI Knob definition. These dimensions are
- * required by VIA's dynamic-keymap protocol; they are not inferred from an
- * attached HID device or filled from a default keymap.
+ * Classify a HID device as a VIA keyboard. Recognition is USB-identity based
+ * because VIA's protocol carries no model string: any device exposing the VIA
+ * collection is readable, and the bundled model registry upgrades a known
+ * VID/PID to a named board with a readable keymap.
  */
-export const keychronV5MaxReadDefinition = Object.freeze({
-  keymap: Object.freeze({ layerCount: 4, rows: 6, columns: 19 }),
-});
-
-export function classifyKeychronV5MaxIdentity(
-  identity: HidIdentityMetadata,
-): KeychronV5MaxIdentityContract {
-  if (
-    identity.vendorId !== KEYCHRON_VENDOR_ID ||
-    identity.productId !== V5_MAX_ANSI_KNOB_PRODUCT_ID ||
-    !identity.collections.some(isVendorCollection)
-  ) {
+export function classifyViaIdentity(identity: HidIdentityMetadata): ViaIdentityContract {
+  if (!identity.collections.some(isViaCollection)) {
     return { state: "unsupported" };
   }
 
+  const model = viaModelFor(identity.vendorId, identity.productId);
   return {
-    state: "partial",
+    state: "via",
+    ...(model ? { model } : {}),
     capabilities: {
       protocolVersion: true,
-      read: true,
+      // A keymap read needs verified matrix dimensions, which only a known
+      // model provides; unknown VIA boards still expose printable glyphs,
+      // matrix dimensions, etc.
+      read: Boolean(model?.matrix),
       write: false,
       flash: false,
     },
   };
 }
 
-function isVendorCollection(collection: HidCollectionMetadata): boolean {
+export function isKeychron(identity: HidIdentityMetadata): boolean {
+  return isKeychronVendor(identity.vendorId);
+}
+
+function isViaCollection(collection: HidCollectionMetadata): boolean {
   return (
-    collection.usagePage === VENDOR_COLLECTION.usagePage &&
-    collection.usage === VENDOR_COLLECTION.usage
+    collection.usagePage === VIA_COLLECTION.usagePage &&
+    collection.usage === VIA_COLLECTION.usage
   );
 }

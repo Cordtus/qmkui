@@ -154,31 +154,16 @@ function layerFromQmkKeycodes(keys: VisualKey[], layer: QmkLayerSource) {
   };
 }
 
-function defaultLightingProfile(keys: VisualKey[], conditions: LightingCondition[]) {
+function defaultLightingProfile(_keys: VisualKey[], conditions: LightingCondition[]) {
+  // No decorative per-key colours: keys mirror the board's actual illumination
+  // until the operator assigns an explicit per-key colour.
   return {
     id: "profile_default_reactive",
     name: "Reactive Map",
     mode: "reactive" as const,
-    perKey: Object.fromEntries(keys.map((key) => [key.id, defaultColorFor(key)])),
+    perKey: {} as Record<string, string>,
     conditions,
   };
-}
-
-function defaultColorFor(key: VisualKey): string {
-  const label = key.label ?? "";
-  if (label === "Fn") {
-    return "#f2c94c";
-  }
-  if (["Ctrl", "Shift", "Alt", "Win", "Fn"].includes(label)) {
-    return "#6aa6ff";
-  }
-  if (["Mute", "Vol+", "Vol-", "Play", "Prev", "Next"].includes(label)) {
-    return "#ff7a90";
-  }
-  if (key.matrix && key.matrix.col >= 15) {
-    return "#66d9a8";
-  }
-  return "#5fb99a";
 }
 
 function normalizeKeycode(qmk: string): string {

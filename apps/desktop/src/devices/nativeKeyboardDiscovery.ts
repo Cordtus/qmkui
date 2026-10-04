@@ -86,7 +86,7 @@ function nativeV5Selection(invoke: Invoke): BrowserKeyboardSelection {
       collections: [{ usagePage: 0xff60, usage: 0x0061 }],
     },
     contract: {
-      state: "partial",
+      state: "via",
       capabilities: { protocolVersion: true, read: true, write: false, flash: false },
     },
     session: nativeV5Session(invoke),
@@ -115,7 +115,7 @@ function nativeV5Session(invoke: Invoke): BrowserKeyboardSession {
 function nativeSnapshot(data: NativeV5Snapshot): KeychronV5MaxReadSnapshot {
   return {
     identity: available({
-      model: "Keychron V5 Max ANSI Knob",
+      model: "Keychron V5 Max ANSI Knob" as string,
       protocolVersion: data.identity.protocolVersion,
       firmwareVersion: data.identity.firmwareVersion,
       defaultLayer: data.identity.defaultLayer,

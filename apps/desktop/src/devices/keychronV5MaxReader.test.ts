@@ -99,9 +99,9 @@ describe("Keychron V5 Max reader", () => {
     expect(device.sendReport).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-V5 identity before registering a listener or sending a report", async () => {
+  it("rejects a non-VIA identity before registering a listener or sending a report", async () => {
     const device = createDevice();
-    device.productId = 0x0951;
+    device.collections = [{ usagePage: 0x0001, usage: 0x0006 }];
     device.sendReport = vi.fn((() => {
       throw new Error("must not reach HID");
     }) as unknown as KeychronV5MaxReaderDevice["sendReport"]);
