@@ -67,26 +67,20 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
   });
 
-  it("re-surfaces the app shell after a device is selected, with a Device/Project editor toggle", async () => {
+  it("shows one navigation once a device is selected, opening on the device surface", async () => {
     const root = document.createElement("div");
     createApp(root, {
       discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
     });
     await flush();
 
-    expect(root.querySelector('[data-view="workspace"]')).not.toBeNull();
-    expect(root.querySelector('[data-view="catalog"]')).not.toBeNull();
-    expect(root.querySelector('[data-view="system"]')).not.toBeNull();
-    expect(
-      root.querySelector('[data-workspace-mode="device"]')?.getAttribute("aria-pressed"),
-    ).toBe("true");
-    expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
-
-    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
-    await flush();
+    for (const view of ["keymap", "lighting", "device", "catalog", "system"]) {
+      expect(root.querySelector(`[data-view="${view}"]`)).not.toBeNull();
+    }
+    expect(root.querySelector('[data-view="device"]')?.getAttribute("aria-current")).toBe("page");
     expect(root.querySelector("[data-hardware-snapshot]")).not.toBeNull();
 
-    root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
     expect(root.querySelector("[data-keyboard-workspace]")).not.toBeNull();
     expect(root.querySelector("[data-hardware-snapshot]")).toBeNull();
@@ -275,7 +269,7 @@ describe("device-first hardware workspace", () => {
 
 function recognizedSelection(
   readSnapshot: BrowserKeyboardSession["readSnapshot"],
-): Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "partial" } }> {
+): Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "via" } }> {
   return {
     state: "selected",
     identity: {
@@ -284,7 +278,7 @@ function recognizedSelection(
       collections: [{ usagePage: 0xff60, usage: 0x0061 }],
     },
     contract: {
-      state: "partial",
+      state: "via",
       capabilities: { protocolVersion: true, read: false, write: false, flash: false },
     },
     session: {
@@ -406,7 +400,7 @@ function deferred<Value>() {
     await flush();
     root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
     await flush();
-    root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
 
     const keys = [...root.querySelectorAll<HTMLElement>("[data-key]")];
@@ -434,7 +428,7 @@ function deferred<Value>() {
     await flush();
     root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
     await flush();
-    root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
 
     const nameInput = root.querySelector<HTMLInputElement>('[data-focus-id="macro-name"]');
@@ -485,9 +479,9 @@ function deferred<Value>() {
     await flush();
     root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
     await flush();
-    root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
-    root.querySelector<HTMLElement>('[data-context-tab="lighting"]')?.click();
+    root.querySelector<HTMLElement>('[data-view="lighting"]')?.click();
     await flush();
 
     const activeMode = () =>
@@ -501,6 +495,38 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>("[data-editor-undo]")?.click();
     await flush();
     expect(activeMode()).toBe("reactive");
+  });
+
+  it("colours every selected key and undoes the whole selection in one step", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="lighting"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-lighting-select-all]")?.click();
+    await flush();
+    const keys = [...root.querySelectorAll<HTMLElement>("[data-key]")];
+    expect(keys.length).toBeGreaterThan(1);
+
+    // Commit a red selection: every key carries it (unlit keys keep no tint).
+    const hex = root.querySelector<HTMLInputElement>("[data-color-hex]")!;
+    hex.value = "#ff0000";
+    hex.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+    expect(
+      root.querySelectorAll('[data-key][data-lighting-color="#ff0000"]').length,
+    ).toBe(keys.length);
+
+    root.querySelector<HTMLElement>("[data-editor-undo]")?.click();
+    await flush();
+    expect(
+      root.querySelectorAll('[data-key][data-lighting-color="#ff0000"]').length,
+    ).toBe(0);
   });
 
   it("shows a refused device write next to the write controls", async () => {
@@ -582,7 +608,7 @@ function deferred<Value>() {
     await flush();
     root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
     await flush();
-    root.querySelector<HTMLElement>('[data-workspace-mode="editor"]')?.click();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
 
     // Without confirmation the whole-keymap write is refused.

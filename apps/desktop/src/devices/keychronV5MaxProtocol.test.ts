@@ -75,8 +75,8 @@ describe("Keychron V5 Max protocol version", () => {
     vi.useRealTimers();
   });
 
-  it("rejects a non-matching device before opening it", async () => {
-    const device = createDevice({ productId: 0x0951 });
+  it("rejects a non-VIA device before opening it", async () => {
+    const device = createDevice({ collections: [{ usagePage: 0x0001, usage: 0x0006 }] });
 
     await expect(verifyKeychronV5MaxProtocolVersion(device)).rejects.toMatchObject({ code: "identity" });
     expect(device.open).not.toHaveBeenCalled();

@@ -37,8 +37,7 @@ export const fixtureKeyboard = catalog[0] as KeyboardDefinition;
 export const fixtureProject = project as Project;
 export const bundledKeyboards = [keychronV5MaxKeyboard, fixtureKeyboard];
 
-export type AppView = "workspace" | "catalog" | "system";
-export type ContextPanel = "assignment" | "lighting" | "test";
+export type AppView = "keymap" | "lighting" | "device" | "catalog" | "system";
 
 export type AppOptions = {
   keyboard?: KeyboardDefinition;
@@ -60,11 +59,12 @@ export type EditorState = {
   fallbackQmkDetected: boolean;
   qmkDetected: boolean;
   activeView: AppView;
-  workspaceMode: "device" | "editor";
-  activeContextPanel: ContextPanel;
   projectDetailsOpen: boolean;
   selectedLayerIndex: number;
+  /** Last-clicked key; drives the inspector. */
   selectedKeyId: string;
+  /** All keys the next lighting edit applies to (multi-select). */
+  selectedKeyIds: string[];
   commandHistory: CommandHistory;
   keycodeCategoryId: string;
   keycodeSearch: string;
@@ -119,6 +119,14 @@ function defaultDiscoverKeyboard(): () => Promise<BrowserKeyboardSelection> {
   };
 }
 
+/**
+ * Where the app opens: the device surface, because QMKUI is device-first. With
+ * no device attached that view is the "connect a keyboard" prompt.
+ */
+export function initialView(): AppView {
+  return "device";
+}
+
 function defaultBuildRunner(project: Project): BuildRunner {
   if (!isNativeRuntime()) {
     return unsupportedBrowserRunner();
@@ -155,12 +163,11 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     project: currentProject,
     fallbackQmkDetected: options.qmkDetected ?? false,
     qmkDetected: options.qmkDetected ?? false,
-    activeView: "workspace",
-    workspaceMode: "device",
-    activeContextPanel: "assignment",
+    activeView: initialView(),
     projectDetailsOpen: false,
     selectedLayerIndex: defaultSelectedLayerIndex(currentProject),
     selectedKeyId: layout.keys[0]?.id ?? "",
+    selectedKeyIds: layout.keys[0] ? [layout.keys[0].id] : [],
     commandHistory: createCommandHistory(),
     keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
     keycodeSearch: "",
@@ -269,14 +276,6 @@ export function createActions(
             state.activeView = view;
             actions.render();
           },
-          selectWorkspaceMode: (mode) => {
-            state.workspaceMode = mode;
-            actions.render();
-          },
-          selectContextPanel: (panel) => {
-            state.activeContextPanel = panel;
-            actions.render();
-          },
           openProjectDetails: () => {
             state.projectDetailsOpen = true;
             actions.render();
@@ -285,8 +284,26 @@ export function createActions(
             state.projectDetailsOpen = false;
             actions.render();
           },
-          selectKey: (keyId) => {
+          selectKey: (keyId, additive = false) => {
             state.selectedKeyId = keyId;
+            if (additive) {
+              const next = new Set(state.selectedKeyIds);
+              if (next.has(keyId)) {
+                next.delete(keyId);
+              } else {
+                next.add(keyId);
+              }
+              // Keep at least one key selected so lighting edits always have a target.
+              state.selectedKeyIds = next.size > 0 ? [...next] : [keyId];
+            } else {
+              state.selectedKeyIds = [keyId];
+            }
+            actions.render();
+          },
+          selectAllKeys: () => {
+            const layout = selectedLayout(state.keyboard, state.project);
+            state.selectedKeyIds = layout.keys.map((key) => key.id);
+            state.selectedKeyId = state.selectedKeyIds[0] ?? state.selectedKeyId;
             actions.render();
           },
           updateSelectedKeycode: (qmk) => {
@@ -304,10 +321,11 @@ export function createActions(
             actions.render();
           },
           updateSelectedLighting: (color) => {
-            const keyId = state.selectedKeyId;
-            const before = activeLightingProfile(state.project).perKey[keyId] ?? "";
-            updateLighting(state, color);
-            state.commandHistory.push({ kind: "set-lighting", keyId, before, after: color });
+            const keyIds = state.selectedKeyIds.length ? state.selectedKeyIds : [state.selectedKeyId];
+            const profile = activeLightingProfile(state.project);
+            const before = keyIds.map((keyId) => profile.perKey[keyId] ?? "");
+            keyIds.forEach((keyId) => setLightingColor(state.project, keyId, color));
+            state.commandHistory.push({ kind: "set-lighting", keyIds, before, after: color });
             actions.render();
           },
           undo: () => {
@@ -328,6 +346,7 @@ export function createActions(
             const capture = captureHostKey(state.project, state.selectedLayerIndex, input);
             state.testEvents = [capture, ...state.testEvents].slice(0, 12);
             state.selectedKeyId = capture.matchedKeyIds[0] ?? state.selectedKeyId;
+            state.selectedKeyIds = [state.selectedKeyId];
             actions.render();
           },
           downloadQmkJson: () => {
@@ -396,7 +415,7 @@ export function createActions(
             state.protocolVerification = { state: "verifying" };
             actions.render();
             session.verifyProtocolVersion().then(
-              ({ version }) => {
+              ({ version }: { version: number }) => {
                 if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
                   return;
                 }
@@ -574,12 +593,12 @@ export function createActions(
                 : createProjectFromKeyboard(state.keyboard);
             state.selectedLayerIndex = defaultSelectedLayerIndex(state.project);
             state.selectedKeyId = selectedLayout(state.keyboard, state.project).keys[0]?.id ?? "";
+            state.selectedKeyIds = state.selectedKeyId ? [state.selectedKeyId] : [];
             state.commandHistory.clear();
             state.catalogSearch = "";
             state.projectJsonDraft = JSON.stringify(state.project, null, 2);
             state.projectStatus = `Created ${state.project.name} from catalog.`;
-            state.activeView = "workspace";
-            state.activeContextPanel = "assignment";
+            state.activeView = "keymap";
             actions.render();
           },
           saveProject: () => {
@@ -886,11 +905,10 @@ export function createActions(
 export type RenderActions = {
   selectLayer: (layerIndex: number) => void;
   selectView: (view: AppView) => void;
-  selectWorkspaceMode: (mode: "device" | "editor") => void;
-  selectContextPanel: (panel: ContextPanel) => void;
   openProjectDetails: () => void;
   closeProjectDetails: () => void;
-  selectKey: (keyId: string) => void;
+  selectKey: (keyId: string, additive?: boolean) => void;
+  selectAllKeys: () => void;
   updateSelectedKeycode: (qmk: string) => void;
   updateSelectedLighting: (color: string) => void;
   captureHostKey: (input: { code: string; key: string }) => void;
@@ -937,8 +955,8 @@ export type RenderActions = {
 
 export function isProtocolVerifiableSelection(
   selection: DeviceSelectionState,
-): selection is Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "partial" } }> {
-  return selection.state === "selected" && selection.contract.state === "partial";
+): selection is Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "via" } }> {
+  return selection.state === "selected" && selection.contract.state === "via";
 }
 
 export function isGenericViaCandidateSelection(
@@ -949,11 +967,11 @@ export function isGenericViaCandidateSelection(
 
 export function isBrowserReadSelection(
   selection: DeviceSelectionState,
-): selection is Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "partial" | "unverified-via" } }> {
+): selection is Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "via" | "unverified-via" } }> {
   return isProtocolVerifiableSelection(selection) || isGenericViaCandidateSelection(selection);
 }
 
-export function browserReadSession(selection: Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "partial" | "unverified-via" } }>) {
+export function browserReadSession(selection: Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "via" | "unverified-via" } }>) {
   return isProtocolVerifiableSelection(selection) ? selection.session : selection.viaSession;
 }
 
@@ -1231,10 +1249,10 @@ export function openProject(
   state.selectedLayerIndex = defaultSelectedLayerIndex(state.project);
   state.commandHistory.clear();
   state.selectedKeyId = selectedLayout(state.keyboard, state.project).keys[0]?.id ?? "";
+  state.selectedKeyIds = state.selectedKeyId ? [state.selectedKeyId] : [];
   state.projectJsonDraft = JSON.stringify(state.project, null, 2);
   state.projectStatus = status;
-  state.activeView = "workspace";
-  state.activeContextPanel = "assignment";
+  state.activeView = "keymap";
   state.projectDetailsOpen = false;
 }
 
@@ -1318,10 +1336,6 @@ function assignmentQmk(project: Project, layerIndex: number, keyId: string): str
   return layer?.assignments.find((item) => item.visualKeyId === keyId)?.qmk ?? "KC_NO";
 }
 
-export function updateLighting(state: EditorState, color: string): void {
-  setLightingColor(state.project, state.selectedKeyId, color);
-}
-
 function setLightingColor(project: Project, keyId: string, color: string): void {
   activeLightingProfile(project).perKey[keyId] = color;
 }
@@ -1337,11 +1351,14 @@ function applyCommand(state: EditorState, command: Command, direction: "forward"
       );
       break;
     case "set-lighting":
-      setLightingColor(
-        state.project,
-        command.keyId,
-        direction === "forward" ? command.after : command.before,
-      );
+      command.keyIds.forEach((keyId, index) => {
+        const color = direction === "forward" ? command.after : command.before[index] ?? "";
+        if (color) {
+          setLightingColor(state.project, keyId, color);
+        } else {
+          delete activeLightingProfile(state.project).perKey[keyId];
+        }
+      });
       break;
     case "set-lighting-profile": {
       const profile = activeLightingProfile(state.project);

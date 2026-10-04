@@ -16,8 +16,9 @@ export type AssignKeycodeCommand = {
 
 export type SetLightingCommand = {
   kind: "set-lighting";
-  keyId: string;
-  before: string;
+  keyIds: string[];
+  /** Previous colour per key, parallel to `keyIds`; empty string = unset. */
+  before: string[];
   after: string;
 };
 
@@ -68,7 +69,7 @@ export function createCommandHistory(): CommandHistory {
         last &&
         last.kind === "set-lighting" &&
         command.kind === "set-lighting" &&
-        last.keyId === command.keyId
+        last.keyIds.join(",") === command.keyIds.join(",")
       ) {
         last.after = command.after;
       } else if (

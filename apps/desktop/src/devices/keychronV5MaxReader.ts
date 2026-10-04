@@ -1,8 +1,6 @@
 import readOnlyCommands from "../../../../fixtures/protocol/read-only-commands.json";
-import {
-  classifyKeychronV5MaxIdentity,
-  type HidIdentityMetadata,
-} from "./keychronV5MaxContract";
+import { classifyViaIdentity, type HidIdentityMetadata } from "./keychronV5MaxContract";
+import { viaModelFor, type ViaKeyboardModel } from "./keychronModels";
 import { available, unavailable, unverified, type ValueState } from "./hardwareSnapshot";
 import { requestReport, withOpen, type DeviceTransport } from "./transport";
 import {
@@ -37,7 +35,7 @@ const pendingSnapshots = new WeakSet<object>();
 export type KeychronV5MaxReaderDevice = DeviceTransport & HidIdentityMetadata;
 
 export type KeychronV5MaxIdentityFacts = {
-  model: "Keychron V5 Max ANSI Knob";
+  model: string;
   protocolVersion: readonly number[];
   firmwareVersion: string;
   defaultLayer: number;
@@ -70,6 +68,8 @@ export type KeychronV5MaxReadSnapshot = {
 };
 
 export type KeychronV5MaxReaderOptions = {
+  /** Matched model; supplies the display name and keymap matrix. */
+  model?: ViaKeyboardModel;
   keymap?: { layerCount: number; rows: number; columns: number };
   now?: () => string;
   timeoutMs?: number;
@@ -87,7 +87,7 @@ export class KeychronV5MaxReaderError extends Error {
       | "transport"
       | "invalid-response",
   ) {
-    super(`Keychron V5 Max reader failed: ${code}`);
+    super(`VIA device reader failed: ${code}`);
     this.name = "KeychronV5MaxReaderError";
   }
 }
@@ -103,7 +103,7 @@ export async function requestKeychronV5MaxRead(
   payload: readonly number[] = [],
   options: { timeoutMs?: number } = {},
 ): Promise<Uint8Array> {
-  if (classifyKeychronV5MaxIdentity(device).state !== "partial") {
+  if (classifyViaIdentity(device).state !== "via") {
     throw new KeychronV5MaxReaderError("identity");
   }
   validateReadRequest(command, payload);
@@ -123,9 +123,10 @@ export async function readKeychronV5MaxSnapshot(
   device: KeychronV5MaxReaderDevice,
   options: KeychronV5MaxReaderOptions = {},
 ): Promise<KeychronV5MaxReadSnapshot> {
-  if (classifyKeychronV5MaxIdentity(device).state !== "partial") {
+  if (classifyViaIdentity(device).state !== "via") {
     throw new KeychronV5MaxReaderError("identity");
   }
+  const model = options.model ?? viaModelFor(device.vendorId, device.productId);
   const timeoutMs = boundedTimeoutMs(options.timeoutMs);
   if (pendingSnapshots.has(device)) {
     throw new KeychronV5MaxReaderError("concurrent-read");
@@ -133,9 +134,9 @@ export async function readKeychronV5MaxSnapshot(
   pendingSnapshots.add(device);
   try {
     return await withOpen(device, async () => {
-      const identity = await readIdentity(device, timeoutMs);
+      const identity = await readIdentity(device, model, timeoutMs);
       const capabilities = await readCapabilities(device, timeoutMs);
-      const keymap = await readKeymap(device, options.keymap, timeoutMs);
+      const keymap = await readKeymap(device, options.keymap ?? modelKeymap(model), timeoutMs);
       const lighting = await readLighting(device, timeoutMs);
       const macros = await readMacros(device, timeoutMs);
       return {
@@ -154,6 +155,7 @@ export async function readKeychronV5MaxSnapshot(
 
 async function readIdentity(
   device: KeychronV5MaxReaderDevice,
+  model: ViaKeyboardModel | undefined,
   timeoutMs: number,
 ): Promise<ValueState<KeychronV5MaxIdentityFacts>> {
   try {
@@ -165,7 +167,7 @@ async function readIdentity(
       return unverified("Firmware version response is not printable ASCII.");
     }
     return available({
-      model: "Keychron V5 Max ANSI Knob",
+      model: model?.displayName ?? "VIA keyboard",
       protocolVersion: [protocol[1]!, protocol[2]!, protocol[3]!],
       firmwareVersion,
       defaultLayer: defaultLayer[1]!,
@@ -187,13 +189,27 @@ async function readCapabilities(
   }
 }
 
+/** The model's matrix as `{layerCount, rows, columns}` for the keymap read. */
+function modelKeymap(
+  model: ViaKeyboardModel | undefined,
+): KeychronV5MaxReaderOptions["keymap"] {
+  if (!model?.matrix) {
+    return undefined;
+  }
+  // Layer count is read from the device; this is the declared default and is
+  // checked against the observed count by `readViaKeymap`.
+  return { layerCount: DEFAULT_LAYER_COUNT, rows: model.matrix.rows, columns: model.matrix.cols };
+}
+
+const DEFAULT_LAYER_COUNT = 4;
+
 async function readKeymap(
   device: KeychronV5MaxReaderDevice,
   dimensions: KeychronV5MaxReaderOptions["keymap"],
   timeoutMs: number,
 ): Promise<ValueState<ViaKeymap>> {
   if (!dimensions) {
-    return unavailable("No verified V5 Max matrix dimensions were supplied.");
+    return unavailable("No verified matrix dimensions were supplied for this model.");
   }
   try {
     return available(await readViaKeymap(new ViaReadProtocol(device, { timeoutMs }), dimensions));

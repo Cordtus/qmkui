@@ -1,7 +1,4 @@
-import {
-  classifyKeychronV5MaxIdentity,
-  type HidIdentityMetadata,
-} from "./keychronV5MaxContract";
+import { classifyViaIdentity, type HidIdentityMetadata } from "./keychronV5MaxContract";
 import { withOpen, type DeviceTransport } from "./transport";
 
 const PROTOCOL_VERSION_COMMAND = 0x01;
@@ -39,7 +36,7 @@ export async function verifyKeychronV5MaxProtocolVersion(
   device: KeychronV5MaxProtocolDevice,
   options: { timeoutMs?: number } = {},
 ): Promise<KeychronV5MaxProtocolVersion> {
-  if (classifyKeychronV5MaxIdentity(device).state !== "partial") {
+  if (classifyViaIdentity(device).state !== "via") {
     throw new KeychronV5MaxProtocolError("identity");
   }
 

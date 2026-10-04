@@ -1,4 +1,5 @@
 import type { Assignment, Layer, LightingProfile, Project, VisualKey } from "./domain";
+import type { IlluminationBase } from "./illumination";
 import { formatKeycap } from "./keycodes";
 
 export type SelectedKeyContext = {
@@ -83,6 +84,7 @@ export function buildSelectedKeyContext(
   layoutKeys: VisualKey[],
   selectedLayerIndex: number,
   selectedKeyId: string,
+  base?: IlluminationBase | null,
 ): SelectedKeyContext | null {
   const key = layoutKeys.find((item) => item.id === selectedKeyId) ?? layoutKeys[0];
   const profile = activeLightingProfile(project);
@@ -107,7 +109,7 @@ export function buildSelectedKeyContext(
     selectedAssignment,
     primaryAssignment,
     layers,
-    lighting: lightingForKey(profile, key.id),
+    lighting: lightingForKey(profile, key.id, base),
     shortcuts,
     relations,
   };
@@ -285,12 +287,21 @@ function uniqueRelations(relations: KeyRelation[]): KeyRelation[] {
   });
 }
 
-export function lightingForKey(profile: LightingProfile, visualKeyId: string): KeyLightingDetail {
-  const color = profile.perKey[visualKeyId] ?? "#5fb99a";
-  const brightness = Number(profile.global?.brightness ?? 180);
+export function lightingForKey(
+  profile: LightingProfile,
+  visualKeyId: string,
+  base?: IlluminationBase | null,
+): KeyLightingDetail {
+  // An explicit per-key override wins; otherwise the key mirrors the board's
+  // actual illumination. With neither (no device read and no override) the key
+  // is unlit rather than teal — there is no colour to report.
+  const override = profile.perKey[visualKeyId];
+  const color = override ?? base?.color ?? "";
+  const hasSource = Boolean(override) || Boolean(base);
+  const brightness = base?.brightness ?? Number(profile.global?.brightness ?? 180);
   return {
     profileName: profile.name,
-    mode: profile.mode,
+    mode: hasSource ? profile.mode : "off",
     color,
     brightness: Number.isFinite(brightness) ? Math.max(0, Math.min(255, brightness)) : 180,
     hasPerKeyColor: Object.hasOwn(profile.perKey, visualKeyId),

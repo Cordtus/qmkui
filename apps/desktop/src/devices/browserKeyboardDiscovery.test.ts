@@ -30,7 +30,7 @@ describe("browser keyboard discovery", () => {
       state: "selected",
       identity: exactV5MaxAnsiKnob,
       contract: {
-        state: "partial",
+        state: "via",
         capabilities: { protocolVersion: true, read: true, write: false, flash: false },
       },
     });
@@ -46,7 +46,7 @@ describe("browser keyboard discovery", () => {
       hid: { getDevices: async () => [device], requestDevice: async () => [] },
     });
 
-    if (result.state !== "selected" || result.contract.state !== "partial" || !("session" in result)) {
+    if (result.state !== "selected" || result.contract.state !== "via" || !("session" in result)) {
       throw new Error("expected a recognized V5 Max session");
     }
 
@@ -115,13 +115,13 @@ describe("browser keyboard discovery", () => {
       { readSnapshot },
     );
 
-    if (result.state !== "selected" || result.contract.state !== "partial" || !("session" in result)) {
+    if (result.state !== "selected" || result.contract.state !== "via" || !("session" in result)) {
       throw new Error("expected a recognized V5 Max session");
     }
 
     await expect(result.session.readSnapshot()).resolves.toEqual(failedLiveRead);
     expect(readSnapshot).toHaveBeenCalledWith(device, {
-      keymap: { layerCount: 4, rows: 6, columns: 19 },
+      model: expect.objectContaining({ qmkKeyboard: "keychron/v5_max/ansi_encoder" }),
     });
   });
 
@@ -148,6 +148,7 @@ describe("browser keyboard discovery", () => {
       identity: {
         vendorId: 0xfeed,
         productId: 0xbeef,
+        productName: "Example keyboard",
         collections: [{ usagePage: 0x0001, usage: 0x0006 }],
       },
       contract: { state: "unsupported" },
@@ -287,7 +288,7 @@ describe("browser keyboard discovery", () => {
     expect(result).toMatchObject({
       state: "selected",
       identity: exactV5MaxAnsiKnob,
-      contract: { state: "partial" },
+      contract: { state: "via" },
     });
   });
 
@@ -315,7 +316,7 @@ describe("browser keyboard discovery", () => {
       { readSnapshot },
     );
 
-    if (result.state !== "selected" || result.contract.state !== "partial" || !("session" in result)) {
+    if (result.state !== "selected" || result.contract.state !== "via" || !("session" in result)) {
       throw new Error("expected a recognized V5 Max session");
     }
 
@@ -324,12 +325,11 @@ describe("browser keyboard discovery", () => {
     await result.session.readSnapshot();
 
     expect(readSnapshot).toHaveBeenCalledTimes(2);
-    expect(readSnapshot).toHaveBeenNthCalledWith(1, device, {
-      keymap: { layerCount: 4, rows: 6, columns: 19 },
-    });
-    expect(readSnapshot).toHaveBeenNthCalledWith(2, device, {
-      keymap: { layerCount: 4, rows: 6, columns: 19 },
-    });
+    const modelArg = {
+      model: expect.objectContaining({ qmkKeyboard: "keychron/v5_max/ansi_encoder" }),
+    };
+    expect(readSnapshot).toHaveBeenNthCalledWith(1, device, modelArg);
+    expect(readSnapshot).toHaveBeenNthCalledWith(2, device, modelArg);
     expect(device.sendReport).not.toHaveBeenCalled();
   });
 });

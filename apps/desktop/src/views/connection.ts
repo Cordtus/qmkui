@@ -18,7 +18,7 @@ export function connectionContent(state: EditorState, actions: RenderActions): H
   ]);
 }
 
-function connectionPanel(state: EditorState, actions: RenderActions): HTMLElement {
+export function connectionPanel(state: EditorState, actions: RenderActions): HTMLElement {
   const choosing = state.deviceSelection.state === "selecting";
   const recognized = isBrowserReadSelection(state.deviceSelection) ? state.deviceSelection : undefined;
   const session = recognized ? browserReadSession(recognized) : undefined;

@@ -23,4 +23,25 @@ describe("keymap lighting mirror", () => {
         .brightness,
     ).toBe(255);
   });
+
+  it("mirrors the device illumination when there is no per-key override", () => {
+    const base = { color: "#1bc88d", brightness: 200, source: "RGB Matrix" };
+    const lighting = lightingForKey({ id: "p", name: "P", mode: "reactive", perKey: {} }, "k", base);
+    expect(lighting).toMatchObject({ color: "#1bc88d", brightness: 200, mode: "reactive" });
+  });
+
+  it("prefers a per-key override over the device illumination", () => {
+    const base = { color: "#1bc88d", brightness: 200, source: "RGB Matrix" };
+    const lighting = lightingForKey(
+      { id: "p", name: "P", mode: "reactive", perKey: { k: "#ff0000" } },
+      "k",
+      base,
+    );
+    expect(lighting.color).toBe("#ff0000");
+  });
+
+  it("is unlit with no override and no device read", () => {
+    const lighting = lightingForKey({ id: "p", name: "P", mode: "reactive", perKey: {} }, "k");
+    expect(lighting).toMatchObject({ color: "", mode: "off" });
+  });
 });

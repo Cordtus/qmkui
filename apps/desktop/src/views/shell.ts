@@ -1,10 +1,10 @@
-import { AppView, EditorState, RenderActions, isKeychronV5MaxSnapshot, isProtocolVerifiableSelection } from "../appState";
+import { AppView, EditorState, RenderActions, isKeychronV5MaxSnapshot, selectedLayout } from "../appState";
 import { KeyboardDefinition, UiIssue, jsonExportBlockers } from "../domain";
-import { connectionContent, connectionError, connectionScreen } from "./connection";
-import { catalogPanel, detectedKeyboard, projectDetailsDrawer, systemPanel } from "./panels";
+import { connectionContent, connectionScreen } from "./connection";
+import { catalogPanel, detectedKeyboard, lightingPanel, projectDetailsDrawer, systemPanel, testPanel } from "./panels";
 import { element, uiButton } from "./primitives";
 import { deviceWriteControls, snapshotContent } from "./snapshot";
-import { historyControls, keyboardWorkspace } from "./workspace";
+import { historyControls, keyboardBoard, keyboardWorkspace } from "./workspace";
 
 export function mainShell(
   state: EditorState,
@@ -40,33 +40,53 @@ export function appShell(
 }
 
 export function rail(activeView: AppView, selectView: (view: AppView) => void): HTMLElement {
-  const views: Array<{ id: AppView; label: string }> = [
-    { id: "workspace", label: "Workspace" },
-    { id: "catalog", label: "Catalog" },
-    { id: "system", label: "System" },
+  // One navigation, three jobs: shape the keymap, set the lighting, inspect the
+  // board you have plugged in. Catalog/System are supporting surfaces, not
+  // places you live in.
+  const groups: Array<{ label: string; views: Array<{ id: AppView; label: string; hint: string }> }> = [
+    {
+      label: "Edit",
+      views: [
+        { id: "keymap", label: "Keymap", hint: "Assign keys per layer" },
+        { id: "lighting", label: "Lighting", hint: "Colour keys and effects" },
+        { id: "device", label: "Device", hint: "Read the connected board" },
+      ],
+    },
+    {
+      label: "Setup",
+      views: [
+        { id: "catalog", label: "Catalog", hint: "Pick a keyboard" },
+        { id: "system", label: "System", hint: "Build, flash, diagnostics" },
+      ],
+    },
   ];
   const nav = element("nav");
-  views.forEach((view) => {
-    const selected = view.id === activeView;
-    const button = uiButton({
-      className: `nav-item ${selected ? "active" : ""}`,
-      text: view.label,
-      type: "button",
-      attrs: {
-        "aria-current": selected ? "page" : "false",
-        "data-view": view.id,
-      },
+  groups.forEach((group) => {
+    nav.append(element("p", { className: "rail-group-label", text: group.label }));
+    group.views.forEach((view) => {
+      const selected = view.id === activeView;
+      const button = uiButton({
+        className: `nav-item ${selected ? "active" : ""}`,
+        type: "button",
+        attrs: {
+          "aria-current": selected ? "page" : "false",
+          "data-view": view.id,
+          title: view.hint,
+        },
+      });
+      button.append(
+        element("span", { className: "nav-label", text: view.label }),
+        element("span", { className: "nav-hint", text: view.hint }),
+      );
+      button.addEventListener("click", () => selectView(view.id));
+      nav.append(button);
     });
-    button.addEventListener("click", () => selectView(view.id));
-    nav.append(button);
   });
 
   return element("aside", { className: "rail app-rail" }, [
     element("div", { className: "brand" }, [
       element("span", { className: "mark", text: "Q" }),
-      element("div", {}, [
-        element("strong", { text: "QMKUI" }),
-      ]),
+      element("div", {}, [element("strong", { text: "QMKUI" })]),
     ]),
     nav,
   ]);
@@ -116,7 +136,7 @@ export function topbar(
 
   return element("header", { className: "topbar workspace-header" }, [
     element("div", { className: "project-heading" }, [
-      element("p", { className: "eyebrow", text: deviceName }),
+      element("p", { className: "eyebrow", text: `${viewLabel(state.activeView)} · ${deviceName}` }),
       element("h1", { text: state.project.name }),
       element("div", { className: "project-meta" }, [
         element("small", { className: "device-id", text: deviceId }),
@@ -129,10 +149,47 @@ export function topbar(
     ]),
     element("div", { className: "topbar-actions" }, [
       historyControls(state, actions),
-      element("div", { className: "action-group" }, [save, projectDetails]),
+      element("div", { className: "action-group" }, [exportJsonButton(state, issues, actions), save, projectDetails]),
       element("div", { className: "action-group" }, [refresh]),
     ]),
   ]);
+}
+
+export function viewLabel(view: AppView): string {
+  switch (view) {
+    case "keymap":
+      return "Keymap";
+    case "lighting":
+      return "Lighting";
+    case "device":
+      return "Device";
+    case "catalog":
+      return "Catalog";
+    default:
+      return "System";
+  }
+}
+
+/** Export is a single always-visible action; blocked states explain themselves. */
+function exportJsonButton(state: EditorState, issues: UiIssue[], actions: RenderActions): HTMLElement {
+  const invalid = issues.some((issue) => issue.severity === "error");
+  const cBlockers = jsonExportBlockers(state.project);
+  const blocked = invalid || cBlockers.length > 0;
+  const download = uiButton({
+    className: "secondary-action",
+    text: "Download QMK JSON",
+    attrs: {
+      "data-qmk-action": "download",
+      ...(blocked
+        ? {
+            disabled: "",
+            title: invalid ? "Resolve keymap validation errors first" : cBlockers.join(" "),
+          }
+        : {}),
+    },
+  });
+  download.addEventListener("click", actions.downloadQmkJson);
+  return download;
 }
 
 export function topbarStatusLabel(issues: UiIssue[]): string {
@@ -155,49 +212,33 @@ export function activePanel(
   if (state.activeView === "system") {
     return systemPanel(state, issues, qmkJson, actions.reloadProbe, actions.downloadSupportBundle, actions);
   }
+  if (state.activeView === "lighting") {
+    return lightingView(state, layout, actions);
+  }
+  if (state.activeView === "device") {
+    return deviceContent(state, actions);
+  }
 
   return element("div", {
     className: "view-stack",
-    attrs: {
-      "data-panel": "workspace",
-    },
+    attrs: { "data-panel": "keymap" },
   }, [
-    workspaceModeToggle(state, actions),
-    state.workspaceMode === "editor"
-      ? editor(state, layout, issues, actions)
-      : deviceContent(state, actions),
+    editor(state, layout, issues, actions),
   ]);
 }
 
-function workspaceModeToggle(state: EditorState, actions: RenderActions): HTMLElement {
-  const modes: Array<{ id: "device" | "editor"; label: string }> = [
-    { id: "device", label: "Device" },
-    { id: "editor", label: "Project editor" },
-  ];
-  const toggle = element("div", {
-    className: "workspace-mode-toggle",
-    attrs: { "data-workspace-mode-toggle": "true" },
-  });
-  modes.forEach((mode) => {
-    const button = uiButton({
-      className: "workspace-mode-tab",
-      type: "button",
-      text: mode.label,
-      attrs: {
-        "data-workspace-mode": mode.id,
-        "aria-pressed": String(mode.id === state.workspaceMode),
-      },
-    });
-    button.addEventListener("click", () => actions.selectWorkspaceMode(mode.id));
-    toggle.append(button);
-  });
-  return toggle;
-}
-
 function deviceContent(state: EditorState, actions: RenderActions): HTMLElement {
-  return state.hardwareSnapshot
-    ? snapshotContent(state, actions)
-    : connectionContent(state, actions);
+  if (!state.hardwareSnapshot) {
+    return connectionPanelView(state, actions);
+  }
+  // The snapshot is the read-only board; the key tester lives here because both
+  // answer "what is this device actually doing right now?".
+  return element("div", { className: "view-stack device-view" }, [
+    snapshotContent(state, actions),
+    element("section", { className: "device-tester" }, [
+      testPanel(state, selectedLayout(state.keyboard, state.project), actions),
+    ]),
+  ]);
 }
 
 /**
@@ -220,6 +261,28 @@ function connectedDeviceLabel(state: EditorState): string | null {
   return null;
 }
 
+/** Lighting is its own view: the board plus the whole lighting panel, no tabs. */
+function lightingView(
+  state: EditorState,
+  layout: KeyboardDefinition["layouts"][number],
+  actions: RenderActions,
+): HTMLElement {
+  return element("section", {
+    className: "lighting-view workbench-editor",
+    attrs: { "data-workbench-surface": "true", "data-panel": "lighting", "data-keyboard-workspace": "true" },
+  }, [
+    keyboardBoard(state, layout, actions),
+    element("div", { className: "lighting-view-panel" }, [lightingPanel(state, layout, actions)]),
+  ]);
+}
+
+function connectionPanelView(state: EditorState, actions: RenderActions): HTMLElement {
+  return element("section", {
+    className: "view-stack device-view",
+    attrs: { "data-panel": "device" },
+  }, [connectionContent(state, actions)]);
+}
+
 export function editor(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
@@ -230,7 +293,6 @@ export function editor(
     className: "editor workbench-editor",
     attrs: { "data-workbench-surface": "true" },
   }, [
-    editorWorkflow(state, issues, actions),
     keyboardWorkspace(state, layout, actions),
     editorDeviceWrite(state, actions),
   ]);
@@ -252,81 +314,4 @@ function editorDeviceWrite(state: EditorState, actions: RenderActions): HTMLElem
   });
 }
 
-export function editorWorkflow(
-  state: EditorState,
-  issues: UiIssue[],
-  actions: RenderActions,
-): HTMLElement {
-  const invalid = issues.some((issue) => issue.severity === "error");
-  const cBlockers = jsonExportBlockers(state.project);
-  const exportBlocked = invalid || cBlockers.length > 0;
-  const download = uiButton({
-    className: "secondary-action",
-    text: "Download QMK JSON",
-    type: "button",
-    attrs: {
-      "data-qmk-action": "download",
-      ...(exportBlocked
-        ? {
-            disabled: "",
-            title: invalid
-              ? "Resolve keymap validation errors first"
-              : cBlockers.join(" "),
-          }
-        : {}),
-    },
-  });
-  download.addEventListener("click", actions.downloadQmkJson);
-  const connect = uiButton({
-    className: "secondary-action",
-    text:
-      state.deviceSelection.state === "selecting" ? "Choosing keyboard..." : "Choose keyboard",
-    type: "button",
-    attrs: {
-      "data-device-action": "connect",
-      ...(state.deviceSelection.state === "selecting" ? { disabled: "" } : {}),
-    },
-  });
-  connect.addEventListener("click", actions.chooseBrowserKeyboard);
-  const protocolAction = isProtocolVerifiableSelection(state.deviceSelection)
-    ? uiButton({
-        className: "secondary-action",
-        text:
-          state.protocolVerification.state === "verifying"
-            ? "Verifying protocol..."
-            : "Verify protocol",
-        type: "button",
-        attrs: {
-          "data-device-action": "verify-protocol",
-          ...(state.protocolVerification.state === "verifying" ? { disabled: "" } : {}),
-        },
-      })
-    : undefined;
-  protocolAction?.addEventListener("click", actions.verifyKeychronV5MaxProtocol);
 
-  const actionGroup = element("div", { className: "workflow-actions", attrs: { "aria-label": "Editor actions" } }, [
-    element("p", { className: "workflow-label", text: "Project actions" }),
-    element("div", { className: "workflow-buttons" }, [
-      download,
-      connect,
-      ...(protocolAction ? [protocolAction] : []),
-    ]),
-  ]);
-  const notices = element("div", { className: "workflow-notices" }, [
-    ...(invalid
-      ? [element("small", { text: "Fix keymap validation errors to download QMK JSON." })]
-      : []),
-    element("small", {
-      attrs: { "data-device-state": "true" },
-      text: connectionError(state.deviceSelection, state.protocolVerification, "idle"),
-    }),
-  ]);
-
-  return element("section", {
-    className: "editor-workflow",
-    attrs: { "data-editor-workflow": "true" },
-  }, [
-    actionGroup,
-    notices,
-  ]);
-}

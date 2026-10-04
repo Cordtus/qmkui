@@ -1,9 +1,9 @@
 import {
-  classifyKeychronV5MaxIdentity,
-  keychronV5MaxReadDefinition,
+  classifyViaIdentity,
   type HidIdentityMetadata,
-  type KeychronV5MaxIdentityContract,
+  type ViaIdentityContract,
 } from "./keychronV5MaxContract";
+import { viaModelFor, type ViaKeyboardModel } from "./keychronModels";
 import {
   verifyKeychronV5MaxProtocolVersion,
   type KeychronV5MaxProtocolDevice,
@@ -72,7 +72,7 @@ export type BrowserKeyboardSelection =
   | {
       state: "selected";
       identity: BrowserKeyboardIdentity;
-      contract: Extract<KeychronV5MaxIdentityContract, { state: "partial" }>;
+      contract: Extract<ViaIdentityContract, { state: "via" }>;
       session: BrowserKeyboardSession;
     }
   | {
@@ -84,7 +84,7 @@ export type BrowserKeyboardSelection =
   | {
       state: "selected";
       identity: BrowserKeyboardIdentity;
-      contract: Extract<KeychronV5MaxIdentityContract, { state: "unsupported" }>;
+      contract: Extract<ViaIdentityContract, { state: "unsupported" }>;
     };
 
 export type BrowserKeyboardDiscoveryDependencies = {
@@ -136,33 +136,22 @@ function classifySelection(
 
   const classified = devices.map((device) => {
     const identity = deviceIdentity(device, true);
-    return {
-      device,
-      identity,
-      contract: classifyKeychronV5MaxIdentity(identity),
-    };
+    return { device, identity, contract: classifyViaIdentity(identity) };
   });
-  const selected = classified.find(({ contract }) => contract.state === "partial")
-    ?? classified.find(({ identity }) => isPossibleViaDevice(identity))
+  const selected = classified.find(({ contract }) => contract.state === "via")
     ?? classified[0];
+  const identity = deviceIdentity(selected.device, true);
 
-  if (selected.contract.state === "partial") {
-    return {
-      state: "selected",
-      identity: selected.identity,
-      contract: selected.contract,
-      session: protocolSession(
-        selected.device as KeychronV5MaxReaderDevice,
-        dependencies.verifyProtocolVersion ?? verifyKeychronV5MaxProtocolVersion,
-        dependencies.readSnapshot ?? readKeychronV5MaxSnapshot,
-      ),
-    };
+  // Unrecognized VIA boards (no bundled model/matrix) still read standard state.
+  if (selected.contract.state !== "via") {
+    return { state: "selected", identity, contract: selected.contract };
   }
 
-  if (isPossibleViaDevice(selected.identity)) {
+  const model = selected.contract.model ?? viaModelFor(selected.identity.vendorId, selected.identity.productId);
+  if (!model?.matrix) {
     return {
       state: "selected",
-      identity: deviceIdentity(selected.device),
+      identity,
       contract: { state: "unverified-via" },
       viaSession: genericViaSession(
         selected.device as GenericViaReaderDevice,
@@ -173,13 +162,20 @@ function classifySelection(
 
   return {
     state: "selected",
-    identity: deviceIdentity(selected.device),
+    identity,
     contract: selected.contract,
+    session: protocolSession(
+      selected.device as KeychronV5MaxReaderDevice,
+      model,
+      dependencies.verifyProtocolVersion ?? verifyKeychronV5MaxProtocolVersion,
+      dependencies.readSnapshot ?? readKeychronV5MaxSnapshot,
+    ),
   };
 }
 
 function protocolSession(
   device: KeychronV5MaxReaderDevice,
+  model: ViaKeyboardModel,
   verifyProtocolVersion: (device: KeychronV5MaxProtocolDevice) => Promise<KeychronV5MaxProtocolVersion>,
   readSnapshot: (
     device: KeychronV5MaxReaderDevice,
@@ -189,7 +185,7 @@ function protocolSession(
   return {
     capabilities: { canRead: true, canWrite: false, canFlash: false },
     verifyProtocolVersion: () => verifyProtocolVersion(device as KeychronV5MaxProtocolDevice),
-    readSnapshot: () => readSnapshot(device, { keymap: keychronV5MaxReadDefinition.keymap }),
+    readSnapshot: () => readSnapshot(device, { model }),
     writeKeycode: (layer, row, col, keycode) =>
       withOpen(device, () => new ViaWriteProtocol(device).setKeycode(layer, row, col, keycode)),
     saveEeprom: () => withOpen(device, () => new ViaWriteProtocol(device).saveEeprom()),
@@ -232,6 +228,4 @@ function deviceIdentity(
   };
 }
 
-function isPossibleViaDevice(identity: BrowserKeyboardIdentity): boolean {
-  return identity.collections.some(({ usagePage, usage }) => usagePage === 0xff60 && usage === 0x0061);
-}
+

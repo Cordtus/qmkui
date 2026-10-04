@@ -113,20 +113,18 @@ describe("device-first connection layout", () => {
     expect(layout.menuLeftEdges[1]).toBeGreaterThan(layout.menuLeftEdges[0]);
   });
 
-  it("keeps the gated write confirmation inline and hides the empty notice band", async () => {
+  it("keeps the gated write confirmation inline", async () => {
     const page = await openReadResultPage({ width: 1200, height: 800 });
-    await page.locator('[data-workspace-mode="editor"]').click();
+    await page.locator('[data-view="keymap"]').click();
     await page.locator("[data-device-write-controls]").waitFor();
     const layout = await page.locator("[data-device-write-controls]").evaluate((controls) => {
       const checkbox = controls.querySelector<HTMLElement>('input[data-write-confirm="true"]')!;
       const label = controls.querySelector<HTMLElement>(".write-confirm")!;
-      const notices = controls.parentElement!.querySelector<HTMLElement>(".workflow-notices")!;
       const checkboxBox = checkbox.getBoundingClientRect();
       return {
         checkboxHeight: checkboxBox.height,
         checkboxWidth: checkboxBox.width,
         labelHeight: label.getBoundingClientRect().height,
-        noticesHeight: notices.getBoundingClientRect().height,
       };
     });
 
@@ -135,7 +133,6 @@ describe("device-first connection layout", () => {
     expect(layout.checkboxWidth).toBeLessThanOrEqual(20);
     expect(layout.checkboxHeight).toBeLessThanOrEqual(20);
     expect(layout.labelHeight).toBeLessThanOrEqual(30);
-    expect(layout.noticesHeight).toBe(0);
   });
 });
 
