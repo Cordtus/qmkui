@@ -49,15 +49,17 @@ fn set_keycode_emits_the_via_frame() {
 }
 
 #[test]
-fn save_eeprom_emits_the_via_frame() {
+fn save_rgb_matrix_eeprom_emits_the_channel_three_frame() {
     let transport = RecordingTransport::new();
     let frames = transport.frames.clone();
     let mut write = ViaWriteProtocol::new(transport);
-    write.save_eeprom().expect("save succeeds");
+    write.save_rgb_matrix_eeprom().expect("save succeeds");
 
     let frames = frames.borrow();
     let frame = frames.last().expect("a frame was emitted");
-    assert_eq!(frame[0], 0x09);
+    // [id_custom_save, rgb-matrix channel, 0, 0] — the channel byte is what
+    // routes the save to the lighting handler.
+    assert_eq!(&frame[0..4], &[0x09, 3, 0, 0]);
 }
 
 #[test]

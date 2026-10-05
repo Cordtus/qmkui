@@ -74,9 +74,10 @@ Writes are gated, never unrestricted:
   and only against mock transports or an approved hardware test plan.
 - Every write frame must be in `fixtures/protocol/write-commands.json` and pass
   the write allow-list in `qmkui-hid`; nothing is hardcoded ad hoc.
-- A write only runs after explicit operator confirmation in the UI (a
-  confirmation step, plus "save to EEPROM" as a separate confirmed action) and
-  only when the device identity matches the selected target.
+- A write only runs after explicit operator confirmation in the UI and only
+  when the device identity matches the selected target. Keycode writes persist
+  immediately; lighting is persisted by a separate confirmed "save lighting to
+  EEPROM" action.
 - No write reaches real hardware until the V5 Max manual test plan
   (`dev-docs/plans/hardware-test-plan.md`) is signed off by the operator.
   Until then, writes are exercised only against mock transports and the

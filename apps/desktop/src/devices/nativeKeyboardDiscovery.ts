@@ -106,8 +106,8 @@ function nativeV5Session(invoke: Invoke): BrowserKeyboardSession {
     writeKeycode: async (layer, row, col, keycode) => {
       await invoke("set_keycode", { layer, row, col, keycode });
     },
-    saveEeprom: async () => {
-      await invoke("save_eeprom");
+    saveLighting: async () => {
+      await invoke("save_lighting");
     },
   };
 }

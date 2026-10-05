@@ -12,10 +12,12 @@ generic standard-state read with no inferred keyboard model or layout.
 
 Connection, Read device, and Refresh device are read-only. QMKUI is also
 becoming a write-capable VIA replacement (operator direction 2026-08-12):
-a gated write path can set keycodes on the live dynamic keymap and save them to
-EEPROM, exactly like VIA. Writes are **gated** — they require an explicit
-operator confirmation in the UI, a separate confirmed "save to EEPROM" action,
-a matching device identity, and every frame must be in the write allow-list
+a gated write path can set keycodes on the live dynamic keymap and write the
+RGB-matrix lighting, exactly like VIA. Keycodes persist immediately (QMK writes
+EEPROM on set); lighting is persisted by a separate confirmed "save lighting to
+EEPROM" action. Writes are **gated** — they require an explicit
+operator confirmation in the UI, a matching device identity, and every frame
+must be in the write allow-list
 (`fixtures/protocol/write-commands.json`). No write reaches real hardware until
 the V5 Max manual test plan (`dev-docs/plans/hardware-test-plan.md`) is signed
 off. There is still no flash, bootloader, or firmware path. Unavailable or unverified fields remain visibly unavailable with their

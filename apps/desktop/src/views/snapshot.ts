@@ -36,6 +36,7 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
     ]),
     deviceWriteControls(state, actions, {
       description: `Selected key ${state.snapshotSelectedKey} on layer ${state.snapshotLayerIndex}.`,
+      lightingSave: false,
       controls: (confirmed) => {
         const keycodeInput = element("input", {
           attrs: {
@@ -101,13 +102,19 @@ function snapshotHeader(
 /**
  * The one gated device-write surface, shared by the project editor and the
  * hardware snapshot. Writes only happen after the operator ticks the
- * confirmation checkbox; "save to EEPROM" is a separate confirmed action. The
- * write allow-list in `qmkui-hid`/`viaWrite` gates every frame.
+ * confirmation checkbox. Keycode writes persist to EEPROM immediately;
+ * "save lighting to EEPROM" is a separate confirmed action (channel-3 save).
+ * The write allow-list in `qmkui-hid`/`viaWrite` gates every frame.
  */
 export function deviceWriteControls(
   state: EditorState,
   actions: RenderActions,
-  options: { description: string; controls: (confirmed: () => boolean) => HTMLElement[] },
+  options: {
+    description: string;
+    controls: (confirmed: () => boolean) => HTMLElement[];
+    /** Show the channel-3 "save lighting to EEPROM" action. Default true. */
+    lightingSave?: boolean;
+  },
 ): HTMLElement {
   const confirmInput = element("input", {
     attrs: { "data-write-confirm": "true", type: "checkbox" },
@@ -115,7 +122,7 @@ export function deviceWriteControls(
   const confirmed = () => confirmInput.checked;
   const confirm = element("label", { className: "write-confirm" }, [
     confirmInput,
-    element("span", { text: "I understand this writes to the live keymap." }),
+    element("span", { text: "I understand this writes to the connected device." }),
   ]);
   const enable = uiButton({
     className: "secondary-action",
@@ -130,10 +137,10 @@ export function deviceWriteControls(
   const save = uiButton({
     className: "secondary-action",
     type: "button",
-    text: "Save to EEPROM",
-    attrs: { "data-device-save-eeprom": "true" },
+    text: "Save lighting to EEPROM",
+    attrs: { "data-device-save-lighting": "true" },
   });
-  save.addEventListener("click", () => actions.saveEepromToDevice(confirmed()));
+  save.addEventListener("click", () => actions.saveLightingToDevice(confirmed()));
 
   return element("section", {
     className: "device-write-controls",
@@ -145,7 +152,7 @@ export function deviceWriteControls(
     element("div", { className: "device-write-actions" }, [
       enable,
       ...options.controls(confirmed),
-      save,
+      ...(options.lightingSave === false ? [] : [save]),
     ]),
     ...(state.deviceWriteStatus
       ? [

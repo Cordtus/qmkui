@@ -43,7 +43,8 @@ export class ViaWriteProtocol {
   /**
    * Sets a VIA custom channel value (`id_custom_set_value`, 0x07), framed as
    * `[command, channel, value_id, ...bytes]`. This is the same frame VIA's own
-   * configurator emits for lighting; it persists only after {@link saveEeprom}.
+   * configurator emits for lighting; it persists only after
+   * {@link saveRgbMatrixEeprom}.
    */
   setCustomValue(channel: number, valueId: number, bytes: readonly number[]): Promise<void> {
     return this.write(SET_CUSTOM_VALUE, [channel, valueId, ...bytes]);
@@ -69,8 +70,13 @@ export class ViaWriteProtocol {
     return this.setCustomValue(RGB_MATRIX_CHANNEL, RGB_MATRIX_COLOR, [hue, saturation]);
   }
 
-  saveEeprom(): Promise<void> {
-    return this.write(SAVE_EEPROM, []);
+  /**
+   * Persists the RGB-matrix lighting state to EEPROM. `id_custom_save` (0x09)
+   * routes on the channel byte, so the RGB-matrix channel must be present or
+   * the frame is dropped as unhandled before it reaches the lighting handler.
+   */
+  saveRgbMatrixEeprom(): Promise<void> {
+    return this.write(SAVE_EEPROM, [RGB_MATRIX_CHANNEL, 0, 0]);
   }
 
   private write(command: number, payload: readonly number[]): Promise<void> {

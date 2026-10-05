@@ -52,7 +52,7 @@ export type BrowserKeyboardSession = {
   verifyProtocolVersion: () => Promise<KeychronV5MaxProtocolVersion>;
   readSnapshot: () => Promise<KeychronV5MaxReadSnapshot>;
   writeKeycode?: (layer: number, row: number, col: number, keycode: number) => Promise<void>;
-  /** Global VIA RGB-matrix state write (volatile until `saveEeprom`). */
+  /** Global VIA RGB-matrix state write (volatile until `saveLighting`). */
   writeRgbMatrix?: (state: {
     brightness: number;
     effectSpeed: number;
@@ -61,7 +61,8 @@ export type BrowserKeyboardSession = {
     /** Firmware effect id; omitted to leave the current effect untouched. */
     effect?: number;
   }) => Promise<void>;
-  saveEeprom?: () => Promise<void>;
+  /** Persists the RGB-matrix lighting state to EEPROM (channel-3 save). */
+  saveLighting?: () => Promise<void>;
 };
 
 export type GenericViaBrowserKeyboardSession = {
@@ -210,7 +211,7 @@ function protocolSession(
         await write.setRgbMatrixEffectSpeed(effectSpeed);
         await write.setRgbMatrixColor(hue, saturation);
       }),
-    saveEeprom: () => withOpen(device, () => new ViaWriteProtocol(device).saveEeprom()),
+    saveLighting: () => withOpen(device, () => new ViaWriteProtocol(device).saveRgbMatrixEeprom()),
   };
 }
 

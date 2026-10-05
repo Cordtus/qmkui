@@ -170,14 +170,16 @@ fn set_keycode(
         .map_err(|error| error.to_string())
 }
 
-/// Persists the live keymap to EEPROM. A separate confirmed action.
+/// Persists the RGB-matrix lighting state to EEPROM. A separate confirmed action.
 #[tauri::command]
-fn save_eeprom(gate: State<WriteGate>) -> Result<(), String> {
+fn save_lighting(gate: State<WriteGate>) -> Result<(), String> {
     require_write_gate(&gate)?;
     let transport =
         HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
     let mut write = ViaWriteProtocol::new(transport);
-    write.save_eeprom().map_err(|error| error.to_string())
+    write
+        .save_rgb_matrix_eeprom()
+        .map_err(|error| error.to_string())
 }
 
 #[derive(Debug, Serialize)]
@@ -399,7 +401,7 @@ pub fn run() {
             remove_project,
             enable_device_writes,
             set_keycode,
-            save_eeprom,
+            save_lighting,
             run_local_build,
             flash_dry_run
         ])

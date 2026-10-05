@@ -520,8 +520,13 @@ export function createActions(
               return;
             }
             const session = currentWriteSession(state);
-            if (!session?.writeRgbMatrix) {
+            if (!session) {
               noteWriteStatus(state, writeRefusalReason(state));
+              actions.render();
+              return;
+            }
+            if (!session.writeRgbMatrix) {
+              noteWriteStatus(state, "This device does not expose a lighting write.");
               actions.render();
               return;
             }
@@ -529,9 +534,12 @@ export function createActions(
             const base = illuminationBase(state.hardwareSnapshot);
             const color = profile.perKey[state.selectedKeyId] ?? base?.color ?? "#5fb99a";
             const { h, s } = hexToHsv(color);
-            // The UI's effect names do not map to firmware mode ids, so the
-            // effect is left untouched unless the snapshot reports a concrete id.
-            const effect = rgbMatrixEffectId(state.hardwareSnapshot);
+            // The UI effect names map to the board's VIA mode ids (from its
+            // VIA definition). Unmapped names leave the device's current effect
+            // untouched rather than risk turning the lighting off.
+            const effect =
+              RGB_MATRIX_EFFECT_IDS[String(profile.global?.effect ?? "solid")] ??
+              rgbMatrixEffectId(state.hardwareSnapshot);
             const payload = {
               brightness: clampByte(profile.global?.brightness ?? base?.brightness ?? 180),
               effectSpeed: clampByte(profile.global?.speed ?? 128),
@@ -550,9 +558,9 @@ export function createActions(
                 actions.render();
               });
           },
-          saveEepromToDevice: (confirmed) => {
+          saveLightingToDevice: (confirmed) => {
             if (!confirmed || !state.deviceWriteEnabled) {
-              noteWriteStatus(state, "Confirm the EEPROM save and enable device writes first.");
+              noteWriteStatus(state, "Confirm the lighting save and enable device writes first.");
               actions.render();
               return;
             }
@@ -562,14 +570,19 @@ export function createActions(
               actions.render();
               return;
             }
+            if (!session.saveLighting) {
+              noteWriteStatus(state, "This device does not expose a lighting save.");
+              actions.render();
+              return;
+            }
             session
-              .saveEeprom()
+              .saveLighting()
               .then(() => {
-                noteWriteStatus(state, "Keymap saved to device EEPROM.");
+                noteWriteStatus(state, "RGB-matrix lighting saved to device EEPROM.");
                 actions.render();
               })
               .catch(() => {
-                noteWriteStatus(state, "EEPROM save failed.");
+                noteWriteStatus(state, "Lighting save failed.");
                 actions.render();
               });
           },
@@ -963,7 +976,7 @@ export type RenderActions = {
   selectSnapshotKey: (matrixKey: string) => void;
   enableDeviceWrites: (confirmed: boolean) => void;
   writeSnapshotKeycode: (keycode: number, confirmed: boolean) => void;
-  saveEepromToDevice: (confirmed: boolean) => void;
+  saveLightingToDevice: (confirmed: boolean) => void;
   writeKeymapToDevice: (confirmed: boolean) => void;
   writeLightingToDevice: (confirmed: boolean) => void;
   selectKeycodeCategory: (categoryId: string) => void;
@@ -1027,7 +1040,7 @@ type WriteCapableSession = {
     saturation: number;
     effect?: number;
   }) => Promise<void>;
-  saveEeprom: () => Promise<void>;
+  saveLighting?: () => Promise<void>;
 };
 
 function currentWriteSession(state: EditorState): WriteCapableSession | null {
@@ -1038,7 +1051,7 @@ function currentWriteSession(state: EditorState): WriteCapableSession | null {
     return null;
   }
   const session = browserReadSession(state.deviceSelection);
-  if ("saveEeprom" in session && session.saveEeprom && "writeKeycode" in session && session.writeKeycode) {
+  if ("writeKeycode" in session && session.writeKeycode) {
     return session as WriteCapableSession;
   }
   return null;
@@ -1419,6 +1432,18 @@ function clampByte(value: unknown): number {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(255, Math.round(number))) : 0;
 }
+
+/**
+ * UI effect names to the V5 Max's VIA RGB-matrix mode ids (from the board's
+ * `via_json/v5_ansi_encoder.json`). Only the four names the UI exposes are
+ * mapped; anything else leaves the device's current effect untouched.
+ */
+const RGB_MATRIX_EFFECT_IDS: Record<string, number> = {
+  solid: 1,
+  breathing: 2,
+  cycle: 4,
+  reactive: 18,
+};
 
 /** The device's current RGB-matrix effect id, or undefined if unavailable. */
 function rgbMatrixEffectId(snapshot: EditorState["hardwareSnapshot"]): number | undefined {

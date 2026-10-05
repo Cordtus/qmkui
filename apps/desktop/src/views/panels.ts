@@ -436,10 +436,6 @@ export function rgbMatrixControls(profile: LightingProfile, actions: RenderActio
   return element("section", { className: "lighting-controls" }, [
     element("h3", { text: "RGB Matrix" }),
     fieldControl("Effect", effectSelect),
-    element("p", {
-      className: "lighting-hint muted",
-      text: "Effect names are display-only; “Write lighting to device” leaves the firmware's current effect unchanged.",
-    }),
     fieldControl("Brightness", brightnessInput),
     fieldControl("Speed", speedInput),
   ]);
