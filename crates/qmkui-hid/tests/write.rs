@@ -61,6 +61,36 @@ fn save_eeprom_emits_the_via_frame() {
 }
 
 #[test]
+fn set_custom_value_emits_the_via_frame() {
+    let transport = RecordingTransport::new();
+    let frames = transport.frames.clone();
+    let mut write = ViaWriteProtocol::new(transport);
+    write
+        .set_custom_value(3, 1, &[200])
+        .expect("custom set succeeds");
+
+    let frames = frames.borrow();
+    let frame = frames.last().expect("a frame was emitted");
+    // [id_custom_set_value, channel, value_id, ...data]
+    assert_eq!(frame[0], 0x07);
+    assert_eq!(&frame[1..4], &[3, 1, 200]);
+}
+
+#[test]
+fn set_rgb_matrix_color_emits_hue_and_saturation() {
+    let transport = RecordingTransport::new();
+    let frames = transport.frames.clone();
+    let mut write = ViaWriteProtocol::new(transport);
+    write
+        .set_rgb_matrix_color(113, 221)
+        .expect("colour set succeeds");
+
+    let frames = frames.borrow();
+    let frame = frames.last().expect("a frame was emitted");
+    assert_eq!(&frame[0..5], &[0x07, 3, 4, 113, 221]);
+}
+
+#[test]
 fn set_keycode_requires_a_matching_echo() {
     struct NoEcho;
     impl HidTransport for NoEcho {

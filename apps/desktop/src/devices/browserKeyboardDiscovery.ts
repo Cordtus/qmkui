@@ -52,6 +52,15 @@ export type BrowserKeyboardSession = {
   verifyProtocolVersion: () => Promise<KeychronV5MaxProtocolVersion>;
   readSnapshot: () => Promise<KeychronV5MaxReadSnapshot>;
   writeKeycode?: (layer: number, row: number, col: number, keycode: number) => Promise<void>;
+  /** Global VIA RGB-matrix state write (volatile until `saveEeprom`). */
+  writeRgbMatrix?: (state: {
+    brightness: number;
+    effectSpeed: number;
+    hue: number;
+    saturation: number;
+    /** Firmware effect id; omitted to leave the current effect untouched. */
+    effect?: number;
+  }) => Promise<void>;
   saveEeprom?: () => Promise<void>;
 };
 
@@ -191,6 +200,16 @@ function protocolSession(
     readSnapshot: () => readSnapshot(device, { model }),
     writeKeycode: (layer, row, col, keycode) =>
       withOpen(device, () => new ViaWriteProtocol(device).setKeycode(layer, row, col, keycode)),
+    writeRgbMatrix: ({ brightness, effect, effectSpeed, hue, saturation }) =>
+      withOpen(device, async () => {
+        const write = new ViaWriteProtocol(device);
+        await write.setRgbMatrixBrightness(brightness);
+        if (effect !== undefined) {
+          await write.setRgbMatrixEffect(effect);
+        }
+        await write.setRgbMatrixEffectSpeed(effectSpeed);
+        await write.setRgbMatrixColor(hue, saturation);
+      }),
     saveEeprom: () => withOpen(device, () => new ViaWriteProtocol(device).saveEeprom()),
   };
 }

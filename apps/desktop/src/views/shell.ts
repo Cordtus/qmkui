@@ -289,7 +289,14 @@ function editorDeviceWrite(state: EditorState, actions: RenderActions): HTMLElem
         attrs: { "data-write-keymap": "true" },
       });
       writeKeymap.addEventListener("click", () => actions.writeKeymapToDevice(confirmed()));
-      return [writeKeymap];
+      const writeLighting = uiButton({
+        className: "secondary-action",
+        type: "button",
+        text: "Write lighting to device",
+        attrs: { "data-write-lighting": "true" },
+      });
+      writeLighting.addEventListener("click", () => actions.writeLightingToDevice(confirmed()));
+      return [writeKeymap, writeLighting];
     },
   });
 }

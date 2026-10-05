@@ -487,7 +487,7 @@ export function createActions(
             }
             const session = currentWriteSession(state);
             if (!session) {
-              noteWriteStatus(state, "The connected device does not support writes.");
+              noteWriteStatus(state, writeRefusalReason(state));
               actions.render();
               return;
             }
@@ -513,6 +513,43 @@ export function createActions(
                 actions.render();
               });
           },
+          writeLightingToDevice: (confirmed) => {
+            if (!confirmed || !state.deviceWriteEnabled) {
+              noteWriteStatus(state, "Confirm the lighting write and enable device writes first.");
+              actions.render();
+              return;
+            }
+            const session = currentWriteSession(state);
+            if (!session?.writeRgbMatrix) {
+              noteWriteStatus(state, writeRefusalReason(state));
+              actions.render();
+              return;
+            }
+            const profile = activeLightingProfile(state.project);
+            const base = illuminationBase(state.hardwareSnapshot);
+            const color = profile.perKey[state.selectedKeyId] ?? base?.color ?? "#5fb99a";
+            const { h, s } = hexToHsv(color);
+            // The UI's effect names do not map to firmware mode ids, so the
+            // effect is left untouched unless the snapshot reports a concrete id.
+            const effect = rgbMatrixEffectId(state.hardwareSnapshot);
+            const payload = {
+              brightness: clampByte(profile.global?.brightness ?? base?.brightness ?? 180),
+              effectSpeed: clampByte(profile.global?.speed ?? 128),
+              hue: Math.round((h / 360) * 255),
+              saturation: Math.round(s * 255),
+              ...(effect === undefined ? {} : { effect }),
+            };
+            session
+              .writeRgbMatrix(payload)
+              .then(() => {
+                noteWriteStatus(state, "Wrote RGB-matrix lighting to the device.");
+                actions.render();
+              })
+              .catch(() => {
+                noteWriteStatus(state, "Lighting write failed.");
+                actions.render();
+              });
+          },
           saveEepromToDevice: (confirmed) => {
             if (!confirmed || !state.deviceWriteEnabled) {
               noteWriteStatus(state, "Confirm the EEPROM save and enable device writes first.");
@@ -521,7 +558,7 @@ export function createActions(
             }
             const session = currentWriteSession(state);
             if (!session) {
-              noteWriteStatus(state, "The connected device does not support writes.");
+              noteWriteStatus(state, writeRefusalReason(state));
               actions.render();
               return;
             }
@@ -544,7 +581,7 @@ export function createActions(
             }
             const session = currentWriteSession(state);
             if (!session) {
-              noteWriteStatus(state, "The connected device does not support writes.");
+              noteWriteStatus(state, writeRefusalReason(state));
               actions.render();
               return;
             }
@@ -928,6 +965,7 @@ export type RenderActions = {
   writeSnapshotKeycode: (keycode: number, confirmed: boolean) => void;
   saveEepromToDevice: (confirmed: boolean) => void;
   writeKeymapToDevice: (confirmed: boolean) => void;
+  writeLightingToDevice: (confirmed: boolean) => void;
   selectKeycodeCategory: (categoryId: string) => void;
   updateKeycodeSearch: (query: string) => void;
   updateCatalogSearch: (query: string) => void;
@@ -982,6 +1020,13 @@ export function browserReadSession(selection: Extract<BrowserKeyboardSelection, 
 
 type WriteCapableSession = {
   writeKeycode: (layer: number, row: number, col: number, keycode: number) => Promise<void>;
+  writeRgbMatrix?: (state: {
+    brightness: number;
+    effectSpeed: number;
+    hue: number;
+    saturation: number;
+    effect?: number;
+  }) => Promise<void>;
   saveEeprom: () => Promise<void>;
 };
 
@@ -989,11 +1034,47 @@ function currentWriteSession(state: EditorState): WriteCapableSession | null {
   if (!isBrowserReadSelection(state.deviceSelection)) {
     return null;
   }
+  if (!selectionMatchesTarget(state)) {
+    return null;
+  }
   const session = browserReadSession(state.deviceSelection);
-  if ("writeKeycode" in session && session.writeKeycode && session.saveEeprom) {
+  if ("saveEeprom" in session && session.saveEeprom && "writeKeycode" in session && session.writeKeycode) {
     return session as WriteCapableSession;
   }
   return null;
+}
+
+/**
+ * A live write is only allowed when the connected device's USB identity matches
+ * the keyboard the write is authored for. If the keyboard declares no USB id
+ * (a generic VIA board) there is nothing to compare against, so the write is
+ * permitted — the device was explicitly chosen by the operator.
+ */
+function selectionMatchesTarget(state: EditorState): boolean {
+  const identity = state.deviceSelection.state === "selected" ? state.deviceSelection.identity : undefined;
+  const usb = state.keyboard.usb;
+  if (!identity || !usb?.vid || !usb?.pid) {
+    return true;
+  }
+  return hexId(identity.vendorId) === normalizeUsbId(usb.vid)
+    && hexId(identity.productId) === normalizeUsbId(usb.pid);
+}
+
+/** Why a write was refused, distinguishing no-capability from wrong-target. */
+function writeRefusalReason(state: EditorState): string {
+  if (isBrowserReadSelection(state.deviceSelection) && !selectionMatchesTarget(state)) {
+    return "Connected device does not match the project's target; refusing to write.";
+  }
+  return "The connected device does not support writes.";
+}
+
+function normalizeUsbId(value: string): string {
+  const parsed = Number.parseInt(value.replace(/^0x/i, ""), 16);
+  return Number.isNaN(parsed) ? value.toLowerCase() : hexId(parsed);
+}
+
+function hexId(value: number): string {
+  return `0x${value.toString(16).padStart(4, "0")}`;
 }
 
 function projectKeymapWrites(state: EditorState): {
@@ -1332,6 +1413,19 @@ export function activeLightingProfile(currentProject: Project): LightingProfile 
 function noteWriteStatus(state: EditorState, message: string): void {
   state.projectStatus = message;
   state.deviceWriteStatus = message;
+}
+
+function clampByte(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(255, Math.round(number))) : 0;
+}
+
+/** The device's current RGB-matrix effect id, or undefined if unavailable. */
+function rgbMatrixEffectId(snapshot: EditorState["hardwareSnapshot"]): number | undefined {
+  if (!isKeychronV5MaxSnapshot(snapshot) || snapshot.lighting.state !== "available") {
+    return undefined;
+  }
+  return snapshot.lighting.value.effect;
 }
 
 export function lightingProfileState(currentProject: Project): LightingProfileState {

@@ -641,6 +641,135 @@ expect(writeKeycode).toHaveBeenCalled();
     expect(saveEeprom).toHaveBeenCalledOnce();
   });
 
+  it("writes RGB-matrix lighting to the device behind confirmation", async () => {
+    const root = document.createElement("div");
+    const writeRgbMatrix = vi.fn(
+      async (_state: {
+        brightness: number;
+        effectSpeed: number;
+        hue: number;
+        saturation: number;
+        effect?: number;
+      }) => {},
+    );
+    const selection = recognizedSelection(async () => availableSnapshot());
+    (selection.session as { writeKeycode: unknown }).writeKeycode = vi.fn(async () => {});
+    (selection.session as { saveEeprom: unknown }).saveEeprom = vi.fn(async () => {});
+    (selection.session as { writeRgbMatrix: unknown }).writeRgbMatrix = writeRgbMatrix;
+
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    // Without confirmation the lighting write is refused.
+    root.querySelector<HTMLElement>("[data-write-lighting]")?.click();
+    await flush();
+    expect(writeRgbMatrix).not.toHaveBeenCalled();
+
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-write-lighting]")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
+
+    expect(writeRgbMatrix).toHaveBeenCalledOnce();
+    const payload = writeRgbMatrix.mock.calls[0]![0] as {
+      brightness: number;
+      effectSpeed: number;
+      hue: number;
+      saturation: number;
+      effect?: number;
+    };
+    // The snapshot reports RGB-matrix brightness 56 / effect 7.
+    expect(payload.brightness).toBe(56);
+    expect(payload.effect).toBe(7);
+    expect(payload.hue).toBeGreaterThanOrEqual(0);
+    expect(payload.saturation).toBeGreaterThanOrEqual(0);
+    expect(root.textContent).toContain("Wrote RGB-matrix lighting");
+  });
+
+  it("omits the effect id when the lighting read is unavailable", async () => {
+    const root = document.createElement("div");
+    const writeRgbMatrix = vi.fn(
+      async (_state: {
+        brightness: number;
+        effectSpeed: number;
+        hue: number;
+        saturation: number;
+        effect?: number;
+      }) => {},
+    );
+    const selection = recognizedSelection(async () => {
+      const snapshot = availableSnapshot();
+      snapshot.lighting = { state: "unverified", reason: "RGB state could not be verified." };
+      return snapshot;
+    });
+    (selection.session as { writeKeycode: unknown }).writeKeycode = vi.fn(async () => {});
+    (selection.session as { saveEeprom: unknown }).saveEeprom = vi.fn(async () => {});
+    (selection.session as { writeRgbMatrix: unknown }).writeRgbMatrix = writeRgbMatrix;
+
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-write-lighting]")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
+
+    expect(writeRgbMatrix).toHaveBeenCalledOnce();
+    const payload = writeRgbMatrix.mock.calls[0]![0] as { effect?: number };
+    expect(payload.effect).toBeUndefined();
+  });
+
+  it("refuses a write when the connected device does not match the target", async () => {
+    const root = document.createElement("div");
+    const writeKeycode = vi.fn(async () => {});
+    const saveEeprom = vi.fn(async () => {});
+    const writeRgbMatrix = vi.fn(async () => {});
+    // An unrelated VIA board, not the project's V5 Max target.
+    const selection = recognizedSelection(async () => availableSnapshot());
+    selection.identity = {
+      vendorId: 0x1234,
+      productId: 0x5678,
+      collections: [{ usagePage: 0xff60, usage: 0x0061 }],
+    };
+    (selection.session as { writeKeycode: unknown }).writeKeycode = writeKeycode;
+    (selection.session as { saveEeprom: unknown }).saveEeprom = saveEeprom;
+    (selection.session as { writeRgbMatrix: unknown }).writeRgbMatrix = writeRgbMatrix;
+
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    expect(root.textContent).toContain("Device writes enabled");
+
+    root.querySelector<HTMLElement>('[data-hardware-key="0:0"]')?.click();
+    await flush();
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    const input = root.querySelector<HTMLInputElement>("[data-write-keycode]")!;
+    input.value = "0046";
+    root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
+    await flush();
+
+    expect(writeKeycode).not.toHaveBeenCalled();
+    expect(root.textContent).toContain("does not match the project's target");
+  });
+
   it("downloads a support bundle from the System panel", async () => {
     const root = document.createElement("div");
     createApp(root, {
