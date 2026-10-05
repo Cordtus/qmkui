@@ -3,7 +3,7 @@ import {
   type HidIdentityMetadata,
   type ViaIdentityContract,
 } from "./keychronV5MaxContract";
-import { viaModelFor, type ViaKeyboardModel } from "./keychronModels";
+import { findViaModel, type ViaKeyboardModel } from "./keychronModels";
 import {
   verifyKeychronV5MaxProtocolVersion,
   type KeychronV5MaxProtocolDevice,
@@ -88,6 +88,8 @@ export type BrowserKeyboardSelection =
     };
 
 export type BrowserKeyboardDiscoveryDependencies = {
+  /** Known models used to identify a device by VID/PID. */
+  models?: readonly ViaKeyboardModel[];
   verifyProtocolVersion?: (
     device: KeychronV5MaxProtocolDevice,
   ) => Promise<KeychronV5MaxProtocolVersion>;
@@ -134,9 +136,10 @@ function classifySelection(
     return empty;
   }
 
+  const models = dependencies.models ?? [];
   const classified = devices.map((device) => {
     const identity = deviceIdentity(device, true);
-    return { device, identity, contract: classifyViaIdentity(identity) };
+    return { device, identity, contract: classifyViaIdentity(identity, models) };
   });
   const selected = classified.find(({ contract }) => contract.state === "via")
     ?? classified[0];
@@ -147,7 +150,7 @@ function classifySelection(
     return { state: "selected", identity, contract: selected.contract };
   }
 
-  const model = selected.contract.model ?? viaModelFor(selected.identity.vendorId, selected.identity.productId);
+  const model = selected.contract.model ?? findViaModel(models, selected.identity.vendorId, selected.identity.productId);
   if (!model?.matrix) {
     return {
       state: "selected",

@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { classifyViaIdentity } from "./keychronV5MaxContract";
+import type { ViaKeyboardModel } from "./keychronModels";
+
+const models: ViaKeyboardModel[] = [
+  {
+    vendorId: "0x3434",
+    productId: "0x0950",
+    displayName: "Keychron V5 Max ANSI Knob",
+    qmkKeyboard: "keychron/v5_max/ansi_encoder",
+    matrix: { rows: 6, cols: 19 },
+  },
+];
 
 const v5MaxAnsiKnob = {
   vendorId: 0x3434,
@@ -9,7 +20,7 @@ const v5MaxAnsiKnob = {
 
 describe("VIA identity contract", () => {
   it("recognizes a known Keychron model and permits only read operations", () => {
-    expect(classifyViaIdentity(v5MaxAnsiKnob)).toEqual({
+    expect(classifyViaIdentity(v5MaxAnsiKnob, models)).toEqual({
       state: "via",
       model: expect.objectContaining({ qmkKeyboard: "keychron/v5_max/ansi_encoder" }),
       capabilities: { protocolVersion: true, read: true, write: false, flash: false },

@@ -5,6 +5,8 @@ import { BuildArtifact, BuildRunner, BuildStep, projectDigest, runLocalBuild, un
 import { importConfiguratorKeymap } from "./configuratorImport";
 import { FlashRun, PolicyVerdict, assessFlashRequest, dryRunFlash, flashTargetFromArtifact } from "./flashPlan";
 import { createMacroRecord } from "./macros";
+import { hexToHsv } from "./color";
+import { illuminationBase } from "./illumination";
 import { buildSupportBundle } from "./supportBundle";
 import { viaDefinitionFor } from "./viaDefinition";
 import {
@@ -13,7 +15,8 @@ import {
   type CommandHistory,
   type LightingProfileState,
 } from "./commands";
-import { BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
+import { BrowserKeyboardNavigator, BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
+import { buildViaModels } from "./devices/keychronModels";
 import { chooseNativeKeyboard, discoverNativeKeyboard, enableNativeDeviceWrites, isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
 import { nativeBuildRunner, nativeFlashDryRun } from "./nativeServices";
 import { GenericViaStandardState } from "./devices/genericViaReader";
@@ -36,8 +39,10 @@ import { mainShell } from "./views/shell";
 export const fixtureKeyboard = catalog[0] as KeyboardDefinition;
 export const fixtureProject = project as Project;
 export const bundledKeyboards = [keychronV5MaxKeyboard, fixtureKeyboard];
+/** Known VIA models derived from the bundled keyboards, for device identity. */
+export const bundledViaModels = buildViaModels(bundledKeyboards);
 
-export type AppView = "keymap" | "lighting" | "device" | "catalog" | "system";
+export type AppView = "keymap" | "device" | "catalog" | "system";
 
 export type AppOptions = {
   keyboard?: KeyboardDefinition;
@@ -115,7 +120,7 @@ function defaultDiscoverKeyboard(): () => Promise<BrowserKeyboardSelection> {
     if (isNativeRuntime()) {
       return (await discoverNativeKeyboard()) ?? { state: "no-authorized-device" };
     }
-    return discoverAuthorizedBrowserKeyboard();
+    return discoverAuthorizedBrowserKeyboard(navigator as BrowserKeyboardNavigator, { models: bundledViaModels });
   };
 }
 
@@ -143,7 +148,7 @@ function defaultChooseKeyboard(): () => Promise<BrowserKeyboardSelection> {
     if (isNativeRuntime()) {
       return (await chooseNativeKeyboard()) ?? { state: "no-selection" };
     }
-    return chooseBrowserKeyboard();
+    return chooseBrowserKeyboard(navigator as BrowserKeyboardNavigator, { models: bundledViaModels });
   };
 }
 
@@ -1163,6 +1168,23 @@ export function keyboardForProject(project: Project): KeyboardDefinition | undef
       keyboard.id === project.target.keyboardId &&
       keyboard.qmkKeyboard === project.target.qmkKeyboard,
   );
+}
+
+/**
+ * The bundled keyboard definition for a connected device, matched through the
+ * VIA model registry. Undefined for an unrecognized VIA board (standard-state
+ * only) or a board with no bundled definition.
+ */
+export function keyboardForSelection(
+  selection: DeviceSelectionState,
+): KeyboardDefinition | undefined {
+  if (selection.state !== "selected" || selection.contract.state !== "via") {
+    return undefined;
+  }
+  const model = selection.contract.model;
+  return model
+    ? bundledKeyboards.find((keyboard) => keyboard.qmkKeyboard === model.qmkKeyboard)
+    : undefined;
 }
 
 export function projectFromDraft(

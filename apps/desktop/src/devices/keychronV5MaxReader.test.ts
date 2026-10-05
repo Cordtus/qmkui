@@ -4,6 +4,17 @@ import {
   requestKeychronV5MaxRead,
   type KeychronV5MaxReaderDevice,
 } from "./keychronV5MaxReader";
+import type { ViaKeyboardModel } from "./keychronModels";
+
+const models: ViaKeyboardModel[] = [
+  {
+    vendorId: "0x3434",
+    productId: "0x0950",
+    displayName: "Keychron V5 Max ANSI Knob",
+    qmkKeyboard: "keychron/v5_max/ansi_encoder",
+    matrix: { rows: 6, cols: 19 },
+  },
+];
 
 const exactV5MaxAnsiKnob = {
   vendorId: 0x3434,
@@ -16,6 +27,7 @@ describe("Keychron V5 Max reader", () => {
     const device = createTranscriptDevice();
 
     const snapshot = await readKeychronV5MaxSnapshot(device, {
+      model: models[0],
       keymap: { layerCount: 1, rows: 1, columns: 1 },
       now: () => "2026-07-18T12:00:00.000Z",
     });

@@ -74,9 +74,10 @@ describe("device-first hardware workspace", () => {
     });
     await flush();
 
-    for (const view of ["keymap", "lighting", "device", "catalog", "system"]) {
+    for (const view of ["keymap", "device", "catalog", "system"]) {
       expect(root.querySelector(`[data-view="${view}"]`)).not.toBeNull();
     }
+    expect(root.querySelector('[data-view="lighting"]')).toBeNull();
     expect(root.querySelector('[data-view="device"]')?.getAttribute("aria-current")).toBe("page");
     expect(root.querySelector("[data-hardware-snapshot]")).not.toBeNull();
 
@@ -471,7 +472,7 @@ function deferred<Value>() {
     expect(root.textContent).toContain("VIA definition exported for keychron/v5_max/ansi_encoder");
   });
 
-  it("undoes a lighting mode change", async () => {
+  it("undoes a lighting mode change from the keymap rail", async () => {
     const root = document.createElement("div");
     createApp(root, {
       discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
@@ -481,8 +482,11 @@ function deferred<Value>() {
     await flush();
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
-    root.querySelector<HTMLElement>('[data-view="lighting"]')?.click();
-    await flush();
+
+    // Lighting is no longer its own destination; its controls live in the
+    // keymap. The board and the lighting mode are on screen together.
+    expect(root.querySelector("[data-keyboard-workspace]")).not.toBeNull();
+    expect(root.querySelector('[data-settings-group="lighting"]')).not.toBeNull();
 
     const activeMode = () =>
       root
@@ -505,7 +509,7 @@ function deferred<Value>() {
     await flush();
     root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
     await flush();
-    root.querySelector<HTMLElement>('[data-view="lighting"]')?.click();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
 
     root.querySelector<HTMLElement>("[data-lighting-select-all]")?.click();
@@ -513,8 +517,12 @@ function deferred<Value>() {
     const keys = [...root.querySelectorAll<HTMLElement>("[data-key]")];
     expect(keys.length).toBeGreaterThan(1);
 
+    // Exactly one colour picker exists, in the keymap rail's lighting group.
+    const pickers = root.querySelectorAll("[data-color-hex]");
+    expect(pickers).toHaveLength(1);
+
     // Commit a red selection: every key carries it (unlit keys keep no tint).
-    const hex = root.querySelector<HTMLInputElement>("[data-color-hex]")!;
+    const hex = pickers[0] as HTMLInputElement;
     hex.value = "#ff0000";
     hex.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();

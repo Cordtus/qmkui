@@ -7,6 +7,9 @@ import type { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
  * VIA reports only global RGB-matrix state (hue/saturation/brightness) — there
  * is no per-LED colour map — so every key shares this colour unless the project
  * overrides it per key.
+ *
+ * `color` is the full-intensity hue/saturation (brightness applied separately
+ * by the renderer, exactly once); `brightness` is the raw 0-255 board value.
  */
 export type IlluminationBase = {
   color: string;
@@ -26,7 +29,7 @@ export function illuminationBase(snapshot: Snapshot): IlluminationBase | null {
       return null;
     }
     const { hue, saturation, brightness } = snapshot.lighting.value;
-    return { color: hsv255ToHex(hue, saturation, brightness), brightness, source: "RGB Matrix" };
+    return { color: hsv255ToHex(hue, saturation, 255), brightness, source: "RGB Matrix" };
   }
 
   const matrix = rgbChannels(snapshot.lighting.rgbMatrixHue, snapshot.lighting.rgbMatrixSaturation, snapshot.lighting.rgbMatrixBrightness);
@@ -51,5 +54,6 @@ function rgbChannels(
   const h = hue.value ?? 0;
   const s = saturation.value ?? 0;
   const v = brightness.value ?? 0;
-  return { color: hsv255ToHex(h, s, v), brightness: v };
+  // Full value here; the renderer applies brightness once via `dimHex`.
+  return { color: hsv255ToHex(h, s, 255), brightness: v };
 }

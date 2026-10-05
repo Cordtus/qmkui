@@ -4,6 +4,17 @@ import {
   discoverAuthorizedBrowserKeyboard,
 } from "./browserKeyboardDiscovery";
 import type { KeychronV5MaxReaderDevice } from "./keychronV5MaxReader";
+import type { ViaKeyboardModel } from "./keychronModels";
+
+const models: ViaKeyboardModel[] = [
+  {
+    vendorId: "0x3434",
+    productId: "0x0950",
+    displayName: "Keychron V5 Max ANSI Knob",
+    qmkKeyboard: "keychron/v5_max/ansi_encoder",
+    matrix: { rows: 6, cols: 19 },
+  },
+];
 
 const exactV5MaxAnsiKnob = {
   vendorId: 0x3434,
@@ -22,9 +33,10 @@ describe("browser keyboard discovery", () => {
     };
 
     const requestDevice = vi.fn(async () => []);
-    const result = await discoverAuthorizedBrowserKeyboard({
-      hid: { getDevices: async () => [device], requestDevice },
-    });
+    const result = await discoverAuthorizedBrowserKeyboard(
+      { hid: { getDevices: async () => [device], requestDevice } },
+      { models },
+    );
 
     expect(result).toMatchObject({
       state: "selected",
@@ -42,9 +54,10 @@ describe("browser keyboard discovery", () => {
 
   it("uses the verified V5 definition dimensions to read the current keymap only when its explicit session method is invoked", async () => {
     const device = createTranscriptDevice();
-    const result = await discoverAuthorizedBrowserKeyboard({
-      hid: { getDevices: async () => [device], requestDevice: async () => [] },
-    });
+    const result = await discoverAuthorizedBrowserKeyboard(
+      { hid: { getDevices: async () => [device], requestDevice: async () => [] } },
+      { models },
+    );
 
     if (result.state !== "selected" || result.contract.state !== "via" || !("session" in result)) {
       throw new Error("expected a recognized V5 Max session");
@@ -112,7 +125,7 @@ describe("browser keyboard discovery", () => {
     const readSnapshot = vi.fn(async () => failedLiveRead);
     const result = await discoverAuthorizedBrowserKeyboard(
       { hid: { getDevices: async () => [device], requestDevice: async () => [] } },
-      { readSnapshot },
+      { models, readSnapshot },
     );
 
     if (result.state !== "selected" || result.contract.state !== "via" || !("session" in result)) {
@@ -282,7 +295,7 @@ describe("browser keyboard discovery", () => {
     };
     const requestDevice = vi.fn(async () => [unsupported, exactV5MaxAnsiKnob]);
 
-    const result = await chooseBrowserKeyboard({ hid: { getDevices: async () => [], requestDevice } });
+    const result = await chooseBrowserKeyboard({ hid: { getDevices: async () => [], requestDevice } }, { models });
 
     expect(requestDevice).toHaveBeenCalledWith({ filters: [] });
     expect(result).toMatchObject({
@@ -313,7 +326,7 @@ describe("browser keyboard discovery", () => {
     }));
     const result = await discoverAuthorizedBrowserKeyboard(
       { hid: { getDevices: async () => [device], requestDevice: async () => [] } },
-      { readSnapshot },
+      { models, readSnapshot },
     );
 
     if (result.state !== "selected" || result.contract.state !== "via" || !("session" in result)) {
