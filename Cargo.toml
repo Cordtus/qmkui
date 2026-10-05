@@ -7,7 +7,6 @@ members = [
     "crates/qmkui-hid",
     "crates/qmkui-flash",
 ]
-exclude = ["apps/desktop/src-tauri"]
 resolver = "2"
 
 [workspace.package]

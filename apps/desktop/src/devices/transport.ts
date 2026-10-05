@@ -1,8 +1,8 @@
 /**
  * Device transport seam. Every HID reader (VIA, Keychron V5 Max, generic VIA)
- * operates on this shape; the browser build supplies a WebHID-backed transport
- * while the native Tauri build will supply a Rust `qmkui-hid` transport that
- * exposes the same interface. Nothing above `devices/transport.ts` touches
+ * operates on this shape; the browser supplies a WebHID-backed transport. A
+ * future native transport (e.g. a Rust `qmkui-hid` implementation) can supply
+ * the same interface. Nothing above `devices/transport.ts` touches
  * `navigator.hid` or any native handle directly.
  */
 

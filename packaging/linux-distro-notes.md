@@ -1,32 +1,31 @@
 # Debian/RPM Packaging Notes
 
-Status: planned; execution requires the Tauri release binary from
-`apps/desktop/src-tauri` (build via `npm --prefix apps/desktop run tauri:build`).
+QMKUI is a static browser app. It runs in any Chromium-based browser (WebHID)
+served over HTTPS or localhost; there is no native GUI binary or webview.
 
-## Dependencies shared by all Linux packages
+## Dependencies
 
-- `qmk` (runtime, local builds)
-- `hidapi` (native HID transport)
-- WebKitGTK 4.1 + GTK3 (Tauri webview)
-- udev rule from `packaging/udev/70-qmkui.rules` installed to
-  `/usr/lib/udev/rules.d/`
+- A Chromium-based browser with WebHID (Chrome/Chromium/Edge).
+- `qmk` (optional, runtime; local builds via the `qmkui-build` CLI).
+- The udev rule from `packaging/udev/70-qmkui.rules`, installed to
+  `/usr/lib/udev/rules.d/`, so Chromium can open the keyboard's raw HID
+  interfaces. Install it manually or ship it with your package; no other
+  system libraries are required.
 
-## Debian (.deb)
+## Distribution
 
-- Binary: `/usr/bin/qmkui` (release binary)
-- Desktop entry + icon + MIME from `packaging/arch/qmkui/`
-- Depends: `qmk`, `libhidapi0`, `libwebkit2gtk-4.1-0`, `libgtk-3-0`
-- Postinst runs `udevadm control --reload` after installing the udev rule.
-
-## RPM
-
-- Same file layout; package manager-specific udev reload hook.
-- Depends on the equivalent Fedora/openSUSE WebKitGTK packages.
+- The static build (`apps/desktop/dist/`, produced by
+  `npm --prefix apps/desktop run build`) is the shippable artifact. It is
+  deployed to GitHub Pages from `main`; any static host works.
+- To serve it locally, use any static file server on localhost (WebHID needs a
+  secure context, so `file://` is not reliable).
+- There is no packaged desktop binary today; a thin launcher that serves the
+  static site on localhost is a possible future addition.
 
 ## Guarantees
 
-- The GUI never runs as root.
-- The udev rule grants only read-capable access to supported device
-  interfaces; QMKUI emits only read commands on them.
-- Packaging leaks are caught by `scripts/test-public-gui-packaging.sh` and the
-  public-build audit (no local paths in artifacts).
+- The app never runs as root.
+- The udev rule grants access to the supported device's raw HID interfaces;
+  QMKUI only writes after explicit operator confirmation.
+- Packaging leaks are caught by the public-build audit
+  (`scripts/audit-public-build.sh`, no local paths in artifacts).

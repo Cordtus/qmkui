@@ -15,9 +15,6 @@ pub mod transport;
 pub mod via;
 pub mod via_write;
 
-#[cfg(feature = "hidapi-transport")]
-pub mod hidapi;
-
 pub use allowlist::{
     is_read_only_keychron_command, is_read_only_via_command, is_via_write_command,
 };

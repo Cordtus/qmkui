@@ -22,8 +22,8 @@ pub enum HidError {
 }
 
 /// A bounded, read-only HID request/response primitive. Implementations
-/// perform the actual report I/O; native hidapi and the test mock both satisfy
-/// this shape.
+/// perform the actual report I/O; a native transport and the test mock both
+/// satisfy this shape.
 pub trait HidTransport {
     /// Sends a `command` with `payload` and returns the full matching report.
     fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError>;

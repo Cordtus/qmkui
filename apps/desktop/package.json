@@ -9,16 +9,12 @@
     "preview": "vite preview --host 127.0.0.1",
     "audit:build": "../../scripts/audit-public-build.sh dist",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@awesome.me/webawesome": "^3.9.0",
-    "@tauri-apps/api": "^2.11.1"
+    "@awesome.me/webawesome": "^3.9.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^24.13.3",
     "jsdom": "^29.1.1",
     "playwright": "^1.61.1",

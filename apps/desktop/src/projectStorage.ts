@@ -1,5 +1,4 @@
 import { SUPPORTED_PROJECT_SCHEMA_VERSION, type Project } from "./domain";
-import { isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
 
 export type ProjectSummary = {
   id: string;
@@ -303,95 +302,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-type NativeInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
-
-/**
- * A Tauri-native {@link ProjectStorage} backed by the shell's filesystem
- * store. The `ProjectStorage` interface is synchronous, so this adapter keeps
- * an in-memory cache that is prefetched from the native store on creation and
- * refreshed after each mutation; save/remove are fire-and-forget with a
- * best-effort refresh. Only used when running inside the Tauri shell.
- */
-export function createNativeProjectStorage(): ProjectStorage {
-  const cache = new Map<string, Project>();
-  let summaries: ProjectSummary[] = [];
-  let invokePromise: Promise<NativeInvoke> | undefined;
-
-  const invoke = (): Promise<NativeInvoke> => {
-    invokePromise ??= import("@tauri-apps/api/core").then((module) => module.invoke as NativeInvoke);
-    return invokePromise;
-  };
-
-  const refresh = async (): Promise<void> => {
-    const call = await invoke();
-    const listed = (await call("list_projects")) as ProjectSummary[];
-    const loaded: Project[] = [];
-    for (const summary of listed) {
-      const json = (await call("load_project", { id: summary.id })) as string | null;
-      if (json === null) {
-        continue;
-      }
-      try {
-        loaded.push(importProjectJson(json));
-      } catch {
-        // Ignore a corrupt native entry; it stays hidden from the UI.
-      }
-    }
-    cache.clear();
-    for (const project of loaded) {
-      cache.set(project.id, project);
-    }
-    summaries = listed;
-  };
-
-  void refresh();
-
-  return {
-    save(project) {
-      cache.set(project.id, structuredClone(project));
-      summaries = [
-        {
-          id: project.id,
-          name: project.name,
-          keyboardId: project.target.keyboardId,
-          qmkKeyboard: project.target.qmkKeyboard,
-          updatedAt: new Date().toISOString(),
-        },
-        ...summaries.filter((summary) => summary.id !== project.id),
-      ];
-      void invoke()
-        .then((call) =>
-          call("save_project", {
-            id: project.id,
-            projectJson: JSON.stringify(project),
-          }),
-        )
-        .then(() => refresh())
-        .catch(() => {});
-    },
-    load(projectId) {
-      const cached = cache.get(projectId);
-      return cached ? structuredClone(cached) : null;
-    },
-    list() {
-      return summaries;
-    },
-    remove(projectId) {
-      const existed = cache.delete(projectId);
-      summaries = summaries.filter((summary) => summary.id !== projectId);
-      void invoke()
-        .then((call) => call("remove_project", { id: projectId }))
-        .then(() => refresh())
-        .catch(() => {});
-      return existed;
-    },
-  };
-}
-
 export function defaultProjectStorage(): ProjectStorage {
-  return isNativeRuntime()
-    ? createNativeProjectStorage()
-    : typeof localStorage === "undefined"
-      ? createMemoryProjectStorage()
-      : createLocalStorageProjectStorage();
+  return typeof localStorage === "undefined"
+    ? createMemoryProjectStorage()
+    : createLocalStorageProjectStorage();
 }
