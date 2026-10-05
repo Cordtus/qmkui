@@ -669,10 +669,11 @@ function deferred<Value>() {
       saturation: number;
       effect?: number;
     };
-    // The snapshot reports RGB-matrix brightness 56; the profile defaults to
-    // the "solid" effect, which maps to firmware mode 1.
+    // The snapshot reports brightness 56 / effect 7; with no profile override,
+    // the write preserves the board's own values.
     expect(payload.brightness).toBe(56);
-    expect(payload.effect).toBe(1);
+    expect(payload.effectSpeed).toBe(8);
+    expect(payload.effect).toBe(7);
     expect(payload.hue).toBeGreaterThanOrEqual(0);
     expect(payload.saturation).toBeGreaterThanOrEqual(0);
     expect(root.textContent).toContain("Wrote RGB-matrix lighting");
