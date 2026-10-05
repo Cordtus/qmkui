@@ -77,7 +77,8 @@ or treat them as tamper-proof. They do not read, back up, or restore keyboard
 firmware, EEPROM, wireless configuration, or other device state.
 
 Compilation, device configuration writes, flashing, live keyboard mode,
-persistent native storage, and broad catalog ingestion are not implemented.
+persistent project storage beyond the browser, and broad catalog ingestion are
+not implemented.
 The V5 adapter can read a bounded hardware snapshot only after a user clicks
 **Read device**. A generic VIA session must first complete explicit protocol
 verification and can then read only standard state. Neither path has a

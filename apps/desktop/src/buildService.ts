@@ -35,8 +35,8 @@ export type BuildArtifact = {
 
 /**
  * Injectable command execution. The browser has no process access, so the
- * default runner reports an unsupported error; the Tauri shell injects a
- * runner backed by the native `run_local_build` command.
+ * default runner reports an unsupported error; callers can inject a runner
+ * backed by a native/CLI process.
  */
 export type BuildRunner = (command: string[]) => Promise<{
   ok: boolean;
@@ -49,7 +49,7 @@ export function unsupportedBrowserRunner(): BuildRunner {
   return async () => ({
     ok: false,
     stdout: "",
-    stderr: "Local builds are only available in the QMKUI desktop app.",
+    stderr: "In-app builds are not available; run the `qmkui-build` CLI (or `qmk compile`) instead.",
     durationMs: 0,
   });
 }

@@ -17,8 +17,6 @@ import {
 } from "./commands";
 import { BrowserKeyboardNavigator, BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
 import { buildViaModels } from "./devices/keychronModels";
-import { chooseNativeKeyboard, discoverNativeKeyboard, enableNativeDeviceWrites, isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
-import { nativeBuildRunner, nativeFlashDryRun } from "./nativeServices";
 import { GenericViaStandardState } from "./devices/genericViaReader";
 import { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
 import { loadLocalDoctorReport } from "./doctorReport";
@@ -117,9 +115,6 @@ export type ProtocolVerificationState =
 
 function defaultDiscoverKeyboard(): () => Promise<BrowserKeyboardSelection> {
   return async () => {
-    if (isNativeRuntime()) {
-      return (await discoverNativeKeyboard()) ?? { state: "no-authorized-device" };
-    }
     return discoverAuthorizedBrowserKeyboard(navigator as BrowserKeyboardNavigator, { models: bundledViaModels });
   };
 }
@@ -132,22 +127,8 @@ export function initialView(): AppView {
   return "device";
 }
 
-function defaultBuildRunner(project: Project): BuildRunner {
-  if (!isNativeRuntime()) {
-    return unsupportedBrowserRunner();
-  }
-  let runner: BuildRunner | null = null;
-  return async (command: string[]) => {
-    runner ??= await nativeBuildRunner(project);
-    return runner(command);
-  };
-}
-
 function defaultChooseKeyboard(): () => Promise<BrowserKeyboardSelection> {
   return async () => {
-    if (isNativeRuntime()) {
-      return (await chooseNativeKeyboard()) ?? { state: "no-selection" };
-    }
     return chooseBrowserKeyboard(navigator as BrowserKeyboardNavigator, { models: bundledViaModels });
   };
 }
@@ -196,7 +177,9 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     selectedSavedProjectId: projectStorage.list()[0]?.id ?? "",
     testEvents: [],
     doctorStatus: "loading",
-    buildRunner: options.buildRunner ?? defaultBuildRunner(currentProject),
+    // No process access in the browser; in-app builds are unavailable. Local
+    // builds run through the `qmkui-build` CLI.
+    buildRunner: options.buildRunner ?? unsupportedBrowserRunner(),
     buildStatus: "idle",
     artifacts: [],
     flashConfirmed: false,
@@ -466,11 +449,6 @@ export function createActions(
               return;
             }
             state.deviceWriteEnabled = true;
-            if (isNativeRuntime()) {
-              void enableNativeDeviceWrites().catch(() => {
-                state.deviceWriteEnabled = false;
-              });
-            }
             noteWriteStatus(state, "Device writes enabled; use caution.");
             actions.render();
           },
@@ -778,23 +756,6 @@ export function createActions(
               expectedDevice: { vendorId: "3434", productId: "0950" },
               operatorConfirmed: state.flashConfirmed,
             };
-            if (isNativeRuntime()) {
-              nativeFlashDryRun({
-                project: state.project,
-                artifactId: latest.id,
-                expectedVendor: "3434",
-                expectedProduct: "0950",
-                detectedVendor: device?.vendorId,
-                detectedProduct: device?.productId,
-                bootloader: bootloader ?? "atmel-dfu",
-                operatorConfirmed: state.flashConfirmed,
-              }).then(({ verdict, run }) => {
-                state.flashVerdict = verdict;
-                state.flashRun = run;
-                actions.render();
-              });
-              return;
-            }
             projectDigest(state.project).then((digest) => {
               state.flashVerdict = assessFlashRequest(request, digest, device, bootloader);
               state.flashRun = state.flashVerdict.pass ? dryRunFlash(request) : undefined;

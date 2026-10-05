@@ -9,12 +9,3 @@ repository.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-
-[features]
-# Native hidapi transport. Kept off by default so `cargo test` builds without
-# the system hidapi/libusb toolchain; enabled by the Tauri/native shell.
-hidapi-transport = ["dep:hidapi"]
-
-[dependencies.hidapi]
-version = "2.6"
-optional = true
