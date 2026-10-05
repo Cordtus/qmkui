@@ -701,9 +701,10 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
 
-    // Switch the RGB-matrix effect to "breathing" (firmware mode 2).
+    // Switch the RGB-matrix effect to "Breathing" (firmware mode 2), rendered
+    // from the board's VIA definition.
     const effectSelect = root.querySelector<HTMLSelectElement>("[data-lighting-control='effect']")!;
-    effectSelect.value = "breathing";
+    effectSelect.value = "2";
     effectSelect.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
 
@@ -720,7 +721,29 @@ function deferred<Value>() {
     expect(payload.effect).toBe(2);
   });
 
-  it("omits the effect id when neither the profile nor the device maps to one", async () => {
+  it("renders the board's full RGB-matrix effect list in the keymap rail", async () => {
+    const root = document.createElement("div");
+    const selection = recognizedSelection(async () => availableSnapshot());
+    (selection.session as { writeKeycode: unknown }).writeKeycode = vi.fn(async () => {});
+
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    const options = [...root.querySelectorAll<HTMLOptionElement>(
+      "[data-lighting-control='effect'] option",
+    )];
+    expect(options).toHaveLength(23);
+    expect(options[0]!.textContent).toBe("None");
+    expect(options[0]!.value).toBe("0");
+    expect(options[22]!.textContent).toBe("Solid Splash");
+    expect(options[22]!.value).toBe("22");
+  });
+
+  it("falls back to Solid when the stored effect is not a known mode", async () => {
     const root = document.createElement("div");
     const writeRgbMatrix = vi.fn(
       async (_state: {
@@ -731,13 +754,7 @@ function deferred<Value>() {
         effect?: number;
       }) => {},
     );
-    // Unavailable lighting read, so there is no device effect id to fall back
-    // to either.
-    const selection = recognizedSelection(async () => {
-      const snapshot = availableSnapshot();
-      snapshot.lighting = { state: "unverified", reason: "RGB state could not be verified." };
-      return snapshot;
-    });
+    const selection = recognizedSelection(async () => availableSnapshot());
     (selection.session as { writeKeycode: unknown }).writeKeycode = vi.fn(async () => {});
     (selection.session as { saveLighting: unknown }).saveLighting = vi.fn(async () => {});
     (selection.session as { writeRgbMatrix: unknown }).writeRgbMatrix = writeRgbMatrix;
@@ -749,12 +766,12 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
 
-    // Force an effect name the UI does not map to a firmware id.
+    // Force a value the board does not declare as a mode.
     const effectSelect = root.querySelector<HTMLSelectElement>("[data-lighting-control='effect']")!;
     const unknown = document.createElement("option");
-    unknown.value = "unknown-effect";
+    unknown.value = "999";
     effectSelect.append(unknown);
-    effectSelect.value = "unknown-effect";
+    effectSelect.value = "999";
     effectSelect.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
 
@@ -768,7 +785,8 @@ function deferred<Value>() {
 
     expect(writeRgbMatrix).toHaveBeenCalledOnce();
     const payload = writeRgbMatrix.mock.calls[0]![0] as { effect?: number };
-    expect(payload.effect).toBeUndefined();
+    // Solid (1), never None (0) — a write must not turn the lighting off.
+    expect(payload.effect).toBe(1);
   });
 
   it("saves RGB-matrix lighting to EEPROM behind confirmation", async () => {

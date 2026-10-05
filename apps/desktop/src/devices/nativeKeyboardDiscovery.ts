@@ -106,6 +106,15 @@ function nativeV5Session(invoke: Invoke): BrowserKeyboardSession {
     writeKeycode: async (layer, row, col, keycode) => {
       await invoke("set_keycode", { layer, row, col, keycode });
     },
+    writeRgbMatrix: async ({ brightness, effectSpeed, hue, saturation, effect }) => {
+      await invoke("set_rgb_matrix_lighting", {
+        brightness,
+        effectSpeed,
+        hue,
+        saturation,
+        ...(effect === undefined ? {} : { effect }),
+      });
+    },
     saveLighting: async () => {
       await invoke("save_lighting");
     },

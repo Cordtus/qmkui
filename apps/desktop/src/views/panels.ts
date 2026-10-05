@@ -10,7 +10,7 @@ import { lightingSystemsForKeyboard, supportedLightingSystems } from "../lightin
 import { ProjectSummary } from "../projectStorage";
 import { colorPicker, colorSwatch, contextDisclosure, controlGroup, definitionList, definitionRow, element, fieldControl, optionSelect, parameterBlock, rangeInput, uiButton } from "./primitives";
 import { inspector, keyLightingDetails, macroEditor, previewLightingColor } from "./workspace";
-import { viaDefinitionFor } from "../viaDefinition";
+import { resolveRgbMatrixEffect, rgbMatrixEffectsFor, viaDefinitionFor, type ViaRgbMatrixEffect } from "../viaDefinition";
 
 export type BuildActions = {
   runLocalBuild: () => void;
@@ -362,7 +362,7 @@ export function lightingPanel(
         ]),
         contextDisclosure("RGB Matrix", "rgb-matrix", [
           supportedSystems.some((system) => system.id === "rgbMatrix")
-            ? rgbMatrixControls(profile, actions)
+            ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard))
             : element("p", { className: "empty muted", text: "Not supported" }),
         ]),
         contextDisclosure("Selected key lighting", "selected-key-lighting", [
@@ -398,11 +398,15 @@ export function lightingCapabilityList(
   return list;
 }
 
-export function rgbMatrixControls(profile: LightingProfile, actions: RenderActions): HTMLElement {
+export function rgbMatrixControls(
+  profile: LightingProfile,
+  actions: RenderActions,
+  effects: ViaRgbMatrixEffect[],
+): HTMLElement {
   const global = profile.global ?? {};
   const brightness = Number(global.brightness ?? 180);
   const speed = Number(global.speed ?? 128);
-  const effect = String(global.effect ?? "solid");
+  const effectId = resolveRgbMatrixEffect(global.effect, effects);
   const effectSelect = element("select", {
     attrs: {
       "aria-label": "RGB Matrix effect",
@@ -410,17 +414,13 @@ export function rgbMatrixControls(profile: LightingProfile, actions: RenderActio
       "data-lighting-control": "effect",
     },
   });
-  [
-    ["solid", "Solid"],
-    ["breathing", "Breathing"],
-    ["reactive", "Reactive (keypress)"],
-    ["cycle", "Cycle"],
-  ].forEach(([value, label]) => {
-    effectSelect.append(element("option", { text: label, attrs: { value } }));
+  // Every mode the board's VIA definition exposes, in firmware-id order.
+  effects.forEach(({ id, name }) => {
+    effectSelect.append(element("option", { text: name, attrs: { value: String(id) } }));
   });
-  effectSelect.value = effect;
+  effectSelect.value = String(effectId);
   effectSelect.addEventListener("change", () => {
-    actions.updateLightingGlobal("effect", effectSelect.value);
+    actions.updateLightingGlobal("effect", Number(effectSelect.value));
   });
 
   const brightnessInput = rangeInput("Brightness", "brightness", brightness);

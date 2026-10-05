@@ -8,7 +8,7 @@ import { createMacroRecord } from "./macros";
 import { hexToHsv } from "./color";
 import { illuminationBase } from "./illumination";
 import { buildSupportBundle } from "./supportBundle";
-import { viaDefinitionFor } from "./viaDefinition";
+import { resolveRgbMatrixEffect, rgbMatrixEffectsFor, viaDefinitionFor } from "./viaDefinition";
 import {
   createCommandHistory,
   type Command,
@@ -534,12 +534,13 @@ export function createActions(
             const base = illuminationBase(state.hardwareSnapshot);
             const color = profile.perKey[state.selectedKeyId] ?? base?.color ?? "#5fb99a";
             const { h, s } = hexToHsv(color);
-            // The UI effect names map to the board's VIA mode ids (from its
-            // VIA definition). Unmapped names leave the device's current effect
-            // untouched rather than risk turning the lighting off.
-            const effect =
-              RGB_MATRIX_EFFECT_IDS[String(profile.global?.effect ?? "solid")] ??
-              rgbMatrixEffectId(state.hardwareSnapshot);
+            // The profile stores a firmware mode id (legacy projects stored a
+            // name); both resolve here. Defaults to Solid so a write never turns
+            // the lighting off.
+            const effect = resolveRgbMatrixEffect(
+              profile.global?.effect,
+              rgbMatrixEffectsFor(state.keyboard.qmkKeyboard),
+            );
             const payload = {
               brightness: clampByte(profile.global?.brightness ?? base?.brightness ?? 180),
               effectSpeed: clampByte(profile.global?.speed ?? 128),
@@ -1431,26 +1432,6 @@ function noteWriteStatus(state: EditorState, message: string): void {
 function clampByte(value: unknown): number {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(255, Math.round(number))) : 0;
-}
-
-/**
- * UI effect names to the V5 Max's VIA RGB-matrix mode ids (from the board's
- * `via_json/v5_ansi_encoder.json`). Only the four names the UI exposes are
- * mapped; anything else leaves the device's current effect untouched.
- */
-const RGB_MATRIX_EFFECT_IDS: Record<string, number> = {
-  solid: 1,
-  breathing: 2,
-  cycle: 4,
-  reactive: 18,
-};
-
-/** The device's current RGB-matrix effect id, or undefined if unavailable. */
-function rgbMatrixEffectId(snapshot: EditorState["hardwareSnapshot"]): number | undefined {
-  if (!isKeychronV5MaxSnapshot(snapshot) || snapshot.lighting.state !== "available") {
-    return undefined;
-  }
-  return snapshot.lighting.value.effect;
 }
 
 export function lightingProfileState(currentProject: Project): LightingProfileState {
