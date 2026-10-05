@@ -2,7 +2,7 @@ import { EditorState, RenderActions, activeLightingProfile, bundledKeyboards, cu
 import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
 import { Assignment, CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, Project, UiIssue, validateProject } from "../domain";
-import { illuminationBase } from "../illumination";
+import { illuminationBase, type IlluminationBase } from "../illumination";
 import { buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { HostKeyCapture, captureHostKey } from "../keyTester";
 import { canDeleteLayer, scanLayerReferences } from "../layerActions";
@@ -362,7 +362,7 @@ export function lightingPanel(
         ]),
         contextDisclosure("RGB Matrix", "rgb-matrix", [
           supportedSystems.some((system) => system.id === "rgbMatrix")
-            ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard))
+            ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard), base)
             : element("p", { className: "empty muted", text: "Not supported" }),
         ]),
         contextDisclosure("Selected key lighting", "selected-key-lighting", [
@@ -402,11 +402,14 @@ export function rgbMatrixControls(
   profile: LightingProfile,
   actions: RenderActions,
   effects: ViaRgbMatrixEffect[],
+  base: IlluminationBase | null,
 ): HTMLElement {
   const global = profile.global ?? {};
-  const brightness = Number(global.brightness ?? 180);
-  const speed = Number(global.speed ?? 128);
-  const effectId = resolveRgbMatrixEffect(global.effect, effects);
+  // Default to the board's current values so the sliders match what a write
+  // will send when the profile has not set them.
+  const brightness = Number(global.brightness ?? base?.brightness ?? 180);
+  const speed = Number(global.speed ?? base?.effectSpeed ?? 128);
+  const effectId = resolveRgbMatrixEffect(global.effect ?? base?.effect, effects);
   const effectSelect = element("select", {
     attrs: {
       "aria-label": "RGB Matrix effect",

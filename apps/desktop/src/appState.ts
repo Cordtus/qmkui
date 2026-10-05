@@ -512,16 +512,15 @@ export function createActions(
             const base = illuminationBase(state.hardwareSnapshot);
             const color = profile.perKey[state.selectedKeyId] ?? base?.color ?? "#5fb99a";
             const { h, s } = hexToHsv(color);
-            // The profile stores a firmware mode id (legacy projects stored a
-            // name); both resolve here. Defaults to Solid so a write never turns
-            // the lighting off.
+            // Default each field to the board's current value when the profile
+            // has not set it, so a write does not silently change effect/speed.
             const effect = resolveRgbMatrixEffect(
-              profile.global?.effect,
+              profile.global?.effect ?? base?.effect,
               rgbMatrixEffectsFor(state.keyboard.qmkKeyboard),
             );
             const payload = {
               brightness: clampByte(profile.global?.brightness ?? base?.brightness ?? 180),
-              effectSpeed: clampByte(profile.global?.speed ?? 128),
+              effectSpeed: clampByte(profile.global?.speed ?? base?.effectSpeed ?? 128),
               hue: Math.round((h / 360) * 255),
               saturation: Math.round(s * 255),
               ...(effect === undefined ? {} : { effect }),

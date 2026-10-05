@@ -10,10 +10,14 @@ import type { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
  *
  * `color` is the full-intensity hue/saturation (brightness applied separately
  * by the renderer, exactly once); `brightness` is the raw 0-255 board value.
+ * `effect`/`effectSpeed` are the board's current mode id and speed, used as the
+ * defaults when the project's lighting profile has not set them.
  */
 export type IlluminationBase = {
   color: string;
   brightness: number;
+  effect?: number;
+  effectSpeed?: number;
   /** Human-readable source, e.g. "RGB Matrix" or "RGB Light". */
   source: string;
 };
@@ -28,19 +32,47 @@ export function illuminationBase(snapshot: Snapshot): IlluminationBase | null {
     if (snapshot.lighting.state !== "available") {
       return null;
     }
-    const { hue, saturation, brightness } = snapshot.lighting.value;
-    return { color: hsv255ToHex(hue, saturation, 255), brightness, source: "RGB Matrix" };
+    const { hue, saturation, brightness, effect, effectSpeed } = snapshot.lighting.value;
+    return {
+      color: hsv255ToHex(hue, saturation, 255),
+      brightness,
+      effect,
+      effectSpeed,
+      source: "RGB Matrix",
+    };
   }
 
-  const matrix = rgbChannels(snapshot.lighting.rgbMatrixHue, snapshot.lighting.rgbMatrixSaturation, snapshot.lighting.rgbMatrixBrightness);
+  const matrix = rgbChannels(
+    snapshot.lighting.rgbMatrixHue,
+    snapshot.lighting.rgbMatrixSaturation,
+    snapshot.lighting.rgbMatrixBrightness,
+  );
   if (matrix) {
-    return { ...matrix, source: "RGB Matrix" };
+    return {
+      ...matrix,
+      ...genericEffect(snapshot.lighting.rgbMatrixEffect, snapshot.lighting.rgbMatrixEffectSpeed),
+      source: "RGB Matrix",
+    };
   }
   const light = rgbChannels(snapshot.lighting.rgblightHue, snapshot.lighting.rgblightSaturation, snapshot.lighting.rgblightBrightness);
   if (light) {
-    return { ...light, source: "RGB Light" };
+    return {
+      ...light,
+      ...genericEffect(snapshot.lighting.rgblightEffect, snapshot.lighting.rgblightEffectSpeed),
+      source: "RGB Light",
+    };
   }
   return null;
+}
+
+function genericEffect(
+  effect: { state: string; value?: number },
+  effectSpeed: { state: string; value?: number },
+): { effect?: number; effectSpeed?: number } {
+  return {
+    ...(effect.state === "available" ? { effect: effect.value } : {}),
+    ...(effectSpeed.state === "available" ? { effectSpeed: effectSpeed.value } : {}),
+  };
 }
 
 function rgbChannels(
