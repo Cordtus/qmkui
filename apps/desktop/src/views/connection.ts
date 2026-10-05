@@ -68,7 +68,7 @@ export function connectionPanel(state: EditorState, actions: RenderActions): HTM
       element("h1", { text: "Connect a keyboard" }),
       element("p", {
         className: "connection-lede",
-        text: "Read and edit VIA-compatible keyboards over WebHID. Connect one to begin.",
+        text: "Read and edit VIA-compatible keyboards over WebHID in a Chromium-based browser. Connect one to begin.",
       }),
     ]),
     element("div", { className: "connection-actions" }, [connect, ...(verify ? [verify] : []), ...(read ? [read] : [])]),
@@ -93,7 +93,7 @@ export function connectionError(
     return "Device discovery failed.";
   }
   if (selection.state === "unavailable") {
-    return "WebHID unavailable.";
+    return "WebHID is unavailable. Use a Chromium-based browser (Chrome, Chromium, or Edge) over HTTPS or localhost.";
   }
   if ("contract" in selection) {
     if (selection.contract.state === "unsupported") {

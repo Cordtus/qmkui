@@ -6,7 +6,8 @@ served over HTTPS or localhost; there is no native GUI binary or webview.
 ## Dependencies
 
 - A Chromium-based browser with WebHID (Chrome/Chromium/Edge).
-- `qmk` (optional, runtime; local builds via the `qmkui-build` CLI).
+- `qmk` (optional, runtime; the app plans a `qmk compile` command for you to run
+  locally).
 - The udev rule from `packaging/udev/70-qmkui.rules`, installed to
   `/usr/lib/udev/rules.d/`, so Chromium can open the keyboard's raw HID
   interfaces. Install it manually or ship it with your package; no other

@@ -35,8 +35,8 @@ export type BuildArtifact = {
 
 /**
  * Injectable command execution. The browser has no process access, so the
- * default runner reports an unsupported error; callers can inject a runner
- * backed by a native/CLI process.
+ * default runner reports an unsupported error; tests (and a future non-browser
+ * host) can inject their own runner.
  */
 export type BuildRunner = (command: string[]) => Promise<{
   ok: boolean;
@@ -49,7 +49,7 @@ export function unsupportedBrowserRunner(): BuildRunner {
   return async () => ({
     ok: false,
     stdout: "",
-    stderr: "In-app builds are not available; run the `qmkui-build` CLI (or `qmk compile`) instead.",
+    stderr: "In-app builds are not available in the browser; run the generated `qmk compile` command locally (QMK CLI).",
     durationMs: 0,
   });
 }

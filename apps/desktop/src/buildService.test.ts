@@ -50,7 +50,7 @@ describe("local build execution", () => {
     );
     expect(step.status).toBe("failed");
     if (step.status === "failed") {
-      expect(step.output).toContain("qmkui-build");
+      expect(step.output).toContain("qmk compile");
     }
   });
 });
