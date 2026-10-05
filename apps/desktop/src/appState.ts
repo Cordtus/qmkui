@@ -177,8 +177,8 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     selectedSavedProjectId: projectStorage.list()[0]?.id ?? "",
     testEvents: [],
     doctorStatus: "loading",
-    // No process access in the browser; in-app builds are unavailable. Local
-    // builds run through the `qmkui-build` CLI.
+    // No process access in the browser; in-app builds are unavailable. Builds
+    // run through the QMK CLI (`qmk compile`) locally.
     buildRunner: options.buildRunner ?? unsupportedBrowserRunner(),
     buildStatus: "idle",
     artifacts: [],
