@@ -7,7 +7,7 @@ use qmkui_flash::request::{DeviceIdentity, FlashRequest, FlashTarget};
 use qmkui_hid::hidapi::HidApiTransport;
 use qmkui_hid::keychron_v5::KeychronV5Reader;
 use qmkui_hid::via::{KeymapDimensions, ViaReadProtocol};
-use qmkui_hid::via_write::ViaWriteProtocol;
+use qmkui_hid::via_write::{RgbMatrixLighting, ViaWriteProtocol};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::State;
@@ -179,6 +179,31 @@ fn save_lighting(gate: State<WriteGate>) -> Result<(), String> {
     let mut write = ViaWriteProtocol::new(transport);
     write
         .save_rgb_matrix_eeprom()
+        .map_err(|error| error.to_string())
+}
+
+/// Writes the global RGB-matrix lighting state (volatile until `save_lighting`).
+#[tauri::command]
+fn set_rgb_matrix_lighting(
+    gate: State<WriteGate>,
+    brightness: u8,
+    effect_speed: u8,
+    hue: u8,
+    saturation: u8,
+    effect: Option<u8>,
+) -> Result<(), String> {
+    require_write_gate(&gate)?;
+    let transport =
+        HidApiTransport::open(VENDOR_ID, PRODUCT_ID).map_err(|error| error.to_string())?;
+    let mut write = ViaWriteProtocol::new(transport);
+    write
+        .set_rgb_matrix_lighting(RgbMatrixLighting {
+            brightness,
+            effect_speed,
+            hue,
+            saturation,
+            effect,
+        })
         .map_err(|error| error.to_string())
 }
 
@@ -402,6 +427,7 @@ pub fn run() {
             enable_device_writes,
             set_keycode,
             save_lighting,
+            set_rgb_matrix_lighting,
             run_local_build,
             flash_dry_run
         ])

@@ -9,9 +9,23 @@ const SET_KEYCODE: u8 = 0x05;
 const SET_CUSTOM_VALUE: u8 = 0x07;
 const SAVE_EEPROM: u8 = 0x09;
 
-/// Standard VIA RGB-matrix custom channel and colour value id (`quantum/via.h`).
+/// Standard VIA RGB-matrix custom channel and value ids (`quantum/via.h`).
 const RGB_MATRIX_CHANNEL: u8 = 3;
+const RGB_MATRIX_BRIGHTNESS: u8 = 1;
+const RGB_MATRIX_EFFECT: u8 = 2;
+const RGB_MATRIX_EFFECT_SPEED: u8 = 3;
 const RGB_MATRIX_COLOR: u8 = 4;
+
+/// The global RGB-matrix lighting state. `effect` is omitted when unknown, so
+/// the device keeps its current mode instead of being switched to mode 0 (off).
+#[derive(Debug, Clone, Copy)]
+pub struct RgbMatrixLighting {
+    pub brightness: u8,
+    pub effect_speed: u8,
+    pub hue: u8,
+    pub saturation: u8,
+    pub effect: Option<u8>,
+}
 
 pub struct ViaWriteProtocol<T: HidTransport> {
     transport: T,
@@ -64,6 +78,26 @@ impl<T: HidTransport> ViaWriteProtocol<T> {
     /// Global RGB-matrix colour as VIA hue/saturation bytes.
     pub fn set_rgb_matrix_color(&mut self, hue: u8, saturation: u8) -> Result<(), HidError> {
         self.set_custom_value(RGB_MATRIX_CHANNEL, RGB_MATRIX_COLOR, &[hue, saturation])
+    }
+
+    /// Writes the global RGB-matrix lighting state (brightness, optional effect,
+    /// effect speed, colour), mirroring the TypeScript `writeRgbMatrix`. The
+    /// change is volatile until [`save_rgb_matrix_eeprom`](Self::save_rgb_matrix_eeprom).
+    pub fn set_rgb_matrix_lighting(&mut self, state: RgbMatrixLighting) -> Result<(), HidError> {
+        self.set_custom_value(
+            RGB_MATRIX_CHANNEL,
+            RGB_MATRIX_BRIGHTNESS,
+            &[state.brightness],
+        )?;
+        if let Some(effect) = state.effect {
+            self.set_custom_value(RGB_MATRIX_CHANNEL, RGB_MATRIX_EFFECT, &[effect])?;
+        }
+        self.set_custom_value(
+            RGB_MATRIX_CHANNEL,
+            RGB_MATRIX_EFFECT_SPEED,
+            &[state.effect_speed],
+        )?;
+        self.set_rgb_matrix_color(state.hue, state.saturation)
     }
 
     /// Persists the RGB-matrix lighting state to EEPROM. `id_custom_save`

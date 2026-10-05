@@ -1,11 +1,13 @@
-//! Read-only HID protocol support for QMKUI.
+//! Read-only HID protocol support for QMKUI, plus a gated write module.
 //!
 //! This crate owns the VIA and Keychron read-command encoders/decoders that
-//! the browser build mirrors in TypeScript. It is structurally write-free: a
-//! [`HidTransport`] exposes only a bounded request/response primitive, and the
-//! allow-list in [`allowlist`] gates every command frame that can be emitted.
-//! Flash and live-write encoders, when they arrive post-gate, will land as a
-//! separate module rather than loosening this read surface.
+//! the browser build mirrors in TypeScript. Reads are structurally write-free:
+//! a [`HidTransport`] exposes only a bounded request/response primitive, and
+//! the allow-list in [`allowlist`] gates every command frame that can be
+//! emitted. Writes live in [`via_write`] and are gated by the same allow-list;
+//! higher layers enforce operator consent and target validation. Flash and
+//! bootloader encoders, when they arrive post-gate, will land as a separate
+//! module.
 
 pub mod allowlist;
 pub mod keychron_v5;
@@ -21,4 +23,4 @@ pub use allowlist::{
 };
 pub use transport::{HidError, HidTransport};
 pub use via::{ViaKeymap, ViaReadProtocol, ViaRgbMatrixState};
-pub use via_write::ViaWriteProtocol;
+pub use via_write::{RgbMatrixLighting, ViaWriteProtocol};
