@@ -1,10 +1,10 @@
 import { AppView, EditorState, RenderActions, isKeychronV5MaxSnapshot, selectedLayout } from "../appState";
 import { KeyboardDefinition, UiIssue, jsonExportBlockers } from "../domain";
 import { connectionContent, connectionScreen } from "./connection";
-import { catalogPanel, detectedKeyboard, lightingPanel, projectDetailsDrawer, systemPanel, testPanel } from "./panels";
+import { catalogPanel, detectedKeyboard, projectDetailsDrawer, systemPanel, testPanel } from "./panels";
 import { element, uiButton } from "./primitives";
 import { deviceWriteControls, snapshotContent } from "./snapshot";
-import { historyControls, keyboardBoard, keyboardWorkspace } from "./workspace";
+import { historyControls, keyboardWorkspace } from "./workspace";
 
 export function mainShell(
   state: EditorState,
@@ -47,8 +47,7 @@ export function rail(activeView: AppView, selectView: (view: AppView) => void): 
     {
       label: "Edit",
       views: [
-        { id: "keymap", label: "Keymap", hint: "Assign keys per layer" },
-        { id: "lighting", label: "Lighting", hint: "Colour keys and effects" },
+        { id: "keymap", label: "Keymap", hint: "Assign keys and set lighting" },
         { id: "device", label: "Device", hint: "Read the connected board" },
       ],
     },
@@ -159,8 +158,6 @@ export function viewLabel(view: AppView): string {
   switch (view) {
     case "keymap":
       return "Keymap";
-    case "lighting":
-      return "Lighting";
     case "device":
       return "Device";
     case "catalog":
@@ -212,9 +209,6 @@ export function activePanel(
   if (state.activeView === "system") {
     return systemPanel(state, issues, qmkJson, actions.reloadProbe, actions.downloadSupportBundle, actions);
   }
-  if (state.activeView === "lighting") {
-    return lightingView(state, layout, actions);
-  }
   if (state.activeView === "device") {
     return deviceContent(state, actions);
   }
@@ -261,21 +255,7 @@ function connectedDeviceLabel(state: EditorState): string | null {
   return null;
 }
 
-/** Lighting is its own view: the board plus the whole lighting panel, no tabs. */
-function lightingView(
-  state: EditorState,
-  layout: KeyboardDefinition["layouts"][number],
-  actions: RenderActions,
-): HTMLElement {
-  return element("section", {
-    className: "lighting-view workbench-editor",
-    attrs: { "data-workbench-surface": "true", "data-panel": "lighting", "data-keyboard-workspace": "true" },
-  }, [
-    keyboardBoard(state, layout, actions),
-    element("div", { className: "lighting-view-panel" }, [lightingPanel(state, layout, actions)]),
-  ]);
-}
-
+/** Lighting lives in the Keymap view's rail; no separate destination. */
 function connectionPanelView(state: EditorState, actions: RenderActions): HTMLElement {
   return element("section", {
     className: "view-stack device-view",
@@ -309,7 +289,14 @@ function editorDeviceWrite(state: EditorState, actions: RenderActions): HTMLElem
         attrs: { "data-write-keymap": "true" },
       });
       writeKeymap.addEventListener("click", () => actions.writeKeymapToDevice(confirmed()));
-      return [writeKeymap];
+      const writeLighting = uiButton({
+        className: "secondary-action",
+        type: "button",
+        text: "Write lighting to device",
+        attrs: { "data-write-lighting": "true" },
+      });
+      writeLighting.addEventListener("click", () => actions.writeLightingToDevice(confirmed()));
+      return [writeKeymap, writeLighting];
     },
   });
 }

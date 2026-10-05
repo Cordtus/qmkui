@@ -1,6 +1,6 @@
 import readOnlyCommands from "../../../../fixtures/protocol/read-only-commands.json";
 import { classifyViaIdentity, type HidIdentityMetadata } from "./keychronV5MaxContract";
-import { viaModelFor, type ViaKeyboardModel } from "./keychronModels";
+import type { ViaKeyboardModel } from "./keychronModels";
 import { available, unavailable, unverified, type ValueState } from "./hardwareSnapshot";
 import { requestReport, withOpen, type DeviceTransport } from "./transport";
 import {
@@ -126,7 +126,7 @@ export async function readKeychronV5MaxSnapshot(
   if (classifyViaIdentity(device).state !== "via") {
     throw new KeychronV5MaxReaderError("identity");
   }
-  const model = options.model ?? viaModelFor(device.vendorId, device.productId);
+  const model = options.model;
   const timeoutMs = boundedTimeoutMs(options.timeoutMs);
   if (pendingSnapshots.has(device)) {
     throw new KeychronV5MaxReaderError("concurrent-read");

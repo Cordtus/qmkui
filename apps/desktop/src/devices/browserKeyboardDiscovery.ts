@@ -3,7 +3,7 @@ import {
   type HidIdentityMetadata,
   type ViaIdentityContract,
 } from "./keychronV5MaxContract";
-import { viaModelFor, type ViaKeyboardModel } from "./keychronModels";
+import { findViaModel, type ViaKeyboardModel } from "./keychronModels";
 import {
   verifyKeychronV5MaxProtocolVersion,
   type KeychronV5MaxProtocolDevice,
@@ -52,7 +52,17 @@ export type BrowserKeyboardSession = {
   verifyProtocolVersion: () => Promise<KeychronV5MaxProtocolVersion>;
   readSnapshot: () => Promise<KeychronV5MaxReadSnapshot>;
   writeKeycode?: (layer: number, row: number, col: number, keycode: number) => Promise<void>;
-  saveEeprom?: () => Promise<void>;
+  /** Global VIA RGB-matrix state write (volatile until `saveLighting`). */
+  writeRgbMatrix?: (state: {
+    brightness: number;
+    effectSpeed: number;
+    hue: number;
+    saturation: number;
+    /** Firmware effect id; omitted to leave the current effect untouched. */
+    effect?: number;
+  }) => Promise<void>;
+  /** Persists the RGB-matrix lighting state to EEPROM (channel-3 save). */
+  saveLighting?: () => Promise<void>;
 };
 
 export type GenericViaBrowserKeyboardSession = {
@@ -88,6 +98,8 @@ export type BrowserKeyboardSelection =
     };
 
 export type BrowserKeyboardDiscoveryDependencies = {
+  /** Known models used to identify a device by VID/PID. */
+  models?: readonly ViaKeyboardModel[];
   verifyProtocolVersion?: (
     device: KeychronV5MaxProtocolDevice,
   ) => Promise<KeychronV5MaxProtocolVersion>;
@@ -134,9 +146,10 @@ function classifySelection(
     return empty;
   }
 
+  const models = dependencies.models ?? [];
   const classified = devices.map((device) => {
     const identity = deviceIdentity(device, true);
-    return { device, identity, contract: classifyViaIdentity(identity) };
+    return { device, identity, contract: classifyViaIdentity(identity, models) };
   });
   const selected = classified.find(({ contract }) => contract.state === "via")
     ?? classified[0];
@@ -147,7 +160,7 @@ function classifySelection(
     return { state: "selected", identity, contract: selected.contract };
   }
 
-  const model = selected.contract.model ?? viaModelFor(selected.identity.vendorId, selected.identity.productId);
+  const model = selected.contract.model ?? findViaModel(models, selected.identity.vendorId, selected.identity.productId);
   if (!model?.matrix) {
     return {
       state: "selected",
@@ -188,7 +201,17 @@ function protocolSession(
     readSnapshot: () => readSnapshot(device, { model }),
     writeKeycode: (layer, row, col, keycode) =>
       withOpen(device, () => new ViaWriteProtocol(device).setKeycode(layer, row, col, keycode)),
-    saveEeprom: () => withOpen(device, () => new ViaWriteProtocol(device).saveEeprom()),
+    writeRgbMatrix: ({ brightness, effect, effectSpeed, hue, saturation }) =>
+      withOpen(device, async () => {
+        const write = new ViaWriteProtocol(device);
+        await write.setRgbMatrixBrightness(brightness);
+        if (effect !== undefined) {
+          await write.setRgbMatrixEffect(effect);
+        }
+        await write.setRgbMatrixEffectSpeed(effectSpeed);
+        await write.setRgbMatrixColor(hue, saturation);
+      }),
+    saveLighting: () => withOpen(device, () => new ViaWriteProtocol(device).saveRgbMatrixEeprom()),
   };
 }
 

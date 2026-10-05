@@ -250,6 +250,12 @@ export function projectDetailsDrawer(
   return drawer;
 }
 
+/**
+ * Lighting controls, rendered inside the Keymap view's rail as its own group.
+ * The colour picker lives here (it is the only picker in the app) and applies
+ * to the current key selection, so it sits with the mode and selection tools
+ * rather than the keycode assignment.
+ */
 export function lightingPanel(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
@@ -305,11 +311,10 @@ export function lightingPanel(
   });
   selectAll.addEventListener("click", actions.selectAllKeys);
 
-  return element("section", { className: "lighting-panel", attrs: { "data-context-section": "lighting" } }, [
-    element("div", { className: "panel-heading" }, [
-      element("h2", { text: "Lighting" }),
-      element("small", { text: profile.name }),
-    ]),
+  return element("section", {
+    className: "lighting-panel",
+    attrs: { "data-context-section": "lighting" },
+  }, [
     controlGroup("lighting-mode", "Mode", [modeButtons]),
     controlGroup("selected-key-lighting", "Selected keys", [
       element("div", { className: "lighting-quick-row" }, [

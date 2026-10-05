@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ViaWriteProtocol, ViaWriteProtocolError } from "./viaWrite";
+import { RGB_MATRIX_BRIGHTNESS, RGB_MATRIX_CHANNEL, ViaWriteProtocol, ViaWriteProtocolError } from "./viaWrite";
 import type { ViaReadTransport } from "./viaReadProtocol";
 
 function createTransport() {
@@ -30,14 +30,37 @@ describe("VIA write protocol", () => {
     expect([...sent.slice(4, 6)]).toEqual([0x00, 0x46]);
   });
 
-  it("emits a save-EEPROM frame", async () => {
+  it("emits a channel-3 lighting save frame", async () => {
     const { transport, sendReport } = createTransport();
     const write = new ViaWriteProtocol(transport);
 
-    await write.saveEeprom();
+    await write.saveRgbMatrixEeprom();
 
     const sent = new Uint8Array(sendReport.mock.calls[0]![1] as ArrayBuffer);
-    expect(sent[0]).toBe(0x09);
+    // [id_custom_save, rgb-matrix channel, 0, 0]
+    expect([...sent.slice(0, 4)]).toEqual([0x09, 3, 0, 0]);
+  });
+
+  it("sets a custom channel value with the VIA custom-set frame", async () => {
+    const { transport, sendReport } = createTransport();
+    const write = new ViaWriteProtocol(transport);
+
+    await write.setCustomValue(RGB_MATRIX_CHANNEL, RGB_MATRIX_BRIGHTNESS, [200]);
+
+    expect(sendReport).toHaveBeenCalledTimes(1);
+    const sent = new Uint8Array(sendReport.mock.calls[0]![1] as ArrayBuffer);
+    // [id_custom_set_value, channel, value_id, ...bytes]
+    expect([...sent.slice(0, 4)]).toEqual([0x07, 3, 1, 200]);
+  });
+
+  it("sets the global RGB-matrix colour as hue/saturation bytes", async () => {
+    const { transport, sendReport } = createTransport();
+    const write = new ViaWriteProtocol(transport);
+
+    await write.setRgbMatrixColor(113, 221);
+
+    const sent = new Uint8Array(sendReport.mock.calls[0]![1] as ArrayBuffer);
+    expect([...sent.slice(0, 5)]).toEqual([0x07, 3, 4, 113, 221]);
   });
 
   it("rejects an oversized payload before I/O", async () => {
@@ -47,7 +70,7 @@ describe("VIA write protocol", () => {
     // The public surface only exposes allow-listed commands; verify the
     // payload bound is enforced on those.
     await expect(
-      write.setKeycode(0, 0, 0, 0x0004).then(() => write.saveEeprom()),
+      write.setKeycode(0, 0, 0, 0x0004).then(() => write.saveRgbMatrixEeprom()),
     ).resolves.toBeUndefined();
     expect(sendReport).toHaveBeenCalledTimes(2);
   });

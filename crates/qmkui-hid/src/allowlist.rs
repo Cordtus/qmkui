@@ -93,8 +93,9 @@ mod tests {
     #[test]
     fn write_allow_list_is_explicit_and_minimal() {
         assert!(is_via_write_command(0x05)); // set keycode
+        assert!(is_via_write_command(0x07)); // custom-value set (RGB matrix)
         assert!(is_via_write_command(0x09)); // save EEPROM
-        for command in [0x03u8, 0x07, 0x0a, 0x0b, 0x0f, 0x10, 0x13, 0x15] {
+        for command in [0x03u8, 0x06, 0x0a, 0x0b, 0x0f, 0x10, 0x13, 0x15] {
             assert!(!is_via_write_command(command), "unsafe write {command:#x}");
         }
         // No write command may also be a read command.

@@ -5,8 +5,8 @@ import { MacroRecord } from "../macros";
 import { illuminationBase } from "../illumination";
 import { KeyLayerDetail, KeyLightingDetail, KeyRelation, KeyShortcut, SelectedKeyContext, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { KeycodeEntry, formatKeycap, keycodeCategories } from "../keycodes";
-import { layerStrip } from "./panels";
-import { KEY_LABEL_INSET, KEY_LABEL_UNIT, colorPicker, colorSwatch, contextDisclosure, controlGroup, definitionRow, element, fieldControl, keycapLabel, layoutBounds, optionSelect, parameterBlock, settingsGroup, textInput, uiButton } from "./primitives";
+import { layerStrip, lightingPanel } from "./panels";
+import { KEY_LABEL_INSET, KEY_LABEL_UNIT, colorSwatch, contextDisclosure, controlGroup, definitionRow, element, fieldControl, keycapLabel, layoutBounds, optionSelect, parameterBlock, settingsGroup, textInput, uiButton } from "./primitives";
 /** Board only, no side rail — used where the surrounding view owns the rail. */
 export function keyboardBoard(
   state: EditorState,
@@ -79,8 +79,9 @@ export function selectedKeyInfoPanel(
 
 /**
  * The keymap view's right rail: pick a layer, assign a keycode to the selected
- * key, and see what that key does on every layer. No tabs — the board is the
- * primary surface and this only ever talks about the selected key.
+ * key, colour and light it, and see what that key does on every layer. No
+ * tabs — the board is the primary surface and this only ever talks about the
+ * selected key.
  */
 export function workspaceControls(
   state: EditorState,
@@ -96,6 +97,9 @@ export function workspaceControls(
     ]),
     settingsGroup("assignment", "Assign keycode", [
       inspector(state, layout, actions),
+    ]),
+    settingsGroup("lighting", "Lighting", [
+      lightingPanel(state, layout, actions),
     ]),
     settingsGroup("key", "Selected key", [
       selectedKeyInfoPanel(state, layout),
@@ -271,19 +275,15 @@ export function inspector(
   layout: KeyboardDefinition["layouts"][number],
   actions: RenderActions,
 ): HTMLElement {
-  const base = illuminationBase(state.hardwareSnapshot);
-  const context = buildSelectedKeyContext(
+  const key = buildSelectedKeyContext(
     state.project,
     layout.keys,
     state.selectedLayerIndex,
     state.selectedKeyId,
-    base,
-  );
-  const key = context?.key ?? layout.keys[0];
+    illuminationBase(state.hardwareSnapshot),
+  )?.key ?? layout.keys[0];
   const layer = currentLayer(state);
   const assignment = layer?.assignments.find((item) => item.visualKeyId === key.id);
-  const color =
-    context?.lighting.color ?? lightingForKey(activeLightingProfile(state.project), key.id, base).color;
 
   const keycodeInput = element("input", {
     attrs: {
@@ -296,20 +296,11 @@ export function inspector(
     actions.updateSelectedKeycode(keycodeInput.value.trim().toUpperCase());
   });
 
-  const picker = colorPicker({
-    label: "Selected keys colour",
-    value: color,
-    focusId: "selected-lighting-color",
-    onPreview: previewLightingColor,
-    onCommit: actions.updateSelectedLighting,
-  });
-
   return element("section", { className: "inspector", attrs: { "data-context-section": "assignment" } }, [
     controlGroup("key-assignment", "Key assignment", [
       element("div", { className: "selected-command-row" }, [
         fieldControl("QMK keycode", keycodeInput),
       ]),
-      fieldControl("Selected keys colour", picker),
     ]),
     controlGroup("assignment-tools", "Assignment tools", [
       element("div", { className: "context-disclosures" }, [

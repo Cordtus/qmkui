@@ -6,7 +6,12 @@ use crate::allowlist::is_via_write_command;
 use crate::transport::{HidError, HidTransport, REPORT_LENGTH};
 
 const SET_KEYCODE: u8 = 0x05;
+const SET_CUSTOM_VALUE: u8 = 0x07;
 const SAVE_EEPROM: u8 = 0x09;
+
+/// Standard VIA RGB-matrix custom channel and colour value id (`quantum/via.h`).
+const RGB_MATRIX_CHANNEL: u8 = 3;
+const RGB_MATRIX_COLOR: u8 = 4;
 
 pub struct ViaWriteProtocol<T: HidTransport> {
     transport: T,
@@ -17,7 +22,9 @@ impl<T: HidTransport> ViaWriteProtocol<T> {
         Self { transport }
     }
 
-    /// Sets a keycode on the live dynamic keymap (volatile until saved).
+    /// Sets a keycode on the live dynamic keymap. QMK persists keycodes to
+    /// EEPROM immediately (`dynamic_keymap_set_keycode`); there is no separate
+    /// keymap-save command.
     pub fn set_keycode(
         &mut self,
         layer: u8,
@@ -37,9 +44,34 @@ impl<T: HidTransport> ViaWriteProtocol<T> {
         )
     }
 
-    /// Persists the live keymap to EEPROM. A separate, operator-confirmed step.
-    pub fn save_eeprom(&mut self) -> Result<(), HidError> {
-        self.write(SAVE_EEPROM, &[])
+    /// Sets a VIA custom channel value (`id_custom_set_value`, `0x07`), framed
+    /// as `[command, channel, value_id, ...data]`. This is the same frame VIA's
+    /// own configurator emits for lighting; the change is volatile until
+    /// [`save_rgb_matrix_eeprom`](Self::save_rgb_matrix_eeprom).
+    pub fn set_custom_value(
+        &mut self,
+        channel: u8,
+        value_id: u8,
+        data: &[u8],
+    ) -> Result<(), HidError> {
+        let mut payload = Vec::with_capacity(data.len() + 2);
+        payload.push(channel);
+        payload.push(value_id);
+        payload.extend_from_slice(data);
+        self.write(SET_CUSTOM_VALUE, &payload)
+    }
+
+    /// Global RGB-matrix colour as VIA hue/saturation bytes.
+    pub fn set_rgb_matrix_color(&mut self, hue: u8, saturation: u8) -> Result<(), HidError> {
+        self.set_custom_value(RGB_MATRIX_CHANNEL, RGB_MATRIX_COLOR, &[hue, saturation])
+    }
+
+    /// Persists the RGB-matrix lighting state to EEPROM. `id_custom_save`
+    /// (`0x09`) routes on the channel byte, so the RGB-matrix channel must be
+    /// present or the frame is dropped before it reaches the lighting handler.
+    /// A separate, operator-confirmed step.
+    pub fn save_rgb_matrix_eeprom(&mut self) -> Result<(), HidError> {
+        self.write(SAVE_EEPROM, &[RGB_MATRIX_CHANNEL, 0, 0])
     }
 
     fn write(&mut self, command: u8, payload: &[u8]) -> Result<(), HidError> {

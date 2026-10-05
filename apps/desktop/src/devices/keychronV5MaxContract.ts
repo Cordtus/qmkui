@@ -1,7 +1,7 @@
 import {
   type ViaKeyboardModel,
+  findViaModel,
   isKeychronVendor,
-  viaModelFor,
 } from "./keychronModels";
 
 export type HidCollectionMetadata = {
@@ -46,12 +46,15 @@ const VIA_COLLECTION: RawHidCollection = { usagePage: 0xff60, usage: 0x0061 };
  * collection is readable, and the bundled model registry upgrades a known
  * VID/PID to a named board with a readable keymap.
  */
-export function classifyViaIdentity(identity: HidIdentityMetadata): ViaIdentityContract {
+export function classifyViaIdentity(
+  identity: HidIdentityMetadata,
+  models: readonly ViaKeyboardModel[] = [],
+): ViaIdentityContract {
   if (!identity.collections.some(isViaCollection)) {
     return { state: "unsupported" };
   }
 
-  const model = viaModelFor(identity.vendorId, identity.productId);
+  const model = findViaModel(models, identity.vendorId, identity.productId);
   return {
     state: "via",
     ...(model ? { model } : {}),

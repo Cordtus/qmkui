@@ -1,5 +1,6 @@
-import { EditorState, RenderActions, isKeychronV5MaxSnapshot } from "../appState";
+import { EditorState, RenderActions, isKeychronV5MaxSnapshot, keyboardForSelection } from "../appState";
 import { hsv255ToHex } from "../color";
+import type { KeyboardDefinition } from "../domain";
 import { GenericViaStandardState } from "../devices/genericViaReader";
 import { KeychronV5MaxCapabilities, KeychronV5MaxIdentityFacts, KeychronV5MaxLighting, KeychronV5MaxReadSnapshot } from "../devices/keychronV5MaxReader";
 import { ViaKeymap, ViaMacros, ViaMacroStep } from "../devices/viaReadProtocol";
@@ -13,6 +14,9 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
     return genericViaSnapshotContent(snapshot, state, actions);
   }
   const title = snapshot.identity.state === "available" ? snapshot.identity.value.model : "Keyboard";
+  // Render the connected model's own layout, not a fixed preset: an unknown
+  // model falls back to the current project's keyboard.
+  const keyboard = keyboardForSelection(state.deviceSelection) ?? state.keyboard;
 
   return element("section", { className: "snapshot-shell", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
     snapshotHeader(title, state, actions),
@@ -23,6 +27,7 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
         actions.selectSnapshotLayer,
         state.snapshotSelectedKey,
         actions.selectSnapshotKey,
+        keyboard,
       ),
       snapshotField("Identity", snapshot.identity, identitySnapshotRows),
       snapshotField("Capabilities", snapshot.capabilities, capabilitySnapshotRows),
@@ -31,6 +36,7 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
     ]),
     deviceWriteControls(state, actions, {
       description: `Selected key ${state.snapshotSelectedKey} on layer ${state.snapshotLayerIndex}.`,
+      lightingSave: false,
       controls: (confirmed) => {
         const keycodeInput = element("input", {
           attrs: {
@@ -96,13 +102,19 @@ function snapshotHeader(
 /**
  * The one gated device-write surface, shared by the project editor and the
  * hardware snapshot. Writes only happen after the operator ticks the
- * confirmation checkbox; "save to EEPROM" is a separate confirmed action. The
- * write allow-list in `qmkui-hid`/`viaWrite` gates every frame.
+ * confirmation checkbox. Keycode writes persist to EEPROM immediately;
+ * "save lighting to EEPROM" is a separate confirmed action (channel-3 save).
+ * The write allow-list in `qmkui-hid`/`viaWrite` gates every frame.
  */
 export function deviceWriteControls(
   state: EditorState,
   actions: RenderActions,
-  options: { description: string; controls: (confirmed: () => boolean) => HTMLElement[] },
+  options: {
+    description: string;
+    controls: (confirmed: () => boolean) => HTMLElement[];
+    /** Show the channel-3 "save lighting to EEPROM" action. Default true. */
+    lightingSave?: boolean;
+  },
 ): HTMLElement {
   const confirmInput = element("input", {
     attrs: { "data-write-confirm": "true", type: "checkbox" },
@@ -110,7 +122,7 @@ export function deviceWriteControls(
   const confirmed = () => confirmInput.checked;
   const confirm = element("label", { className: "write-confirm" }, [
     confirmInput,
-    element("span", { text: "I understand this writes to the live keymap." }),
+    element("span", { text: "I understand this writes to the connected device." }),
   ]);
   const enable = uiButton({
     className: "secondary-action",
@@ -125,10 +137,10 @@ export function deviceWriteControls(
   const save = uiButton({
     className: "secondary-action",
     type: "button",
-    text: "Save to EEPROM",
-    attrs: { "data-device-save-eeprom": "true" },
+    text: "Save lighting to EEPROM",
+    attrs: { "data-device-save-lighting": "true" },
   });
-  save.addEventListener("click", () => actions.saveEepromToDevice(confirmed()));
+  save.addEventListener("click", () => actions.saveLightingToDevice(confirmed()));
 
   return element("section", {
     className: "device-write-controls",
@@ -140,7 +152,7 @@ export function deviceWriteControls(
     element("div", { className: "device-write-actions" }, [
       enable,
       ...options.controls(confirmed),
-      save,
+      ...(options.lightingSave === false ? [] : [save]),
     ]),
     ...(state.deviceWriteStatus
       ? [
@@ -260,6 +272,7 @@ export function snapshotKeymapField(
   selectLayer: (layerIndex: number) => void,
   selectedKey: string,
   selectKey: (matrixKey: string) => void,
+  keyboard: KeyboardDefinition = keychronV5MaxKeyboard,
 ): HTMLElement {
   if (field.state !== "available") {
     return snapshotField("Keymap", field, keymapSnapshotRows);
@@ -267,7 +280,7 @@ export function snapshotKeymapField(
 
   const layers = field.value.keycodes;
   const selectedLayer = layers[selectedLayerIndex] ?? layers[0] ?? [];
-  const layout = keychronV5MaxKeyboard.layouts[0];
+  const layout = keyboard.layouts[0];
   const matrixKeys = layout.keys.filter((key) => key.matrix);
   const selectedMatrix = matrixKeys.some((key) => matrixKeyId(key.matrix!) === selectedKey)
     ? selectedKey

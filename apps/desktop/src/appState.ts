@@ -5,6 +5,8 @@ import { BuildArtifact, BuildRunner, BuildStep, projectDigest, runLocalBuild, un
 import { importConfiguratorKeymap } from "./configuratorImport";
 import { FlashRun, PolicyVerdict, assessFlashRequest, dryRunFlash, flashTargetFromArtifact } from "./flashPlan";
 import { createMacroRecord } from "./macros";
+import { hexToHsv } from "./color";
+import { illuminationBase } from "./illumination";
 import { buildSupportBundle } from "./supportBundle";
 import { viaDefinitionFor } from "./viaDefinition";
 import {
@@ -13,7 +15,8 @@ import {
   type CommandHistory,
   type LightingProfileState,
 } from "./commands";
-import { BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
+import { BrowserKeyboardNavigator, BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
+import { buildViaModels } from "./devices/keychronModels";
 import { chooseNativeKeyboard, discoverNativeKeyboard, enableNativeDeviceWrites, isNativeRuntime } from "./devices/nativeKeyboardDiscovery";
 import { nativeBuildRunner, nativeFlashDryRun } from "./nativeServices";
 import { GenericViaStandardState } from "./devices/genericViaReader";
@@ -36,8 +39,10 @@ import { mainShell } from "./views/shell";
 export const fixtureKeyboard = catalog[0] as KeyboardDefinition;
 export const fixtureProject = project as Project;
 export const bundledKeyboards = [keychronV5MaxKeyboard, fixtureKeyboard];
+/** Known VIA models derived from the bundled keyboards, for device identity. */
+export const bundledViaModels = buildViaModels(bundledKeyboards);
 
-export type AppView = "keymap" | "lighting" | "device" | "catalog" | "system";
+export type AppView = "keymap" | "device" | "catalog" | "system";
 
 export type AppOptions = {
   keyboard?: KeyboardDefinition;
@@ -115,7 +120,7 @@ function defaultDiscoverKeyboard(): () => Promise<BrowserKeyboardSelection> {
     if (isNativeRuntime()) {
       return (await discoverNativeKeyboard()) ?? { state: "no-authorized-device" };
     }
-    return discoverAuthorizedBrowserKeyboard();
+    return discoverAuthorizedBrowserKeyboard(navigator as BrowserKeyboardNavigator, { models: bundledViaModels });
   };
 }
 
@@ -143,7 +148,7 @@ function defaultChooseKeyboard(): () => Promise<BrowserKeyboardSelection> {
     if (isNativeRuntime()) {
       return (await chooseNativeKeyboard()) ?? { state: "no-selection" };
     }
-    return chooseBrowserKeyboard();
+    return chooseBrowserKeyboard(navigator as BrowserKeyboardNavigator, { models: bundledViaModels });
   };
 }
 
@@ -482,7 +487,7 @@ export function createActions(
             }
             const session = currentWriteSession(state);
             if (!session) {
-              noteWriteStatus(state, "The connected device does not support writes.");
+              noteWriteStatus(state, writeRefusalReason(state));
               actions.render();
               return;
             }
@@ -508,26 +513,76 @@ export function createActions(
                 actions.render();
               });
           },
-          saveEepromToDevice: (confirmed) => {
+          writeLightingToDevice: (confirmed) => {
             if (!confirmed || !state.deviceWriteEnabled) {
-              noteWriteStatus(state, "Confirm the EEPROM save and enable device writes first.");
+              noteWriteStatus(state, "Confirm the lighting write and enable device writes first.");
               actions.render();
               return;
             }
             const session = currentWriteSession(state);
             if (!session) {
-              noteWriteStatus(state, "The connected device does not support writes.");
+              noteWriteStatus(state, writeRefusalReason(state));
+              actions.render();
+              return;
+            }
+            if (!session.writeRgbMatrix) {
+              noteWriteStatus(state, "This device does not expose a lighting write.");
+              actions.render();
+              return;
+            }
+            const profile = activeLightingProfile(state.project);
+            const base = illuminationBase(state.hardwareSnapshot);
+            const color = profile.perKey[state.selectedKeyId] ?? base?.color ?? "#5fb99a";
+            const { h, s } = hexToHsv(color);
+            // The UI effect names map to the board's VIA mode ids (from its
+            // VIA definition). Unmapped names leave the device's current effect
+            // untouched rather than risk turning the lighting off.
+            const effect =
+              RGB_MATRIX_EFFECT_IDS[String(profile.global?.effect ?? "solid")] ??
+              rgbMatrixEffectId(state.hardwareSnapshot);
+            const payload = {
+              brightness: clampByte(profile.global?.brightness ?? base?.brightness ?? 180),
+              effectSpeed: clampByte(profile.global?.speed ?? 128),
+              hue: Math.round((h / 360) * 255),
+              saturation: Math.round(s * 255),
+              ...(effect === undefined ? {} : { effect }),
+            };
+            session
+              .writeRgbMatrix(payload)
+              .then(() => {
+                noteWriteStatus(state, "Wrote RGB-matrix lighting to the device.");
+                actions.render();
+              })
+              .catch(() => {
+                noteWriteStatus(state, "Lighting write failed.");
+                actions.render();
+              });
+          },
+          saveLightingToDevice: (confirmed) => {
+            if (!confirmed || !state.deviceWriteEnabled) {
+              noteWriteStatus(state, "Confirm the lighting save and enable device writes first.");
+              actions.render();
+              return;
+            }
+            const session = currentWriteSession(state);
+            if (!session) {
+              noteWriteStatus(state, writeRefusalReason(state));
+              actions.render();
+              return;
+            }
+            if (!session.saveLighting) {
+              noteWriteStatus(state, "This device does not expose a lighting save.");
               actions.render();
               return;
             }
             session
-              .saveEeprom()
+              .saveLighting()
               .then(() => {
-                noteWriteStatus(state, "Keymap saved to device EEPROM.");
+                noteWriteStatus(state, "RGB-matrix lighting saved to device EEPROM.");
                 actions.render();
               })
               .catch(() => {
-                noteWriteStatus(state, "EEPROM save failed.");
+                noteWriteStatus(state, "Lighting save failed.");
                 actions.render();
               });
           },
@@ -539,7 +594,7 @@ export function createActions(
             }
             const session = currentWriteSession(state);
             if (!session) {
-              noteWriteStatus(state, "The connected device does not support writes.");
+              noteWriteStatus(state, writeRefusalReason(state));
               actions.render();
               return;
             }
@@ -921,8 +976,9 @@ export type RenderActions = {
   selectSnapshotKey: (matrixKey: string) => void;
   enableDeviceWrites: (confirmed: boolean) => void;
   writeSnapshotKeycode: (keycode: number, confirmed: boolean) => void;
-  saveEepromToDevice: (confirmed: boolean) => void;
+  saveLightingToDevice: (confirmed: boolean) => void;
   writeKeymapToDevice: (confirmed: boolean) => void;
+  writeLightingToDevice: (confirmed: boolean) => void;
   selectKeycodeCategory: (categoryId: string) => void;
   updateKeycodeSearch: (query: string) => void;
   updateCatalogSearch: (query: string) => void;
@@ -977,18 +1033,61 @@ export function browserReadSession(selection: Extract<BrowserKeyboardSelection, 
 
 type WriteCapableSession = {
   writeKeycode: (layer: number, row: number, col: number, keycode: number) => Promise<void>;
-  saveEeprom: () => Promise<void>;
+  writeRgbMatrix?: (state: {
+    brightness: number;
+    effectSpeed: number;
+    hue: number;
+    saturation: number;
+    effect?: number;
+  }) => Promise<void>;
+  saveLighting?: () => Promise<void>;
 };
 
 function currentWriteSession(state: EditorState): WriteCapableSession | null {
   if (!isBrowserReadSelection(state.deviceSelection)) {
     return null;
   }
+  if (!selectionMatchesTarget(state)) {
+    return null;
+  }
   const session = browserReadSession(state.deviceSelection);
-  if ("writeKeycode" in session && session.writeKeycode && session.saveEeprom) {
+  if ("writeKeycode" in session && session.writeKeycode) {
     return session as WriteCapableSession;
   }
   return null;
+}
+
+/**
+ * A live write is only allowed when the connected device's USB identity matches
+ * the keyboard the write is authored for. If the keyboard declares no USB id
+ * (a generic VIA board) there is nothing to compare against, so the write is
+ * permitted — the device was explicitly chosen by the operator.
+ */
+function selectionMatchesTarget(state: EditorState): boolean {
+  const identity = state.deviceSelection.state === "selected" ? state.deviceSelection.identity : undefined;
+  const usb = state.keyboard.usb;
+  if (!identity || !usb?.vid || !usb?.pid) {
+    return true;
+  }
+  return hexId(identity.vendorId) === normalizeUsbId(usb.vid)
+    && hexId(identity.productId) === normalizeUsbId(usb.pid);
+}
+
+/** Why a write was refused, distinguishing no-capability from wrong-target. */
+function writeRefusalReason(state: EditorState): string {
+  if (isBrowserReadSelection(state.deviceSelection) && !selectionMatchesTarget(state)) {
+    return "Connected device does not match the project's target; refusing to write.";
+  }
+  return "The connected device does not support writes.";
+}
+
+function normalizeUsbId(value: string): string {
+  const parsed = Number.parseInt(value.replace(/^0x/i, ""), 16);
+  return Number.isNaN(parsed) ? value.toLowerCase() : hexId(parsed);
+}
+
+function hexId(value: number): string {
+  return `0x${value.toString(16).padStart(4, "0")}`;
 }
 
 function projectKeymapWrites(state: EditorState): {
@@ -1165,6 +1264,23 @@ export function keyboardForProject(project: Project): KeyboardDefinition | undef
   );
 }
 
+/**
+ * The bundled keyboard definition for a connected device, matched through the
+ * VIA model registry. Undefined for an unrecognized VIA board (standard-state
+ * only) or a board with no bundled definition.
+ */
+export function keyboardForSelection(
+  selection: DeviceSelectionState,
+): KeyboardDefinition | undefined {
+  if (selection.state !== "selected" || selection.contract.state !== "via") {
+    return undefined;
+  }
+  const model = selection.contract.model;
+  return model
+    ? bundledKeyboards.find((keyboard) => keyboard.qmkKeyboard === model.qmkKeyboard)
+    : undefined;
+}
+
 export function projectFromDraft(
   json: string,
   resolveKeyboard?: (qmkKeyboard: string) => KeyboardDefinition | undefined,
@@ -1310,6 +1426,31 @@ export function activeLightingProfile(currentProject: Project): LightingProfile 
 function noteWriteStatus(state: EditorState, message: string): void {
   state.projectStatus = message;
   state.deviceWriteStatus = message;
+}
+
+function clampByte(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(255, Math.round(number))) : 0;
+}
+
+/**
+ * UI effect names to the V5 Max's VIA RGB-matrix mode ids (from the board's
+ * `via_json/v5_ansi_encoder.json`). Only the four names the UI exposes are
+ * mapped; anything else leaves the device's current effect untouched.
+ */
+const RGB_MATRIX_EFFECT_IDS: Record<string, number> = {
+  solid: 1,
+  breathing: 2,
+  cycle: 4,
+  reactive: 18,
+};
+
+/** The device's current RGB-matrix effect id, or undefined if unavailable. */
+function rgbMatrixEffectId(snapshot: EditorState["hardwareSnapshot"]): number | undefined {
+  if (!isKeychronV5MaxSnapshot(snapshot) || snapshot.lighting.state !== "available") {
+    return undefined;
+  }
+  return snapshot.lighting.value.effect;
 }
 
 export function lightingProfileState(currentProject: Project): LightingProfileState {

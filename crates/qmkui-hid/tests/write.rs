@@ -49,15 +49,47 @@ fn set_keycode_emits_the_via_frame() {
 }
 
 #[test]
-fn save_eeprom_emits_the_via_frame() {
+fn save_rgb_matrix_eeprom_emits_the_channel_three_frame() {
     let transport = RecordingTransport::new();
     let frames = transport.frames.clone();
     let mut write = ViaWriteProtocol::new(transport);
-    write.save_eeprom().expect("save succeeds");
+    write.save_rgb_matrix_eeprom().expect("save succeeds");
 
     let frames = frames.borrow();
     let frame = frames.last().expect("a frame was emitted");
-    assert_eq!(frame[0], 0x09);
+    // [id_custom_save, rgb-matrix channel, 0, 0] — the channel byte is what
+    // routes the save to the lighting handler.
+    assert_eq!(&frame[0..4], &[0x09, 3, 0, 0]);
+}
+
+#[test]
+fn set_custom_value_emits_the_via_frame() {
+    let transport = RecordingTransport::new();
+    let frames = transport.frames.clone();
+    let mut write = ViaWriteProtocol::new(transport);
+    write
+        .set_custom_value(3, 1, &[200])
+        .expect("custom set succeeds");
+
+    let frames = frames.borrow();
+    let frame = frames.last().expect("a frame was emitted");
+    // [id_custom_set_value, channel, value_id, ...data]
+    assert_eq!(frame[0], 0x07);
+    assert_eq!(&frame[1..4], &[3, 1, 200]);
+}
+
+#[test]
+fn set_rgb_matrix_color_emits_hue_and_saturation() {
+    let transport = RecordingTransport::new();
+    let frames = transport.frames.clone();
+    let mut write = ViaWriteProtocol::new(transport);
+    write
+        .set_rgb_matrix_color(113, 221)
+        .expect("colour set succeeds");
+
+    let frames = frames.borrow();
+    let frame = frames.last().expect("a frame was emitted");
+    assert_eq!(&frame[0..5], &[0x07, 3, 4, 113, 221]);
 }
 
 #[test]
