@@ -179,15 +179,25 @@ export function topbar(
       save,
       project,
       ...(read ? [read] : []),
-      element("details", { className: "overflow-menu", attrs: { "data-overflow-menu": "true" } }, [
-        element("summary", {
-          className: "overflow-trigger",
-          attrs: { "aria-label": "More actions", title: "More actions" },
-        }, [icon("dots-three", { size: 18 })]),
-        element("div", { className: "overflow-list" }, [exportJson, support, choose]),
-      ]),
+      overflowMenu([exportJson, support, choose]),
     ]),
   ]);
+}
+
+function overflowMenu(items: HTMLElement[]): HTMLElement {
+  const menu = element("details", { className: "overflow-menu", attrs: { "data-overflow-menu": "true" } }, [
+    element("summary", {
+      className: "overflow-trigger",
+      attrs: { "aria-label": "More actions", title: "More actions" },
+    }, [icon("dots-three", { size: 18 })]),
+    element("div", { className: "overflow-list" }, items),
+  ]);
+  menu.addEventListener("click", (event) => {
+    if ((event.target as HTMLElement).closest("wa-button")) {
+      menu.removeAttribute("open");
+    }
+  });
+  return menu;
 }
 
 function iconAction(
@@ -344,6 +354,7 @@ function commandPalette(state: EditorState, actions: RenderActions): HTMLElement
     empty,
     element("p", { className: "hint palette-hint", text: "Ctrl-K opens this anywhere. Esc closes it." }),
   );
+  setActive(0);
   dialog.addEventListener("wa-after-show", () => input.focus());
   dialog.addEventListener("wa-after-hide", () => {
     if (state.commandPaletteOpen) {
