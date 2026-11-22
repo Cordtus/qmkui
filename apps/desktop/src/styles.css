@@ -45,14 +45,11 @@
   --mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", monospace;
 
   /* type roles: five sizes, two weights, mono for code only */
-  --type-display: 1.25rem;
-  --type-section: 0.875rem;
-  --type-body: 0.8125rem;
-  --type-meta: 0.75rem;
-  --type-code: 0.75rem;
-
-  /* shape: 4px controls, 8px panels, pill status only */
-  --r-panel: 8px;
+  --type-display: 20px;
+  --type-section: 14px;
+  --type-body: 13px;
+  --type-meta: 11px;
+  --type-code: 12px;
 
   /* Web Awesome is themed here, not via ::part overrides everywhere. */
   --wa-font-family-body: var(--font);
@@ -141,8 +138,7 @@ a {
   color: var(--accent);
 }
 
-code,
-pre {
+code {
   font-family: var(--mono);
   font-size: var(--type-code);
 }

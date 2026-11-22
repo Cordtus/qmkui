@@ -13,7 +13,7 @@
     "audit:build": "../../scripts/audit-public-build.sh dist",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "ui:screens": "node ../../scripts/ui-screenshots.mjs"
+    "ui:screens": "node scripts/ui-screenshots.mjs"
   },
   "dependencies": {
     "@awesome.me/webawesome": "^3.9.0",

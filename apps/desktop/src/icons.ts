@@ -33,39 +33,7 @@ import xCircle from "@phosphor-icons/core/assets/regular/x-circle.svg?raw";
  * One icon family for the whole workbench. Library SVGs are imported raw so
  * they ship with the bundle: no CDN, no font, no CSP hole.
  */
-export type IconName =
-  | "arrow-fat-line-up"
-  | "arrow-u-up-left"
-  | "arrow-u-up-right"
-  | "arrows-clockwise"
-  | "caret-down"
-  | "check-circle"
-  | "copy"
-  | "cursor-click"
-  | "dots-three"
-  | "download-simple"
-  | "eye"
-  | "file-code"
-  | "floppy-disk"
-  | "hammer"
-  | "key"
-  | "keyboard"
-  | "lightbulb"
-  | "lightning"
-  | "lock"
-  | "magnifying-glass"
-  | "minus"
-  | "paint-brush"
-  | "plug"
-  | "plus"
-  | "stack"
-  | "sun"
-  | "usb"
-  | "warning"
-  | "x"
-  | "x-circle";
-
-const sources: Record<IconName, string> = {
+const sources = {
   "arrow-fat-line-up": arrowFatLineUp,
   "arrow-u-up-left": arrowUUpLeft,
   "arrow-u-up-right": arrowUUpRight,
@@ -96,7 +64,9 @@ const sources: Record<IconName, string> = {
   warning,
   x,
   "x-circle": xCircle,
-};
+} as const;
+
+export type IconName = keyof typeof sources;
 
 const cache = new Map<IconName, SVGElement>();
 
@@ -115,10 +85,8 @@ export function icon(name: IconName, options: IconOptions = {}): SVGSVGElement {
     cache.set(name, template);
   }
   const svg = template.cloneNode(true) as unknown as SVGSVGElement;
-  svg.setAttribute("viewBox", "0 0 256 256");
   svg.setAttribute("width", String(options.size ?? 16));
   svg.setAttribute("height", String(options.size ?? 16));
-  svg.setAttribute("fill", "currentColor");
   svg.classList.add("icon");
   if (options.className) {
     svg.classList.add(...options.className.split(/\s+/).filter(Boolean));
