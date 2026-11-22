@@ -538,13 +538,6 @@ function contextDisclosuresRow(
   );
 }
 
-function boardColorForPicker(
-  profile: LightingProfile,
-  base?: IlluminationBase | null,
-): string {
-  return boardColor(profile, base) || DEFAULT_BOARD_COLOR;
-}
-
 function firmwareButton(actions: RenderActions): HTMLElement {
   const download = uiButton({
     className: "secondary-action",
@@ -622,7 +615,7 @@ export function rgbMatrixControls(
     actions.updateLightingGlobal("speed", Number(speedInput.value));
   });
 
-  const boardColor = element("input", {
+  const boardColorInput = element("input", {
     attrs: {
       "aria-label": "Board colour",
       "data-lighting-control": "colour",
@@ -630,14 +623,14 @@ export function rgbMatrixControls(
       type: "color",
     },
   }) as HTMLInputElement;
-  boardColor.value = boardColorForPicker(profile, base);
-  boardColor.addEventListener("change", () => {
-    actions.updateLightingGlobal("color", boardColor.value);
+  boardColorInput.value = boardColor(profile, base) || DEFAULT_BOARD_COLOR;
+  boardColorInput.addEventListener("change", () => {
+    actions.updateLightingGlobal("color", boardColorInput.value);
   });
 
   return element("section", { className: "lighting-controls" }, [
     fieldControl("Effect", effectSelect),
-    fieldControl("Board colour", boardColor),
+    fieldControl("Board colour", boardColorInput),
     rangeField("Brightness", brightnessInput),
     rangeField("Speed", speedInput),
     element("p", {

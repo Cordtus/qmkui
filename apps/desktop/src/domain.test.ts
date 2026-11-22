@@ -237,6 +237,11 @@ describe("lighting validation", () => {
     expect(codes).toContain("assignment.qmk.invalid");
     expect(codes).toContain("lightingProfile.color.invalid");
     expect(codes).toContain("lightingProfile.perKey.color.invalid");
+
+    project.layers[0]!.assignments[1]!.qmk = "KC_A, KC_B";
+    expect(
+      validateProject(project, keyboard).some((issue) => issue.code === "assignment.qmk.invalid"),
+    ).toBe(true);
   });
 });
 

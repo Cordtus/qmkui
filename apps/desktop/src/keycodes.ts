@@ -894,11 +894,20 @@ export function isSafeQmkKeycode(value: string): boolean {
     return false;
   }
   let depth = 0;
+  let sawIdentifier = false;
+  let closed = false;
   for (const char of trimmed) {
-    if (/[A-Za-z0-9_ ]/.test(char) || char === "," || char === "|") {
+    if (closed) {
+      return false;
+    }
+    if (/[A-Za-z0-9_]/.test(char)) {
+      sawIdentifier = true;
       continue;
     }
     if (char === "(") {
+      if (depth === 0 && !sawIdentifier) {
+        return false;
+      }
       depth += 1;
       if (depth > 4) {
         return false;
@@ -910,9 +919,14 @@ export function isSafeQmkKeycode(value: string): boolean {
       if (depth < 0) {
         return false;
       }
+      closed = depth === 0;
+      continue;
+    }
+    // Commas, pipes and spaces only separate call arguments.
+    if (depth > 0 && (char === "," || char === "|" || char === " ")) {
       continue;
     }
     return false;
   }
-  return depth === 0;
+  return depth === 0 && sawIdentifier && trimmed !== " " && !trimmed.startsWith(",");
 }

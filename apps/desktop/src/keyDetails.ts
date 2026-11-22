@@ -312,9 +312,9 @@ export function lightingForKey(
   visualKeyId: string,
   base?: IlluminationBase | null,
 ): KeyLightingDetail {
-  // An explicit per-key override wins; otherwise the key mirrors the board's
-  // actual illumination. With neither (no device read and no override) the key
-  // is unlit rather than teal — there is no colour to report.
+  // An explicit per-key override wins, then the profile's board colour, then
+  // the colour read from the device. With none of the three the key is unlit
+  // rather than teal — there is no colour to report.
   const override = profile.perKey[visualKeyId];
   const profileColor =
     typeof profile.global?.color === "string"

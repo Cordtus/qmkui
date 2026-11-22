@@ -33,7 +33,7 @@ const LOCAL_PATH = /(?:\/home\/|\/Users\/|\/root\/|\/tmp\/|[A-Za-z]:\\[^\s"'`]+)
  * Builds a support bundle: app/environment, project identity (with the keymap
  * and lighting config), device facts, validation, doctor findings, and macros.
  * Macro action text is redacted by default; local filesystem paths are stripped
- * from doctor text.
+ * from doctor text and from project, layer, macro and profile names.
  */
 export function buildSupportBundle(input: SupportBundleInput): string {
   const macros = (input.project.macros ?? []).map((macro) => {
@@ -77,7 +77,11 @@ export function buildSupportBundle(input: SupportBundleInput): string {
     },
     lighting: {
       profile: profile
-        ? { name: profile.name, mode: profile.mode, global: profile.global ?? {} }
+        ? {
+            name: redactPaths(profile.name),
+            mode: profile.mode,
+            global: profile.global ?? {},
+          }
         : null,
       perKey: profile?.perKey ?? {},
       rules: input.project.lightingRules ?? [],
