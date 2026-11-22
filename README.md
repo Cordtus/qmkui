@@ -86,13 +86,14 @@ the live dynamic keymap, and RGB-matrix lighting — go through one gated path:
 
 1. every frame is in `fixtures/protocol/write-commands.json`;
 2. the operator ticks a confirmation and enables writes for the session;
-3. the connected device's USB id must match the open project's keyboard.
+3. the keyboard declares a USB id and the connected device matches it (a
+   keyboard without a declared USB id cannot be written).
 
 Keycodes persist immediately (QMK writes EEPROM on set). Lighting is volatile
-until a separate confirmed **Save lighting to EEPROM** action. Writes are
-exercised only against mock transports until the V5 Max manual test plan is
-signed off by the operator; no write reaches real hardware before then. Keep
-vendor recovery firmware separately, matched to the exact model and firmware.
+until a separate confirmed **Persist lighting** action stores it in EEPROM. The
+V5 Max lighting frames were validated against the documented manual test plan
+before hardware use. No flash/bootloader path is implemented yet; keep vendor
+recovery firmware separately, matched to the exact model and firmware.
 
 ## Run it
 

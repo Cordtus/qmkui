@@ -15,6 +15,9 @@ import type { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
  */
 export type IlluminationBase = {
   color: string;
+  /** Raw VIA hue/saturation (0-255), when the snapshot reported them. */
+  hue?: number;
+  saturation?: number;
   brightness: number;
   effect?: number;
   effectSpeed?: number;
@@ -35,6 +38,8 @@ export function illuminationBase(snapshot: Snapshot): IlluminationBase | null {
     const { hue, saturation, brightness, effect, effectSpeed } = snapshot.lighting.value;
     return {
       color: hsv255ToHex(hue, saturation, 255),
+      hue,
+      saturation,
       brightness,
       effect,
       effectSpeed,
@@ -79,7 +84,7 @@ function rgbChannels(
   hue: { state: string; value?: number },
   saturation: { state: string; value?: number },
   brightness: { state: string; value?: number },
-): { color: string; brightness: number } | null {
+): { color: string; hue: number; saturation: number; brightness: number } | null {
   if (hue.state !== "available" || saturation.state !== "available" || brightness.state !== "available") {
     return null;
   }
@@ -87,5 +92,5 @@ function rgbChannels(
   const s = saturation.value ?? 0;
   const v = brightness.value ?? 0;
   // Full value here; the renderer applies brightness once via `dimHex`.
-  return { color: hsv255ToHex(h, s, 255), brightness: v };
+  return { color: hsv255ToHex(h, s, 255), hue: h, saturation: s, brightness: v };
 }

@@ -6,7 +6,8 @@ import type {
 } from "./devices/browserKeyboardDiscovery";
 import type { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
 import type { GenericViaStandardState } from "./devices/genericViaReader";
-import { hexToHsv, hsv255ToHex } from "./color";
+import { hexToHsv } from "./color";
+import exampleProject from "../../../fixtures/projects/example-60.json";
 import { createApp } from "./ui";
 
 afterEach(() => {
@@ -567,6 +568,15 @@ function deferred<Value>() {
     expect(root.querySelectorAll("[data-key-info-panel]")).toHaveLength(1);
     expect(root.querySelectorAll('[data-settings-group="key"]')).toHaveLength(1);
 
+    root.querySelector<HTMLElement>('[data-keymap-tab="layer"]')?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-layer-tools]")).toHaveLength(1);
+    expect(root.querySelectorAll('[data-settings-group="layer"]')).toHaveLength(1);
+
+    root.querySelector<HTMLElement>('[data-keymap-tab="lighting"]')?.click();
+    await flush();
+    expect(root.querySelectorAll('[data-settings-group="lighting"]')).toHaveLength(1);
+
     root.querySelector<HTMLElement>('[data-view="device"]')?.click();
     await flush();
     expect(root.querySelectorAll("[data-hardware-snapshot]")).toHaveLength(1);
@@ -711,11 +721,78 @@ function deferred<Value>() {
 
     expect(writeRgbMatrix).toHaveBeenCalledOnce();
     const payload = writeRgbMatrix.mock.calls[0]![0];
-    // The write encodes the board's read colour (hue 12 / sat 34), not magenta.
-    const base = hexToHsv(hsv255ToHex(12, 34, 255));
-    expect(payload.hue).toBe(Math.round((base.h / 360) * 255));
-    expect(payload.saturation).toBe(Math.round(base.s * 255));
+    // Unchanged board channels are written straight back (hue 12 / sat 34),
+    // so an untouched write is a no-op — magenta is never used.
+    expect(payload.hue).toBe(12);
+    expect(payload.saturation).toBe(34);
   }, 20_000);
+
+  it("writes an explicit board colour independently of key colours", async () => {
+    const root = document.createElement("div");
+    const writeRgbMatrix = vi.fn(
+      async (_state: {
+        brightness: number;
+        effectSpeed: number;
+        hue: number;
+        saturation: number;
+        effect?: number;
+      }) => {},
+    );
+    const selection = recognizedSelection(async () => availableSnapshot());
+    (selection.session as { writeKeycode: unknown }).writeKeycode = vi.fn(async () => {});
+    (selection.session as { writeRgbMatrix: unknown }).writeRgbMatrix = writeRgbMatrix;
+
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    const boardColor = root.querySelector<HTMLInputElement>("[data-lighting-board-color]")!;
+    boardColor.value = "#ff8800";
+    boardColor.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-write-lighting]")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
+
+    const payload = writeRgbMatrix.mock.calls[0]![0];
+    const hsv = hexToHsv("#ff8800");
+    expect(payload.hue).toBe(Math.round((hsv.h / 360) * 255));
+    expect(payload.saturation).toBe(Math.round(hsv.s * 255));
+  }, 20_000);
+
+  it("refuses a firmware download when the project has validation errors", async () => {
+    const root = document.createElement("div");
+    const selection = recognizedSelection(async () => availableSnapshot());
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLElement>('[data-project-details-action="open"]')?.click();
+    await flush();
+    const project = structuredClone(exampleProject);
+    project.layers[0]!.assignments[0]!.qmk = "";
+    const draft = root.querySelector<HTMLTextAreaElement>(
+      '[data-focus-id="project-json-draft"]',
+    )!;
+    draft.value = JSON.stringify(project);
+    draft.dispatchEvent(new Event("input", { bubbles: true }));
+    root.querySelector<HTMLElement>('[data-project-action="import"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-firmware-bundle]")?.click();
+    await flush();
+
+    expect(root.textContent).toContain(
+      "Fix keymap and lighting rule errors before exporting firmware.",
+    );
+  });
 
   it("shows a refused device write next to the write controls", async () => {
     const root = document.createElement("div");

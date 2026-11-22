@@ -221,6 +221,20 @@ describe("project validation", () => {
   });
 });
 
+describe("lighting validation", () => {
+  it("flags an empty keycode and a non-hex board colour", () => {
+    const project = structuredClone(fixtureProject);
+    project.layers[0]!.assignments[0]!.qmk = "";
+    project.lightingProfiles = [
+      { id: "p", name: "P", mode: "static", perKey: {}, global: { color: "red" } },
+    ];
+
+    const codes = validateProject(project, keyboard).map((issue) => issue.code);
+    expect(codes).toContain("assignment.qmk.empty");
+    expect(codes).toContain("lightingProfile.color.invalid");
+  });
+});
+
 describe("json export blockers", () => {
   it("blocks JSON export when an enabled feature requires generated C", () => {
     const withCMacro = structuredClone(fixtureProject);
@@ -254,6 +268,22 @@ describe("json export blockers", () => {
     expect(codes).toContain("lightingRule.color.invalid");
     expect(codes).toContain("lightingRule.layer.range");
     expect(codes).toContain("lightingRule.source.missing");
+  });
+
+  it("allows a keymap-only JSON export when lighting data exists", () => {
+    const lighting = structuredClone(fixtureProject);
+    lighting.lightingProfiles = [
+      { id: "p", name: "P", mode: "static", perKey: { k: "#ff0000" } },
+    ];
+    lighting.lightingRules = [
+      {
+        id: "r",
+        targetKeyId: "k",
+        color: "#00ff00",
+        trigger: { kind: "lock", lock: "capsLock" },
+      },
+    ];
+    expect(jsonExportBlockers(lighting)).toEqual([]);
   });
 
   it("allows JSON export for disabled or json-mode features", () => {

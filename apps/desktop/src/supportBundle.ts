@@ -27,7 +27,7 @@ export type SupportBundleInput = {
 export const APP_VERSION = packageJson.version;
 
 const REDACTED = "[redacted]";
-const LOCAL_PATH = /(?:\/home\/|\/Users\/)[^\s"'`]+/g;
+const LOCAL_PATH = /(?:\/home\/|\/Users\/|\/root\/|\/tmp\/|[A-Za-z]:\\Users\\)[^\s"'`]+/g;
 
 /**
  * Builds a support bundle: app/environment, project identity (with the keymap
@@ -96,6 +96,15 @@ export function buildSupportBundle(input: SupportBundleInput): string {
     },
     doctor: input.doctor
       ? {
+          distroId: input.doctor.snapshot.distroId ?? null,
+          packageManager: input.doctor.snapshot.packageManager ?? null,
+          hardwareProbe: {
+            status: input.doctor.snapshot.hardwareProbe.status,
+            reason: redactPaths(input.doctor.snapshot.hardwareProbe.reason),
+            detectedKeyboards: (
+              input.doctor.snapshot.hardwareProbe.detectedKeyboards ?? []
+            ).map((keyboard) => `${keyboard.device.vid}:${keyboard.device.pid}`),
+          },
           findings: input.doctor.findings.map((finding) => ({
             severity: finding.severity,
             title: redactPaths(finding.title),

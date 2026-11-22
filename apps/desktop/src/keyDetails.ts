@@ -1,5 +1,6 @@
 import type { Assignment, Layer, LightingProfile, Project, VisualKey } from "./domain";
 import type { IlluminationBase } from "./illumination";
+import { normalizeHex } from "./color";
 import { formatKeycap } from "./keycodes";
 
 export type SelectedKeyContext = {
@@ -287,6 +288,23 @@ function uniqueRelations(relations: KeyRelation[]): KeyRelation[] {
   });
 }
 
+export const DEFAULT_BOARD_COLOR = "#5ed1aa";
+
+/**
+ * The board's RGB colour: an explicit board colour from the profile, else the
+ * colour read from the device. Per-key overrides never leak into this.
+ */
+export function boardColor(
+  profile: LightingProfile,
+  base?: IlluminationBase | null,
+): string {
+  const configured = profile.global?.color;
+  if (typeof configured === "string" && normalizeHex(configured)) {
+    return normalizeHex(configured)!;
+  }
+  return base?.color ?? "";
+}
+
 export function lightingForKey(
   profile: LightingProfile,
   visualKeyId: string,
@@ -296,7 +314,7 @@ export function lightingForKey(
   // actual illumination. With neither (no device read and no override) the key
   // is unlit rather than teal — there is no colour to report.
   const override = profile.perKey[visualKeyId];
-  const color = override ?? base?.color ?? "";
+  const color = override ?? boardColor(profile, base);
   const hasSource = Boolean(override) || Boolean(base);
   // A profile brightness is a draft of what a write will send, so it wins over
   // the board value; with no draft the key mirrors the board read.

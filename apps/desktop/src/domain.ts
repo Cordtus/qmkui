@@ -409,6 +409,15 @@ export function validateProject(project: Project, keyboard: KeyboardDefinition):
         });
       }
 
+      if (!assignment.qmk.trim()) {
+        issues.push({
+          code: "assignment.qmk.empty",
+          severity: "error",
+          title: "Assignment has no keycode",
+          path: `layers[${layerIndex}].assignments[${assignmentIndex}].qmk`,
+        });
+      }
+
       const layerReference = scanLayerReference(assignment.qmk);
       if (layerReference.malformed) {
         issues.push({
@@ -475,6 +484,16 @@ export function validateProject(project: Project, keyboard: KeyboardDefinition):
       }
     });
   });
+
+  const profileColor = project.lightingProfiles?.[0]?.global?.color;
+  if (profileColor !== undefined && (typeof profileColor !== "string" || !normalizeHex(profileColor))) {
+    issues.push({
+      code: "lightingProfile.color.invalid",
+      severity: "error",
+      title: "Lighting profile colour is not a hex value",
+      path: "lightingProfiles[0].global.color",
+    });
+  }
 
   const keyById = new Map(layout.keys.map((key) => [key.id, key]));
   (project.lightingRules ?? []).forEach((rule, ruleIndex) => {
@@ -559,7 +578,8 @@ type LayerReferenceScan = {
   wrapper?: string;
 };
 
-export function scanLayerReference(qmk: string): LayerReferenceScan {  const trimmed = qmk.trim();
+export function scanLayerReference(qmk: string): LayerReferenceScan {
+  const trimmed = qmk.trim();
   const match = /^([A-Z_]+)\((.*)\)$/.exec(trimmed);
   if (!match) {
     return isLayerWrapperPrefix(trimmed) ? { malformed: true } : { malformed: false };

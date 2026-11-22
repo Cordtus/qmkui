@@ -252,10 +252,9 @@ export function projectDetailsDrawer(
 }
 
 /**
- * Lighting controls, rendered inside the Keymap view's rail as its own group.
- * The colour picker lives here (it is the only picker in the app) and applies
- * to the current key selection, so it sits with the mode and selection tools
- * rather than the keycode assignment.
+ * Lighting controls, rendered inside the Keymap view's Lighting tab. The wheel
+ * applies to the current key selection; the Board colour input is the separate
+ * board-wide VIA write.
  */
 export function lightingPanel(
   state: EditorState,
@@ -546,7 +545,7 @@ function firmwareButton(actions: RenderActions): HTMLElement {
     text: "Download firmware",
     attrs: {
       "data-firmware-bundle": "true",
-      title: "Download keymap.c, the lighting overlay and build instructions",
+      title: "Download a zip with keymap.c, the lighting overlay and build instructions",
     },
   });
   download.addEventListener("click", actions.downloadFirmwareBundle);

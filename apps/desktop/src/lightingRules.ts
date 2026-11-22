@@ -20,19 +20,19 @@ export type LightingLock = "capsLock" | "numLock" | "scrollLock";
  * operator pastes it into the keymap, builds, and flashes through their own
  * QMK toolchain.
  *
- * Returns `null` when the project's layout does not match the keyboard, so we
- * never emit row/column indexes for the wrong matrix.
+ * Returns a comment-only stub when the project's layout does not match the
+ * keyboard, so we never emit row/column indexes for the wrong matrix.
  */
 export function generateLightingRulesC(
   project: Project,
   keyboard: KeyboardDefinition,
   profile: LightingProfile | undefined = project.lightingProfiles?.[0],
-): string | null {
+): string {
   const layout = keyboard.layouts.find(
     (candidate) => candidate.id === project.target.layoutId,
   );
   if (!layout) {
-    return null;
+    return "// QMKUI: no matching layout; no lighting overlay was exported.\n";
   }
   const keys = layout.keys;
   const byId = new Map(keys.map((key) => [key.id, key]));
@@ -91,11 +91,6 @@ export function generateLightingRulesC(
 
   lines.push("", "    return false;", "}", "#endif", "");
   return lines.join("\n");
-}
-
-export function lightingRulesCFileName(project: Project): string {
-  const name = project.build.keymapName.replaceAll(/[^a-z0-9_-]+/gi, "-");
-  return `${name || "qmkui"}-lighting-rules.c`;
 }
 
 export function lockLabel(lock: LightingLock): string {
@@ -186,10 +181,15 @@ function inBounds(key: VisualKey, bounds: MatrixBounds): boolean {
 }
 
 function keyName(key: VisualKey): string {
-  const label = key.label ?? key.id;
-  // A comment must survive C translation phase 2: drop comment terminators,
-  // line continuations, and carriage returns.
-  return label
+  return cCommentText(key.label ?? key.id);
+}
+
+/**
+ * Text safe inside a `//` C comment. Drops comment terminators, line
+ * continuations, and line breaks so generated source cannot be escaped.
+ */
+export function cCommentText(value: string): string {
+  return value
     .replaceAll("\\", "")
     .replaceAll("\r", " ")
     .replaceAll("\n", " ")

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import project from "../../../fixtures/projects/example-60.json";
+import type { DoctorReport } from "./domain";
 import { buildSupportBundle } from "./supportBundle";
 import { Project } from "./domain";
 import type { MacroRecord } from "./macros";
@@ -77,5 +78,48 @@ describe("support bundle", () => {
     expect(bundle.keymap.layers[0].assignments).toHaveLength(
       fixtureProject.layers[0].assignments.length,
     );
+  });
+
+  it("redacts local paths and keeps probe/command facts", () => {
+    const doctor = {
+      snapshot: {
+        commands: [
+          { name: "qmk", path: "/home/u/bin/qmk", requiredFor: "localBuild" },
+          { name: "dfu", path: null, requiredFor: "flashing" },
+        ],
+        distroId: "arch",
+        packageManager: "pacman",
+        hardwareProbe: {
+          status: "ready",
+          reason: "probe failed at /home/u/usb",
+          detectedKeyboards: [
+            { displayName: "Keychron V5 Max", device: { vid: "3434", pid: "0950" } },
+          ],
+        },
+      },
+      findings: [
+        {
+          code: "x",
+          severity: "warning",
+          title: "path /home/u/project",
+          message: "also C:\\Users\\u\\project",
+        },
+      ],
+    } as unknown as DoctorReport;
+
+    const bundle = JSON.parse(
+      buildSupportBundle({ project: fixtureProject, doctor, includeSensitiveMacroText: false }),
+    );
+    const text = JSON.stringify(bundle);
+
+    expect(text).not.toContain("/home/u");
+    expect(text).not.toContain("C:\\Users\\u");
+    expect(text).toContain("[path]");
+    expect(bundle.doctor.hardwareProbe.detectedKeyboards).toEqual(["3434:0950"]);
+    expect(bundle.doctor.commands[0]).toEqual({
+      name: "qmk",
+      ready: true,
+      requiredFor: "localBuild",
+    });
   });
 });

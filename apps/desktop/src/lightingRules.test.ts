@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { KeyboardDefinition, Project } from "./domain";
-import { generateLightingRulesC, lightingRulesCFileName } from "./lightingRules";
+import { generateLightingRulesC } from "./lightingRules";
 
 const keys: KeyboardDefinition["layouts"][number]["keys"] = [
   { id: "esc", label: "Esc", x: 0, y: 0, matrix: { row: 0, col: 0 } },
@@ -91,7 +91,7 @@ function project(): Project {
 
 describe("lighting rules C export", () => {
   it("emits guarded per-key colours and state rules", () => {
-    const code = generateLightingRulesC(project(), keyboard)!;
+    const code = generateLightingRulesC(project(), keyboard);
 
     expect(code).toContain("bool rgb_matrix_indicators_advanced_user(");
     expect(code).toContain("RGB_MATRIX_INDICATOR_SET_COLOR(led, r, g, b)");
@@ -106,14 +106,14 @@ describe("lighting rules C export", () => {
   });
 
   it("never writes an LED outside the indicator range", () => {
-    const code = generateLightingRulesC(project(), keyboard)!;
+    const code = generateLightingRulesC(project(), keyboard);
 
     expect(code).not.toMatch(/[^_]rgb_matrix_set_color\(/);
     expect(code.match(/RGB_MATRIX_INDICATOR_SET_COLOR/g)).toHaveLength(1);
   });
 
   it("skips disabled rules and keys without a matrix position", () => {
-    const code = generateLightingRulesC(project(), keyboard)!;
+    const code = generateLightingRulesC(project(), keyboard);
 
     expect(code).not.toContain("(2, 0, 18, 52, 86)");
     expect(code).not.toContain("num_lock");
@@ -121,7 +121,7 @@ describe("lighting rules C export", () => {
   });
 
   it("escapes key labels so a comment cannot absorb the next line", () => {
-    const code = generateLightingRulesC(project(), keyboard)!;
+    const code = generateLightingRulesC(project(), keyboard);
 
     expect(code).toContain(
       "qmkui_set_key_color(led_min, led_max, 3, 3, 1, 2, 3); // bad  label",
@@ -130,14 +130,11 @@ describe("lighting rules C export", () => {
     expect(code).not.toContain("\\");
   });
 
-  it("returns null when the project layout does not match the keyboard", () => {
+  it("returns a stub when the project layout does not match the keyboard", () => {
     const mismatched = project();
     mismatched.target.layoutId = "LAYOUT_other";
 
-    expect(generateLightingRulesC(mismatched, keyboard)).toBeNull();
+    expect(generateLightingRulesC(mismatched, keyboard)).toContain("no matching layout");
   });
 
-  it("names the export after the keymap", () => {
-    expect(lightingRulesCFileName(project())).toBe("test-map-lighting-rules.c");
-  });
 });

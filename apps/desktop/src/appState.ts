@@ -22,7 +22,7 @@ import { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
 import { loadLocalDoctorReport } from "./doctorReport";
 import { DoctorReport, KeyboardDefinition, LightingProfile, LightingRule, LightingRuleTrigger, Project, UiIssue, exportQmkJson, jsonExportBlockers, validateProject } from "./domain";
 import { HostKeyCapture, captureHostKey } from "./keyTester";
-import { lightingForKey } from "./keyDetails";
+import { DEFAULT_BOARD_COLOR, boardColor, lightingForKey } from "./keyDetails";
 import { buildFirmwareBundle, firmwareBundleFileName } from "./firmwareBundle";
 import { createZip } from "./zip";
 import { keycodeCategories, keycodeValue, kindForKeycode } from "./keycodes";
@@ -714,11 +714,22 @@ export function createActions(
             const base = illuminationBase(state.hardwareSnapshot);
             // Board lighting is its own colour. A per-key override must never
             // become the board's global colour just because that key is selected.
-            const color =
-              typeof profile.global?.color === "string"
-                ? profile.global.color
-                : (base?.color ?? "#5fb99a");
-            const { h, s } = hexToHsv(color);
+            const color = boardColor(profile, base) || DEFAULT_BOARD_COLOR;
+            let hueByte: number;
+            let satByte: number;
+            if (typeof profile.global?.color === "string") {
+              const { h, s } = hexToHsv(color);
+              hueByte = Math.round((h / 360) * 255);
+              satByte = Math.round(s * 255);
+            } else if (base?.hue !== undefined && base.saturation !== undefined) {
+              // Use the device's exact channels so an untouched write is a no-op.
+              hueByte = base.hue;
+              satByte = base.saturation;
+            } else {
+              const { h, s } = hexToHsv(color);
+              hueByte = Math.round((h / 360) * 255);
+              satByte = Math.round(s * 255);
+            }
             // Default each field to the board's current value when the profile
             // has not set it, so a write does not silently change effect/speed.
             const effect = resolveRgbMatrixEffect(
@@ -728,8 +739,8 @@ export function createActions(
             const payload = {
               brightness: clampByte(profile.global?.brightness ?? base?.brightness ?? 180),
               effectSpeed: clampByte(profile.global?.speed ?? base?.effectSpeed ?? 128),
-              hue: Math.round((h / 360) * 255),
-              saturation: Math.round(s * 255),
+              hue: clampByte(hueByte),
+              saturation: clampByte(satByte),
               ...(effect === undefined ? {} : { effect }),
             };
             session
@@ -924,7 +935,7 @@ export function createActions(
                       : undefined,
                 }
               : snapshot
-                ? { model: "Generic VIA" }
+                ? genericSupportDevice(snapshot)
                 : null;
             const contents = buildSupportBundle({
               project: state.project,
@@ -1277,7 +1288,9 @@ function selectionMatchesTarget(state: EditorState): boolean {
   const identity = state.deviceSelection.state === "selected" ? state.deviceSelection.identity : undefined;
   const usb = state.keyboard.usb;
   if (!identity || !usb?.vid || !usb?.pid) {
-    return true;
+    // Without a declared USB target there is nothing to match; writes are
+    // refused rather than trusting whichever board is connected.
+    return false;
   }
   return hexId(identity.vendorId) === normalizeUsbId(usb.vid)
     && hexId(identity.productId) === normalizeUsbId(usb.pid);
@@ -1550,6 +1563,26 @@ export function downloadProjectJson(project: Project): void {
   const contents = JSON.stringify(project, null, 2);
   const filename = project.name.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase();
   downloadJson(`${contents}\n`, `${filename}-project.json`);
+}
+
+function genericSupportDevice(
+  snapshot: NonNullable<EditorState["hardwareSnapshot"]>,
+): SupportDevice {
+  const lighting = illuminationBase(snapshot);
+  return {
+    model: "Generic VIA",
+    ...(lighting?.hue !== undefined && lighting.saturation !== undefined
+      ? {
+          lighting: {
+            brightness: lighting.brightness,
+            effect: lighting.effect ?? 0,
+            effectSpeed: lighting.effectSpeed ?? 0,
+            hue: lighting.hue,
+            saturation: lighting.saturation,
+          },
+        }
+      : {}),
+  };
 }
 
 export function downloadJson(contents: string, filename: string): void {

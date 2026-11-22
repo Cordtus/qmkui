@@ -132,10 +132,8 @@ export function selectedKeyInfoPanel(
 }
 
 /**
- * The keymap view's right rail: pick a layer, assign a keycode to the selected
- * key, colour and light it, and see what that key does on every layer. No
- * tabs — the board is the primary surface and this only ever talks about the
- * selected key.
+ * The keymap view's right rail. Three tabs keep it to one control set at a
+ * time: lighting, the selected key's assignment/details, and layer management.
  */
 export function workspaceControls(
   state: EditorState,
@@ -144,7 +142,7 @@ export function workspaceControls(
 ): HTMLElement {
   const tabs = element("div", {
     className: "rail-tabs",
-    attrs: { "aria-label": "Keymap controls", role: "tablist" },
+    attrs: { "aria-label": "Keymap controls" },
   });
   const entries: Array<[EditorState["keymapTab"], string]> = [
     ["lighting", "Lighting"],
@@ -158,9 +156,8 @@ export function workspaceControls(
       type: "button",
       text: label,
       attrs: {
-        "aria-selected": String(selected),
+        "aria-pressed": String(selected),
         "data-keymap-tab": id,
-        role: "tab",
       },
     });
     tab.addEventListener("click", () => actions.selectKeymapTab(id));
