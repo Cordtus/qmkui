@@ -59,21 +59,21 @@ export function assessFlashRequest(
 }
 
 export type FlashRun = {
-  status: "succeeded" | "failed" | "cancelled";
+  status: "success" | "failed" | "cancelled";
   log: string[];
 };
 
 /**
- * Dry-run flash. Records the command sequence a real flash would run without
- * executing it. Real device flashing is only reachable through a
- * policy-verified adapter; this mirrors `qmkui-flash::dry_run::DryRunAdapter`.
+ * Flash preview. Records what the native adapter will do without executing
+ * anything. The browser cannot see bootloader mode, so this never claims the
+ * device-side policy passed; `qmkui-flash` checks that at flash time.
  */
 export function dryRunFlash(request: FlashRequest): FlashRun {
   const log = [
-    `would flash ${request.target.qmkKeyboard} (${request.target.firmwareSha256.slice(0, 12)}) to ${request.expectedDevice.vendorId}:${request.expectedDevice.productId} with bootloader ${request.target.bootloader}`,
-    "dry-run: no command was executed",
+    `preview: ${request.target.qmkKeyboard} (${request.target.firmwareSha256.slice(0, 12)}) for ${request.target.bootloader}`,
+    "preview only: no command was executed; qmkui-flash checks the bootloader device.",
   ];
-  return { status: "succeeded", log };
+  return { status: "success", log };
 }
 
 export function flashTargetFromArtifact(artifact: BuildArtifact, bootloader: string): FlashTarget {

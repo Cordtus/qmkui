@@ -956,7 +956,7 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
 
   const flashStatus = element("div", { className: "flash-status", attrs: { "data-flash-status": flashVerdictLabel(state) } }, [
     ...(state.flashVerdict
-      ? [element("p", { className: state.flashVerdict.pass ? "flash-pass" : "flash-block", text: state.flashVerdict.pass ? "Policy: pass" : `Policy: ${state.flashVerdict.reason}` })]
+      ? [element("p", { className: state.flashVerdict.pass ? "flash-pass" : "flash-block", text: state.flashVerdict.pass ? "Preview: target matches; bootloader is checked at flash time." : `Preview: ${state.flashVerdict.reason}` })]
       : []),
     ...(state.flashRun ? [element("pre", { className: "build-output", text: state.flashRun.log.join("\n") })] : []),
   ]);

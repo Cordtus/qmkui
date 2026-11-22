@@ -10,6 +10,8 @@ pub struct FlashTarget {
     pub bootloader: String,
 }
 
+/// A USB identity. For a flash request this is the bootloader-mode identity
+/// (for example STM32 DFU `0483:df11`), not the running keyboard.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceIdentity {
@@ -31,6 +33,8 @@ pub struct FlashRequest {
 #[serde(rename_all = "camelCase")]
 pub enum FlashStatus {
     Success,
+    Failed,
+    Blocked,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -15,14 +15,25 @@ pub fn assess_request(
     detected_device: Option<&DeviceIdentity>,
     detected_bootloader: Option<&str>,
 ) -> PolicyVerdict {
-    if !request.operator_confirmed {
-        return PolicyVerdict::Blocked {
-            reason: "Operator has not confirmed the flash target.".to_owned(),
-        };
-    }
     if request.target.project_digest != current_project_digest {
         return PolicyVerdict::Blocked {
             reason: "Artifact is stale relative to the current project.".to_owned(),
+        };
+    }
+    assess_target(request, detected_device, detected_bootloader)
+}
+
+/// The device-side half of the policy. The CLI has no separate project state,
+/// so it assesses the target before staging anything and treats the supplied
+/// bundle as current.
+pub fn assess_target(
+    request: &FlashRequest,
+    detected_device: Option<&DeviceIdentity>,
+    detected_bootloader: Option<&str>,
+) -> PolicyVerdict {
+    if !request.operator_confirmed {
+        return PolicyVerdict::Blocked {
+            reason: "Operator has not confirmed the flash target.".to_owned(),
         };
     }
     match detected_device {
@@ -136,6 +147,25 @@ mod tests {
         assert!(
             matches!(verdict, PolicyVerdict::Blocked { reason } if reason.contains("Bootloader family mismatch"))
         );
+    }
+
+    #[test]
+    fn target_gate_checks_confirmation_and_device_without_project_state() {
+        let confirmed = request(true);
+        assert_eq!(
+            assess_target(&confirmed, Some(&device()), Some("atmel-dfu"),),
+            PolicyVerdict::Pass
+        );
+
+        let unconfirmed = request(false);
+        assert!(matches!(
+            assess_target(&unconfirmed, Some(&device()), Some("atmel-dfu")),
+            PolicyVerdict::Blocked { reason } if reason.contains("confirmed")
+        ));
+        assert!(matches!(
+            assess_target(&confirmed, None, Some("atmel-dfu")),
+            PolicyVerdict::Blocked { reason } if reason.contains("No bootloader")
+        ));
     }
 
     #[test]

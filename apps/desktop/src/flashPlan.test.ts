@@ -55,8 +55,8 @@ describe("flash policy", () => {
 describe("flash dry run", () => {
   it("records the would-be command sequence without executing", () => {
     const run = dryRunFlash(request(true));
-    expect(run.status).toBe("succeeded");
-    expect(run.log[0]).toContain("would flash");
+    expect(run.status).toBe("success");
+    expect(run.log[0]).toContain("preview:");
     expect(run.log.some((line) => line.includes("no command was executed"))).toBe(true);
   });
 });
