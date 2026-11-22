@@ -268,15 +268,22 @@ export function contextDisclosure(
   summary: string,
   id: string,
   children: Array<Node | string>,
+  options: { open?: boolean; onToggle?: (open: boolean) => void } = {},
 ): HTMLElement {
-  return element("wa-details", {
+  const details = element("wa-details", {
     className: "context-disclosure",
     attrs: {
       "data-context-detail": id,
       appearance: "outlined",
       summary,
+      ...(options.open ? { open: "" } : {}),
     },
   }, children);
+  if (options.onToggle) {
+    details.addEventListener("wa-after-show", () => options.onToggle?.(true));
+    details.addEventListener("wa-after-hide", () => options.onToggle?.(false));
+  }
+  return details;
 }
 
 export function definitionList(rows: Array<[string, string]>): HTMLElement {

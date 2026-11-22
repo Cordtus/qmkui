@@ -75,6 +75,7 @@ export type EditorState = {
   selectedKeyIds: string[];
   /** Click-to-paint mode: a click applies the current colour to that key. */
   lightingPaint: boolean;
+  boardLightingOpen: boolean;
   /** Which keymap rail tab is open. */
   keymapTab: "lighting" | "key" | "layer";
   commandHistory: CommandHistory;
@@ -168,6 +169,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     selectedKeyId: layout.keys[0]?.id ?? "",
     selectedKeyIds: layout.keys[0] ? [layout.keys[0].id] : [],
     lightingPaint: false,
+    boardLightingOpen: false,
     keymapTab: "lighting",
     commandHistory: createCommandHistory(),
     keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
@@ -444,6 +446,13 @@ export function createActions(
             const before = keyIds.map((keyId) => profile.perKey[keyId] ?? "");
             keyIds.forEach((keyId) => setLightingColor(state.project, keyId, color));
             state.commandHistory.push({ kind: "set-lighting", keyIds, before, after: color });
+            actions.render();
+          },
+          setBoardLightingOpen: (open) => {
+            if (state.boardLightingOpen === open) {
+              return;
+            }
+            state.boardLightingOpen = open;
             actions.render();
           },
           toggleLightingPaint: () => {
@@ -1261,6 +1270,7 @@ export type RenderActions = {
   selectAllKeys: () => void;
   updateSelectedKeycode: (qmk: string) => void;
   updateSelectedLighting: (color: string) => void;
+  setBoardLightingOpen: (open: boolean) => void;
   toggleLightingPaint: () => void;
   paintKey: (keyId: string) => void;
   clearSelectedLighting: () => void;

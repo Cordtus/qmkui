@@ -374,7 +374,10 @@ export function lightingPanel(
         className: "hint",
         text: "Applies to the whole board over VIA; key colours above are firmware-only.",
       }),
-    ]),
+    ], {
+      open: state.boardLightingOpen,
+      onToggle: actions.setBoardLightingOpen,
+    }),
     controlGroup("lighting-options", "Capabilities", [
       contextDisclosuresRow(lightingDisclosures(context, lightingSystems)),
     ]),
@@ -997,6 +1000,7 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
       buildOutput,
       element("h3", { className: "build-subheading", text: "Artifacts" }),
       artifacts,
+      element("h3", { className: "build-subheading", text: "Firmware bundle" }),
       element("div", { className: "build-actions" }, [
         firmwareButton(actions.downloadFirmwareBundle),
       ]),

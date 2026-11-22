@@ -215,6 +215,22 @@ describe("device-first connection layout", () => {
     }
   }, 30_000);
 
+  it("keeps the board-lighting disclosure open while adjusting it", async () => {
+    const page = await openReadResultPage({ width: 1440, height: 900 });
+    await page.locator('[data-view="keymap"]').click();
+    const disclosure = page.locator('[data-context-detail="board-lighting"]');
+    await disclosure.click({ position: { x: 24, y: 12 } });
+    expect(await disclosure.getAttribute("open")).not.toBeNull();
+    // Let the wa-after-show handler commit the controlled open state.
+    await page.waitForTimeout(100);
+
+    await page.locator('[data-lighting-control="brightness"]').evaluate((input) => {
+      (input as HTMLInputElement).value = "120";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(await disclosure.getAttribute("open")).not.toBeNull();
+  }, 20_000);
+
   it("keeps the gated write confirmation inline", async () => {
     const page = await openReadResultPage({ width: 1200, height: 800 });
     await page.locator('[data-view="keymap"]').click();
