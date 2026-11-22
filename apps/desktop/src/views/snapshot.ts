@@ -36,7 +36,6 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
     snapshotField("Macros", snapshot.macros, macrosSnapshotRows),
     deviceWriteControls(state, actions, {
       description: `Selected key ${state.snapshotSelectedKey} on layer ${state.snapshotLayerIndex}.`,
-      lightingSave: false,
       controls: (confirmed) => {
         const keycodeInput = element("input", {
           attrs: {
@@ -61,6 +60,7 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
         });
         return [keycodeInput, writeKey];
       },
+      lightingSave: true,
     }),
   ]);
 }

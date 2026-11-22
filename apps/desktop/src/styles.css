@@ -228,7 +228,7 @@ wa-button.nav-item::part(base) {
 }
 
 .nav-label {
-  font-size: 10px;
+  font-size: var(--type-meta);
   line-height: 1;
   letter-spacing: 0;
   white-space: nowrap;
@@ -2615,8 +2615,12 @@ wa-button.palette-row.active::part(base) {
   margin-left: auto;
 }
 
-wa-button.control-button::part(label) {
+wa-button.rail-tab::part(label),
+wa-button.keyboard-switch::part(label),
+.write-bar .control-button::part(label),
+wa-button.menu-action::part(label) {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
 }
@@ -2637,6 +2641,20 @@ wa-button.control-button::part(label) {
   min-width: 46px;
   cursor: default;
   font-size: 8px;
+}
+
+.key.key-focus-cap:hover {
+  border-color: #324554;
+  transform: none;
+}
+
+.key-focus-cap span {
+  max-width: 100%;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .key-focus-meta {

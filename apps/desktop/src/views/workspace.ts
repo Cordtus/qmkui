@@ -5,7 +5,7 @@ import { MacroRecord } from "../macros";
 import { illuminationBase } from "../illumination";
 import { dimHex, inkFor } from "../color";
 import { KeyLayerDetail, KeyLightingDetail, KeyRelation, SelectedKeyContext, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
-import { icon } from "../icons";
+import { icon, type IconName } from "../icons";
 import { KeycodeEntry, formatKeycap, keycodeCategories } from "../keycodes";
 import { rgbMatrixEffectsFor } from "../viaDefinition";
 import { layerTabs, layerTools, lightingPanel } from "./panels";
@@ -145,7 +145,7 @@ export function workspaceControls(
     className: "rail-tabs",
     attrs: { "aria-label": "Keymap controls" },
   });
-  const entries: Array<[EditorState["keymapTab"], string, Parameters<typeof icon>[0]]> = [
+  const entries: Array<[EditorState["keymapTab"], string, IconName]> = [
     ["lighting", "Lighting", "lightbulb"],
     ["key", "Key", "key"],
     ["layer", "Layer", "stack"],
@@ -418,9 +418,10 @@ export function inspector(
 
   return element("section", { className: "inspector", attrs: { "data-context-section": "assignment" } }, [
     element("div", { className: "key-focus" }, [
-      element("div", { className: "key key-focus-cap", attrs: { "aria-hidden": "true" } }, [
-        element("span", { text: formatKeycap(assignment?.qmk ?? "KC_NO") }),
-      ]),
+      element("div", {
+        className: "key key-focus-cap",
+        attrs: { "aria-hidden": "true", "data-key-focus": "true" },
+      }, [element("span", { text: formatKeycap(assignment?.qmk ?? "KC_NO") || "None" })]),
       element("div", { className: "key-focus-meta" }, [
         element("strong", { text: key.label ?? key.id }),
         element("small", {
