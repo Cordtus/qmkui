@@ -1,190 +1,180 @@
 # QMKUI
 
-QMKUI is an early, device-first QMK hardware reader. It starts with no selected
-keyboard, model, project, key map, or editable workspace. In Chrome, Edge, or
-Opera, use **Connect keyboard** to authorize a device in the browser prompt.
-QMKUI identifies that device before showing a read action. For the exact wired
-**Keychron V5 Max ANSI Knob**, **Read device** performs a bounded read-only
-snapshot of the values the firmware reports. For another browser-authorized
-VIA raw-HID interface, first choose **Verify protocol**; QMKUI sends only the
-standard VIA `Get Protocol Version` request. A successful response enables a
-generic standard-state read with no inferred keyboard model or layout.
+A device-first QMK/VIA keyboard inspector that runs in the browser over WebHID.
+Connect a keyboard, see what the firmware actually reports, and shape a key map
+and lighting profile against it — with every write gated behind explicit
+confirmation.
 
-Connection, Read device, and Refresh device are read-only. QMKUI is also
-becoming a write-capable VIA replacement (operator direction 2026-08-12):
-a gated write path can set keycodes on the live dynamic keymap and write the
-RGB-matrix lighting, exactly like VIA. Keycodes persist immediately (QMK writes
-EEPROM on set); lighting is persisted by a separate confirmed "save lighting to
-EEPROM" action. Writes are **gated** — they require an explicit
-operator confirmation in the UI, a matching device identity, and every frame
-must be in the write allow-list
-(`fixtures/protocol/write-commands.json`). No write reaches real hardware until
-the V5 Max manual test plan (`dev-docs/plans/hardware-test-plan.md`) is signed
-off. There is still no flash, bootloader, or firmware path. Unavailable or unverified fields remain visibly unavailable with their
-reason; QMKUI never substitutes a bundled default. The bundled V5 definition
-is available after a read only as an explicit, read-only comparison reference.
+**Live:** [https://qmkui.vercel.app](https://qmkui.vercel.app)
 
-The public instance is available at
-[https://cordtus.github.io/qmkui/](https://cordtus.github.io/qmkui/). GitHub
-Actions uses local self-hosted runners to deploy the same audited static
-artifact built and previewed with the commands below.
+QMKUI starts with no assumed keyboard. It identifies the device first and only
+then offers the actions that device supports. Unavailable or unverified values
+are shown with the firmware's reason; nothing is filled in from a bundled
+default.
 
-## What works
+## Status
 
-- Detect a previously authorized HID device or authorize one explicitly, and
-  accurately show unsupported hardware as unsupported.
-- Recognize the exact wired Keychron V5 Max ANSI Knob and expose **Read device**
-  only after browser authorization.
-- Offer a neutral generic VIA candidate only for an authorized VIA raw-HID
-  interface. Verification sends only standard VIA command `0x01`; devices that
-  do not answer it remain neutral and never receive Keychron/vendor I/O.
-- After generic VIA verification, read the protocol value, standard keyboard
-  values, layer count, and standard QMK lighting custom values through the
-  read-only VIA surface. Unknown definitions, matrix dimensions, keymaps, and
-  switch-matrix geometry stay unavailable or unverified rather than becoming a
-  model, static project, layout, or default configuration.
-- Read and display the reported V5 identity, feature bitmap, VIA keymap values,
-  and RGB-matrix lighting without emitting any mutation packet. The V5 keymap
-  read uses the verified definition's four-layer, six-row, 19-column matrix
-  shape, then renders the returned keycodes as the current read-only keyboard
-  view; it does not use the bundled keymap as device state. The V5 lighting read
-  uses the standard VIA RGB-matrix custom channel (channel 3: brightness,
-  effect, effect speed, hue, saturation); the Keychron `0xA8` vendor RGB
-  protocol is not implemented by the V5 Max firmware and is not in the
-  allow-list.
-- The confirmed-VIA protocol layer permits only these standard state queries:
-  protocol version; uptime, layout options, switch-matrix state, firmware, and
-  keycodes versions; keycodes; macro count, size, and buffer; layer count;
-  dynamic-keymap buffer; encoder mappings; and explicitly selected custom-get
-  values. It rejects every set, save, reset, EEPROM, and bootloader command
-  before HID I/O. Standard QMK custom channels are returned as verified raw
-  protocol values; a vendor custom-channel result remains unverified until an
-  exact decoder is registered. The generic browser read uses only the standard
-  `0x01`, `0x02`, `0x08`, and `0x11` read surfaces; it cannot send Keychron
-  `0xA0` frames.
-- Display the reported global RGB-matrix state (brightness, effect, effect
-  speed, and hue/saturation). Dynamic effects are labeled as configuration
-  effects, not as a captured live animation.
-- Keep unavailable or unverified identity, capability, keymap, and lighting
-  areas grouped with their device-provided reason.
-- Compare a successful V5 read with the bundled definition baseline without
-  applying that baseline to the device or treating it as current state.
-- Inspect software and read-only Linux readiness with `qmkui-doctor`.
+| Capability | State |
+| --- | --- |
+| Detect / identify a HID keyboard | Works, opt-in per browser prompt |
+| Read a Keychron V5 Max ANSI Knob | Works: identity, capabilities, keymap, lighting, macros |
+| Read any other verified VIA device | Standard VIA state only, no inferred model or layout |
+| Edit a key map and lighting profile (project) | Works, local project data |
+| Write keycodes / RGB-matrix lighting to hardware | Implemented and gated; mock transports only until the bench test is signed off |
+| Flash / bootloader / firmware build | Not implemented |
+| In-app `qmk compile` execution | Not implemented; QMKUI can plan the command and run a flash policy dry-run |
 
-Project saves use browser `localStorage` (or an injected adapter) and persist
-across reloads; project JSON exports are plain local files. QMKUI does not
-transmit, encrypt, or treat them as tamper-proof. They do not read, back up, or
-restore keyboard firmware, EEPROM, wireless configuration, or other device
-state.
+## What a read gives you
 
-QMKUI can also write to the connected device through a **gated** path: every
-write frame must be in `fixtures/protocol/write-commands.json`, runs only after
-explicit operator confirmation, and is refused unless the connected device's
-USB id matches the open project's keyboard. Keycode writes persist immediately
-(QMK writes EEPROM on set); RGB-matrix lighting is persisted by a separate
-confirmed "save lighting to EEPROM" action. In-app compilation, flashing,
-bootloader entry, and broad catalog ingestion are not implemented; the app can
-plan a local `qmk compile` command and dry-run a flash policy, but executes
-neither.
+- **Identity** — model, firmware version, protocol version, default layer.
+- **Capabilities** — the firmware feature bitmap.
+- **Keymap** — the live dynamic keymap, read per matrix position and rendered on
+  the board. The bundled definition is never substituted for device state.
+- **Lighting** — the global VIA RGB-matrix state: brightness, effect, effect
+  speed, hue and saturation (channel 3).
+- **Macros** — the VIA dynamic macro buffer, decoded into key steps and text.
 
-## Safety and recovery
+Reads are bounded and allow-listed in `fixtures/protocol/read-only-commands.json`.
+Set, save, reset, EEPROM and bootloader commands are rejected before any HID
+report is sent. Unknown VIA boards must pass a single standard
+`Get Protocol Version` (`0x01`) check before QMKUI reads standard state, and
+they never receive Keychron vendor frames.
 
-A successful read is a transient display of observed hardware state, not a
-device backup. The write path is exercised only against mock transports until
-the V5 Max manual test plan (`dev-docs/plans/hardware-test-plan.md`) is signed
-off by the operator; no write reaches real hardware before then. There is no
-flash or bootloader path. Keep vendor recovery firmware separately, matched to
-the exact model and firmware.
+## Key map and backlighting
 
-## Requirements
+The key map mirrors the connected board's current lighting: each key is tinted
+with the colour the firmware reports, and the board header shows the readable
+state — source, effect, brightness, speed — plus a **Resync** action that
+re-reads lighting only (no keymap re-read). Lighting also resyncs when you open
+the Keymap view.
 
-- Node.js 24 and npm
-- Stable Rust with `rustfmt` and `clippy`
-- Linux for the optional read-only hardware probe
+VIA exposes **global** RGB-matrix colour, not a per-LED map, and the V5 Max
+answers the vendor `0xA8` RGB request with `id_unhandled`. So:
 
-The browser app itself can be built and served without QMK CLI or connected
-hardware.
+- solid-colour effects are shown exactly as read;
+- multi-colour effects generate their palette on the board, and the UI says so
+  rather than inventing per-key colours;
+- a draft colour override is marked with a dot on the key it applies to.
 
-## Install and run
+There is no flash or bootloader path.
 
-Install the locked frontend dependencies:
+## Safety model
+
+A read is a transient view of hardware state, not a backup. Writes — keycodes on
+the live dynamic keymap, and RGB-matrix lighting — go through one gated path:
+
+1. every frame is in `fixtures/protocol/write-commands.json`;
+2. the operator ticks a confirmation and enables writes for the session;
+3. the connected device's USB id must match the open project's keyboard.
+
+Keycodes persist immediately (QMK writes EEPROM on set). Lighting is volatile
+until a separate confirmed **Save lighting to EEPROM** action. Writes are
+exercised only against mock transports until the V5 Max manual test plan is
+signed off by the operator; no write reaches real hardware before then. Keep
+vendor recovery firmware separately, matched to the exact model and firmware.
+
+## Run it
+
+Requirements: Node.js 24, npm, and a Chromium-based browser (Chrome, Chromium or
+Edge). Rust is only needed for the workspace crates and checks.
 
 ```bash
 npm --prefix apps/desktop ci
-```
-
-Start the development server on localhost:
-
-```bash
 npm --prefix apps/desktop run dev -- --port 5173
 ```
 
-Open `http://127.0.0.1:5173`. Development mode can display a local Doctor
-report generated by the read-only probe below.
+Open `http://127.0.0.1:5173` and choose **Connect keyboard**.
 
-Append `?demo` (`http://127.0.0.1:5173/?demo`) to load a **dev-only mock
-Keychron V5 Max**. The full UI — discovery, reads, and the gated write path —
-runs against an in-memory device (captured identity/lighting plus the stock
-keymap), so you can exercise backlight mapping and customization without
-hardware. The mock is excluded from production builds.
+### Demo without hardware
 
-## Install as an app
+Append `?demo` to the dev URL:
 
-QMKUI is an installable web app — there is no native shell or bundled webview.
-In a Chromium-based browser, use the address-bar install icon (or menu →
-"Install QMKUI") to run it in its own window with an icon. This works for the
-deployed site and for any static host, including the `npm run preview` build.
-
-WebHID is only exposed in a secure context (HTTPS or localhost). On Linux,
-Chromium also needs permission to open the keyboard's raw HID interfaces:
-install `packaging/udev/70-qmkui.rules` to `/usr/lib/udev/rules.d/`, reload
-udev, and reconnect the keyboard.
-
-## Build the public app
-
-Build and audit the same static artifact used for public deployment:
-
-```bash
-npm --prefix apps/desktop run build
-npm --prefix apps/desktop run audit:build
+```
+http://127.0.0.1:5173/?demo
 ```
 
-Serve that production artifact locally on localhost:
+That installs a dev-only mock Keychron V5 Max (captured identity and lighting,
+stock keymap), so discovery, reads, the key map mirror and the gated write path
+all work in memory. The mock is excluded from production builds.
+
+### Install as an app
+
+There is no native shell or bundled webview. Use the browser's address-bar
+install icon (or menu → **Install QMKUI**) to run the deployed site or a local
+preview in its own window.
+
+WebHID needs a secure context: HTTPS or `localhost`. On Linux, Chromium also
+needs permission for the keyboard's raw HID interface:
 
 ```bash
-npm --prefix apps/desktop run preview
+sudo install -m 644 packaging/udev/70-qmkui.rules /usr/lib/udev/rules.d/
+sudo udevadm control --reload-rules
+# reconnect the keyboard
 ```
 
-The preview URL is printed by Vite. The production build contains no local
-Doctor report; it includes the user-triggered V5 Max read allowlist plus the
-generic standard-VIA read surface. The generic path has no model/layout/default
-fallback and no backup, default/reset, write, or flash operation.
-
-## Doctor
-
-Run all routine software checks. Its Doctor step explicitly skips hardware:
+## Develop
 
 ```bash
-scripts/test-software.sh
+npm --prefix apps/desktop run typecheck    # tsc --noEmit (src/)
+npm --prefix apps/desktop test             # vitest
+npm --prefix apps/desktop run build        # tsc && vite build
+npm --prefix apps/desktop run preview      # serve dist/
+npm --prefix apps/desktop run audit:build  # public-build audit on dist/
+
+scripts/test-software.sh                   # full CI gate (Rust + frontend + audit + doctor)
+scripts/probe-read-only.sh                 # opt-in Linux USB metadata probe
 ```
 
-Run the opt-in, read-only Linux probe and make its report available to the
-development server:
+Rust workspace:
 
 ```bash
-scripts/probe-read-only.sh
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo run -p qmkui-doctor -- --no-hardware-probe
 ```
 
-The read-only probe inspects Linux USB descriptor metadata under
-`/sys/bus/usb/devices`. It does not open device endpoints or collect USB serial
-numbers. Do not use either command as a flashing workflow.
+Run `cargo fmt --check`, `cargo test`, the frontend tests and
+`scripts/test-public-build-audit.sh` / `scripts/test-public-packaging.sh` before
+submitting; `scripts/test-software.sh` is the CI gate.
+
+## Project layout
+
+```
+apps/desktop          the whole product: static TypeScript/Vite app
+crates/qmkui-core     project model, validation, QMK JSON export
+crates/qmkui-catalog  keyboard definition loading and search
+crates/qmkui-doctor   readiness CLI + opt-in read-only USB metadata probe
+crates/qmkui-hid      read-only VIA/Keychron protocol core
+crates/qmkui-build    build planning, command runner, artifact store
+crates/qmkui-flash    flash models, wrong-target policy, dry-run adapters
+fixtures/             catalog, projects, protocol vectors and allow-lists
+scripts/              check, audit and probe entrypoints
+packaging/            Arch PKGBUILD and the read-only udev rule
+```
+
+The read and write allow-lists under `fixtures/protocol/` are the single source
+of truth: the TypeScript readers derive their command sets from them. Never add
+a hand-synced command constant.
+
+## Data and privacy
+
+Projects and saved projects live in browser `localStorage`; exports are plain
+local files. QMKUI has no backend, telemetry or upload path. The Linux probe
+reads USB descriptor metadata only — it does not open endpoints or collect
+serial numbers.
+
+## Deployment
+
+Vercel builds `main` with `vercel.json` (install + build in `apps/desktop`,
+output `apps/desktop/dist`). GitHub Actions runs the checks only and does not
+deploy. The public-build audit must pass before an artifact ships.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, project structure, and
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, project structure and
 the hardware-safety boundary.
 
 ## License
 
-QMKUI is MIT licensed. See [LICENSE](LICENSE) and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MIT. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
