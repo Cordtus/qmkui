@@ -741,20 +741,30 @@ export function catalogPanel(state: EditorState, actions: RenderActions): HTMLEl
       value: state.catalogSearch,
     },
   });
-  searchInput.addEventListener("input", () => {
-    actions.updateCatalogSearch(searchInput.value);
-  });
-
   const results = filteredCatalog(state.catalogSearch);
+  const count = element("small", { text: String(results.length) });
   const list = element("div", { className: "catalog-list", attrs: { "data-catalog-results": String(results.length) } });
   results.forEach((keyboard) => {
     list.append(catalogRow(keyboard, state, actions));
   });
+  // Filter in place: a state update would rebuild the dialog and steal focus
+  // on every keystroke.
+  searchInput.addEventListener("input", () => {
+    const needle = searchInput.value.trim().toLowerCase();
+    let visible = 0;
+    list.querySelectorAll<HTMLElement>("[data-catalog-keyboard]").forEach((row) => {
+      const match = !needle || row.textContent?.toLowerCase().includes(needle);
+      row.hidden = !match;
+      if (match) visible += 1;
+    });
+    count.textContent = String(visible);
+    list.setAttribute("data-catalog-results", String(visible));
+  });
 
   return element("section", { className: "tab-panel catalog-panel", attrs: { "data-panel": "catalog" } }, [
     element("div", { className: "panel-heading" }, [
-      element("h2", { text: "Catalog" }),
-      element("small", { text: String(bundledKeyboards.length) }),
+      element("h2", { text: "Keyboards" }),
+      count,
     ]),
     searchInput,
     list,
@@ -870,7 +880,7 @@ export function systemPanel(
 
   return element("section", { className: "tab-panel system-panel", attrs: { "data-panel": "system" } }, [
     element("div", { className: "panel-heading" }, [
-      element("h2", { text: "System" }),
+      element("h2", { text: "Firmware" }),
       element("small", { text: "Build readiness and diagnostics" }),
       refresh,
     ]),
@@ -949,7 +959,7 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
   const flashButton = uiButton({
     className: "secondary-action",
     type: "button",
-    text: "Dry-run flash",
+    text: "Preview flash",
     attrs: { "data-flash-dry-run": "true" },
   });
   flashButton.addEventListener("click", actions.runFlashDryRun);
@@ -989,7 +999,7 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
       buildOutput,
       element("h3", { className: "build-subheading", text: "Artifacts" }),
       artifacts,
-      element("h3", { className: "build-subheading", text: "Flash (dry run)" }),
+      element("h3", { className: "build-subheading", text: "Flash preview" }),
       element("div", { className: "flash-controls" }, [flashConfirm, flashButton]),
       flashStatus,
     ],
