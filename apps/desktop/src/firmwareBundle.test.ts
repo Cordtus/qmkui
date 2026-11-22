@@ -98,11 +98,28 @@ describe("firmware bundle", () => {
     expect(readme).toContain("QMKUI did not build or flash this bundle.");
   });
 
-  it("falls back to a no-op overlay when matrix metadata is missing", () => {
+  it("derives matrix bounds from the keys when keyboard metadata omits them", () => {
     const noMatrix = { ...keyboard, matrix: undefined };
     const files = buildFirmwareBundle(project(), noMatrix)!;
     const lighting = files.find((file) => file.name === "qmkui-lighting-rules.c")!;
-    expect(lighting.contents).toContain("no lighting overlay was exported");
+    expect(lighting.contents).toContain("RGB_MATRIX_INDICATOR_SET_COLOR");
+  });
+
+  it("falls back to a no-op overlay when no key has a matrix position", () => {
+    const noMatrix = {
+      ...keyboard,
+      matrix: undefined,
+      layouts: [
+        {
+          ...keyboard.layouts[0]!,
+          keys: keyboard.layouts[0]!.keys.map(({ matrix: _matrix, ...key }) => key),
+        },
+      ],
+    };
+    const files = buildFirmwareBundle(project(), noMatrix)!;
+    const lighting = files.find((file) => file.name === "qmkui-lighting-rules.c")!;
+    expect(lighting.contents).toContain("State rules: none configured");
+    expect(lighting.contents).not.toContain("qmkui_set_key_color(led_min");
   });
 
   it("returns null when the layout does not match", () => {

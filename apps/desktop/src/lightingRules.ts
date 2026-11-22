@@ -31,12 +31,14 @@ export function generateLightingRulesC(
   const layout = keyboard.layouts.find(
     (candidate) => candidate.id === project.target.layoutId,
   );
-  if (!layout || !keyboard.matrix) {
+  if (!layout) {
     return null;
   }
   const keys = layout.keys;
   const byId = new Map(keys.map((key) => [key.id, key]));
-  const bounds = keyboard.matrix;
+  // Keyboard metadata may omit the matrix while every key still carries a
+  // matrix position; derive the bounds from the keys in that case.
+  const bounds = keyboard.matrix ?? derivedBounds(keys);
   const perKey = Object.entries(profile?.perKey ?? {});
   const rules = (project.lightingRules ?? []).filter((rule) => rule.enabled !== false);
 
@@ -159,6 +161,21 @@ function keyColorCall(
   const { r, g, b } = hexToRgb(color);
   const comment = withComment ? ` // ${keyName(key)}` : "";
   return `qmkui_set_key_color(led_min, led_max, ${key.matrix.row}, ${key.matrix.col}, ${r}, ${g}, ${b});${comment}`;
+}
+
+function derivedBounds(keys: VisualKey[]): MatrixBounds {
+  let rows = 0;
+  let cols = 0;
+  let found = false;
+  for (const key of keys) {
+    if (!key.matrix) {
+      continue;
+    }
+    found = true;
+    rows = Math.max(rows, key.matrix.row + 1);
+    cols = Math.max(cols, key.matrix.col + 1);
+  }
+  return found ? { rows, cols } : undefined;
 }
 
 function inBounds(key: VisualKey, bounds: MatrixBounds): boolean {
