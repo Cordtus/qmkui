@@ -3,9 +3,11 @@ import { EditorState, RenderActions, activeLightingProfile, currentLayer } from 
 import { Assignment, KeyboardDefinition, VisualKey } from "../domain";
 import { MacroRecord } from "../macros";
 import { illuminationBase } from "../illumination";
-import { KeyLayerDetail, KeyLightingDetail, KeyRelation, KeyShortcut, SelectedKeyContext, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
+import { dimHex, inkFor } from "../color";
+import { KeyLayerDetail, KeyLightingDetail, KeyRelation, SelectedKeyContext, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { KeycodeEntry, formatKeycap, keycodeCategories } from "../keycodes";
-import { layerStrip, lightingPanel } from "./panels";
+import { rgbMatrixEffectsFor } from "../viaDefinition";
+import { layerTabs, layerTools, lightingPanel } from "./panels";
 import { KEY_LABEL_INSET, KEY_LABEL_UNIT, colorSwatch, contextDisclosure, controlGroup, definitionRow, element, fieldControl, keycapLabel, layoutBounds, optionSelect, parameterBlock, settingsGroup, textInput, uiButton } from "./primitives";
 /** Board only, no side rail — used where the surrounding view owns the rail. */
 export function keyboardBoard(
@@ -14,20 +16,87 @@ export function keyboardBoard(
   actions: RenderActions,
 ): HTMLElement {
   const canvas = element("div", {
-    className: "keyboard-scroll keyboard-canvas",
+    className: "keyboard-scroll",
     attrs: { "aria-label": "Keyboard layout", "data-keyboard-canvas": "true" },
   }, [
     board(state, layout, actions.selectKey),
   ]);
   const stage = element("section", {
-    className: "keyboard-stage workbench-stage",
+    className: "keyboard-stage",
     attrs: { "data-keyboard-stage": "true" },
   }, [
-    canvas,
-    selectedKeyInfoPanel(state, layout),
+    element("div", { className: "keyboard-card" }, [
+      element("header", { className: "board-toolbar" }, [
+        element("div", { className: "board-tabs-block", attrs: { "data-layer-strip": "true" } }, [
+          layerTabs(state, actions),
+        ]),
+        boardLightingReadout(state, actions),
+      ]),
+      canvas,
+      element("footer", { className: "board-foot" }, [
+        element("span", { className: "board-legend" }, [
+          element("span", { className: "legend-light", attrs: { "aria-hidden": "true" } }),
+          element("span", {
+            text: state.hardwareSnapshot
+              ? "Keys mirror the connected board; a dot marks a draft colour override."
+              : "No board read yet; keys show draft colours only.",
+          }),
+        ]),
+        element("small", { text: `${layout.keys.length} keys` }),
+      ]),
+    ]),
   ]);
-  stage.style.width = "100%";
   return stage;
+}
+
+/**
+ * The board's readable lighting state. VIA has no per-LED colour read, so the
+ * board's global colour + effect is the whole truth; every key is derived from
+ * it unless a draft override is set. Multi-colour effects generate their palette
+ * on the board, which the readout says out loud instead of inventing it.
+ */
+function boardLightingReadout(state: EditorState, actions: RenderActions): HTMLElement {
+  const base = illuminationBase(state.hardwareSnapshot);
+  const effects = rgbMatrixEffectsFor(state.keyboard.qmkKeyboard);
+  const effect = base?.effect === undefined
+    ? undefined
+    : (effects.find((candidate) => candidate.id === base.effect)?.name ?? `Effect ${base.effect}`);
+  const generated = base?.effect !== undefined && base.effect !== 0 && base.effect !== 1;
+  const read = uiButton({
+    className: "secondary-action compact",
+    type: "button",
+    text: "Resync",
+    attrs: {
+      "data-lighting-refresh": "true",
+      title: "Re-read the board's lighting state",
+      ...(state.hardwareSnapshot ? {} : { disabled: "" }),
+    },
+  });
+  read.addEventListener("click", () => actions.refreshLighting());
+
+  return element("div", { className: "board-light", attrs: { "data-board-lighting": base ? "live" : "none" } }, [
+    base ? colorSwatch(base.color) : element("span", { className: "color-swatch color-swatch-empty", text: "?" }),
+    element("div", { className: "board-light-text" }, [
+      element("strong", {
+        text: base ? `${base.source}${effect ? ` · ${effect}` : ""}` : "No lighting read",
+      }),
+      element("small", {
+        text: base
+          ? `Brightness ${base.brightness}${base.effectSpeed === undefined ? "" : ` · speed ${base.effectSpeed}`}`
+          : "Connect a board to mirror its colours.",
+      }),
+      ...(generated
+        ? [
+            element("small", {
+              className: "board-light-note",
+              text: "Effect colours are generated on the board; keys show the read base colour.",
+            }),
+          ]
+        : []),
+    ]),
+    ...(state.lightingStatus ? [element("small", { className: "board-light-status", text: state.lightingStatus })] : []),
+    read,
+  ]);
 }
 
 export function keyboardWorkspace(
@@ -58,22 +127,16 @@ export function selectedKeyInfoPanel(
   const fallbackKey = layout.keys[0];
 
   return element("aside", {
-    className: "key-info-panel workbench-inspector",
+    className: "key-info-panel",
     attrs: {
       "aria-label": "Selected key inspector",
       "data-key-info-panel": "true",
     },
   }, [
-    element("div", { className: "panel-heading" }, [
-      element("h2", { text: "Selected key" }),
-      element("small", { text: context?.selectedAssignment?.label ?? fallbackKey.label ?? fallbackKey.id }),
-    ]),
-    controlGroup("key-context", "Key context", [
-      context
-        ? selectedKeySummary(context)
-        : element("dl", {}, selectedKeyRows(fallbackKey, currentLayer(state))),
-    ]),
-    context ? selectedKeyDetails(context) : element("div"),
+    context
+      ? selectedKeySummary(context)
+      : element("dl", {}, selectedKeyRows(fallbackKey, currentLayer(state))),
+    context ? selectedKeyDetails(context) : element("div", { className: "hint", text: "Select a key on the board." }),
   ]);
 }
 
@@ -92,14 +155,14 @@ export function workspaceControls(
     className: "workspace-controls",
     attrs: { "data-workspace-controls": "true" },
   }, [
-    settingsGroup("layers", "Layers", [
-      layerStrip(state, actions),
-    ]),
-    settingsGroup("assignment", "Assign keycode", [
-      inspector(state, layout, actions),
-    ]),
     settingsGroup("lighting", "Lighting", [
       lightingPanel(state, layout, actions),
+    ]),
+    settingsGroup("assignment", "Keycode", [
+      inspector(state, layout, actions),
+    ]),
+    settingsGroup("layers", "Layer", [
+      layerTools(state, actions),
     ]),
     settingsGroup("key", "Selected key", [
       selectedKeyInfoPanel(state, layout),
@@ -144,7 +207,7 @@ export function macroEditor(state: EditorState, actions: RenderActions): HTMLEle
   add.addEventListener("click", () => {
     actions.addMacro(nameInput.value, actionsInput.value);
   });
-  wrap.append(nameInput, actionsInput, add);
+  wrap.append(fieldControl("Macro name", nameInput), fieldControl("Actions", actionsInput), add);
   return wrap;
 }
 
@@ -297,19 +360,15 @@ export function inspector(
   });
 
   return element("section", { className: "inspector", attrs: { "data-context-section": "assignment" } }, [
-    controlGroup("key-assignment", "Key assignment", [
-      element("div", { className: "selected-command-row" }, [
-        fieldControl("QMK keycode", keycodeInput),
-      ]),
+    element("div", { className: "selected-command-row" }, [
+      fieldControl("QMK keycode", keycodeInput),
     ]),
-    controlGroup("assignment-tools", "Assignment tools", [
-      element("div", { className: "context-disclosures" }, [
-        contextDisclosure("Assignment tools", "assignment-tools", [
-          assignmentEditor(state, assignment, actions),
-        ]),
-        contextDisclosure("Keycode palette", "keycode-palette", [
-          keycodePalette(state, actions),
-        ]),
+    element("div", { className: "context-disclosures" }, [
+      contextDisclosure("Assignment tools", "assignment-tools", [
+        assignmentEditor(state, assignment, actions),
+      ]),
+      contextDisclosure("Keycode palette", "keycode-palette", [
+        keycodePalette(state, actions),
       ]),
     ]),
   ]);
@@ -478,8 +537,7 @@ export function selectedKeySummary(context: SelectedKeyContext): HTMLElement {
 export function selectedKeyDetails(context: SelectedKeyContext): HTMLElement {
   return element("div", { className: "key-details" }, [
     keyLayerList(context.layers),
-    keyLightingDetails(context),
-    keyRelationList(context.relations, context.shortcuts),
+    keyRelationList(context.relations),
   ]);
 }
 
@@ -556,7 +614,7 @@ export function keyLightingDetails(context: SelectedKeyContext): HTMLElement {
   ]);
 }
 
-export function keyRelationList(relations: KeyRelation[], shortcuts: KeyShortcut[]): HTMLElement {
+export function keyRelationList(relations: KeyRelation[]): HTMLElement {
   const list = element("div", {
     className: "relation-list",
     attrs: { "data-key-detail-section": "relations" },
@@ -729,6 +787,7 @@ export function keyboardKey({
       "data-lighting-color": lighting.color,
       "data-lighting-effects": effectSummary,
       "data-lighting-mode": lighting.mode,
+      "data-lighting-source": lighting.hasPerKeyColor ? "override" : lighting.color ? "device" : "none",
       role: "button",
       tabindex: "0",
       title: lightingSummary,
@@ -739,11 +798,21 @@ export function keyboardKey({
   keyButton.style.width = `calc(${((key.w ?? 1) / bounds.width) * 100}% - var(--key-gap))`;
   keyButton.style.height = `calc(${((key.h ?? 1) / bounds.height) * 100}% - var(--key-gap))`;
   if (lighting.color) {
-    keyButton.style.setProperty("--key-light", dimHex(lighting.color, lighting.brightness / 255));
+    const dimmed = dimHex(lighting.color, lighting.brightness / 255);
+    keyButton.style.setProperty("--key-light", dimmed);
+    keyButton.style.setProperty("--key-ink", inkFor(dimmed));
   }
   const label = keycapLabel(assignment, { compact: true });
   keyButton.style.setProperty("--key-label-size", keyLabelSize(label, key));
   keyButton.append(element("strong", { text: label }));
+  if (lighting.hasPerKeyColor) {
+    keyButton.append(
+      element("span", {
+        className: "key-override-dot",
+        attrs: { "aria-hidden": "true", title: "Draft colour override" },
+      }),
+    );
+  }
   if (lighting.conditions.length > 0) {
     keyButton.append(
       element("span", {
@@ -785,26 +854,6 @@ export function previewLightingColor(color: string): void {
   document.querySelectorAll<HTMLElement>("[data-lighting-color-readout]").forEach((node) => {
     node.textContent = color;
   });
-}
-
-/**
- * Scale a hex color toward the board's dark base by `factor` (0 = base, 1 =
- * unchanged), so the keymap mirrors the profile's brightness.
- */
-export function dimHex(hex: string, factor: number): string {
-  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!match) {
-    return hex;
-  }
-  const clamped = Math.max(0, Math.min(1, factor));
-  const value = Number.parseInt(match[1], 16);
-  const base = 0x182631;
-  const channel = (shift: number) => {
-    const source = (value >> shift) & 0xff;
-    const target = (base >> shift) & 0xff;
-    return Math.round(target + (source - target) * clamped);
-  };
-  return `#${((channel(16) << 16) | (channel(8) << 8) | channel(0)).toString(16).padStart(6, "0")}`;
 }
 
 export function keyLabelSize(label: string, key: VisualKey): string {

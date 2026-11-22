@@ -6,7 +6,6 @@ import {
   browserReadSession,
   isBrowserReadSelection,
 } from "../appState";
-import { chooseBrowserKeyboard } from "../devices/browserKeyboardDiscovery";
 import { element, uiButton } from "./primitives";
 export function connectionScreen(state: EditorState, actions: RenderActions): HTMLElement {
   return element("main", { className: "connection-shell" }, [connectionContent(state, actions)]);

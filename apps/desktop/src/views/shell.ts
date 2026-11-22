@@ -1,4 +1,4 @@
-import { AppView, EditorState, RenderActions, isKeychronV5MaxSnapshot, selectedLayout } from "../appState";
+import { AppView, EditorState, RenderActions, isKeychronV5MaxSnapshot } from "../appState";
 import { KeyboardDefinition, UiIssue, jsonExportBlockers } from "../domain";
 import { connectionContent, connectionScreen } from "./connection";
 import { catalogPanel, detectedKeyboard, projectDetailsDrawer, systemPanel, testPanel } from "./panels";
@@ -42,7 +42,7 @@ export function appShell(
 export function rail(activeView: AppView, selectView: (view: AppView) => void): HTMLElement {
   // One navigation, three jobs: shape the keymap, set the lighting, inspect the
   // board you have plugged in. Catalog/System are supporting surfaces, not
-  // places you live in.
+  // places you live in. Hints live in the tooltip so labels never truncate.
   const groups: Array<{ label: string; views: Array<{ id: AppView; label: string; hint: string }> }> = [
     {
       label: "Edit",
@@ -67,16 +67,13 @@ export function rail(activeView: AppView, selectView: (view: AppView) => void): 
       const button = uiButton({
         className: `nav-item ${selected ? "active" : ""}`,
         type: "button",
+        text: view.label,
         attrs: {
           "aria-current": selected ? "page" : "false",
           "data-view": view.id,
           title: view.hint,
         },
       });
-      button.append(
-        element("span", { className: "nav-label", text: view.label }),
-        element("span", { className: "nav-hint", text: view.hint }),
-      );
       button.addEventListener("click", () => selectView(view.id));
       nav.append(button);
     });
@@ -85,16 +82,19 @@ export function rail(activeView: AppView, selectView: (view: AppView) => void): 
   return element("aside", { className: "rail app-rail" }, [
     element("div", { className: "brand" }, [
       element("span", { className: "mark", text: "Q" }),
-      element("div", {}, [element("strong", { text: "QMKUI" })]),
+      element("div", { className: "brand-text" }, [
+        element("strong", { text: "QMKUI" }),
+        element("small", { text: "via read/write" }),
+      ]),
     ]),
     nav,
   ]);
 }
 
 /**
- * Single header for the whole workbench: project identity, global actions
- * (undo/redo, save, project details), and the probe/write status. Device
- * identity is folded into the eyebrow so there is no separate detection band.
+ * Single header for the whole workbench: view, project identity, status, and
+ * the global actions. There is deliberately no second device header inside a
+ * view; the device actions appear here once a board is connected.
  */
 export function topbar(
   state: EditorState,
@@ -114,30 +114,24 @@ export function topbar(
 
   const save = uiButton({
     className: "secondary-action",
-    text: "Save project",
-    attrs: { "data-project-action": "save" },
+    text: "Save",
+    attrs: { "data-project-action": "save", title: "Save the current project" },
   });
   save.addEventListener("click", actions.saveProject);
 
   const projectDetails = uiButton({
     className: "secondary-action",
-    text: "Project details",
-    attrs: { "data-project-details-action": "open" },
+    text: "Project",
+    attrs: { "data-project-details-action": "open", title: "Project details and import/export" },
   });
   projectDetails.addEventListener("click", actions.openProjectDetails);
 
-  const refresh = uiButton({
-    className: "secondary-action",
-    text: "Refresh devices",
-    attrs: { "data-probe-refresh": "true" },
-  });
-  refresh.addEventListener("click", actions.reloadProbe);
-
   return element("header", { className: "topbar workspace-header" }, [
     element("div", { className: "project-heading" }, [
-      element("p", { className: "eyebrow", text: `${viewLabel(state.activeView)} · ${deviceName}` }),
+      element("p", { className: "eyebrow", text: viewLabel(state.activeView) }),
       element("h1", { text: state.project.name }),
       element("div", { className: "project-meta" }, [
+        element("span", { className: "device-chip", text: deviceName, attrs: { title: "Connected device" } }),
         element("small", { className: "device-id", text: deviceId }),
         element("span", {
           className: `status ${statusClass}`,
@@ -148,10 +142,37 @@ export function topbar(
     ]),
     element("div", { className: "topbar-actions" }, [
       historyControls(state, actions),
-      element("div", { className: "action-group" }, [exportJsonButton(state, issues, actions), save, projectDetails]),
-      element("div", { className: "action-group" }, [refresh]),
+      element("div", { className: "action-group" }, [
+        exportJsonButton(state, issues, actions),
+        save,
+        projectDetails,
+      ]),
+      ...(state.hardwareSnapshot ? [deviceActions(state, actions)] : []),
     ]),
   ]);
+}
+
+/**
+ * Device actions for whichever view is open. One read controls the snapshot:
+ * it is the header action, not a second button inside the view.
+ */
+function deviceActions(state: EditorState, actions: RenderActions): HTMLElement {
+  const refresh = uiButton({
+    className: "secondary-action",
+    text: state.snapshotReadStatus === "reading" ? "Reading..." : "Read device",
+    attrs: {
+      "data-device-action": "refresh",
+      ...(state.snapshotReadStatus === "reading" ? { disabled: "" } : {}),
+    },
+  });
+  refresh.addEventListener("click", actions.readDevice);
+  const choose = uiButton({
+    className: "secondary-action",
+    text: "Change keyboard",
+    attrs: { "data-device-action": "connect" },
+  });
+  choose.addEventListener("click", actions.chooseBrowserKeyboard);
+  return element("div", { className: "action-group" }, [refresh, choose]);
 }
 
 export function viewLabel(view: AppView): string {
@@ -174,7 +195,7 @@ function exportJsonButton(state: EditorState, issues: UiIssue[], actions: Render
   const blocked = invalid || cBlockers.length > 0;
   const download = uiButton({
     className: "secondary-action",
-    text: "Download QMK JSON",
+    text: "Export JSON",
     attrs: {
       "data-qmk-action": "download",
       ...(blocked
@@ -217,7 +238,7 @@ export function activePanel(
     className: "view-stack",
     attrs: { "data-panel": "keymap" },
   }, [
-    editor(state, layout, issues, actions),
+    editor(state, layout, actions),
   ]);
 }
 
@@ -230,7 +251,7 @@ function deviceContent(state: EditorState, actions: RenderActions): HTMLElement 
   return element("div", { className: "view-stack device-view" }, [
     snapshotContent(state, actions),
     element("section", { className: "device-tester" }, [
-      testPanel(state, selectedLayout(state.keyboard, state.project), actions),
+      testPanel(state, actions),
     ]),
   ]);
 }
@@ -266,11 +287,10 @@ function connectionPanelView(state: EditorState, actions: RenderActions): HTMLEl
 export function editor(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
-  issues: UiIssue[],
   actions: RenderActions,
 ): HTMLElement {
   return element("section", {
-    className: "editor workbench-editor",
+    className: "editor",
     attrs: { "data-workbench-surface": "true" },
   }, [
     keyboardWorkspace(state, layout, actions),

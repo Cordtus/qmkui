@@ -219,6 +219,33 @@ async function readKeymap(
 }
 
 /**
+ * Re-reads only the board's lighting state. VIA exposes global RGB-matrix
+ * hue/saturation/brightness/effect — not a per-LED colour map — so this is the
+ * whole of the board's readable backlight state. Used to resync the key map
+ * without paying for a full keymap read.
+ */
+export async function readKeychronV5MaxLighting(
+  device: KeychronV5MaxReaderDevice,
+  options: { timeoutMs?: number } = {},
+): Promise<ValueState<KeychronV5MaxLighting>> {
+  if (classifyViaIdentity(device).state !== "via") {
+    throw new KeychronV5MaxReaderError("identity");
+  }
+  const timeoutMs = boundedTimeoutMs(options.timeoutMs);
+  // Share the snapshot guard: a lighting resync and a full snapshot read must
+  // never hold two listeners on the same device.
+  if (pendingSnapshots.has(device)) {
+    throw new KeychronV5MaxReaderError("concurrent-read");
+  }
+  pendingSnapshots.add(device);
+  try {
+    return await withOpen(device, () => readLighting(device, timeoutMs));
+  } finally {
+    pendingSnapshots.delete(device);
+  }
+}
+
+/**
  * Reads the V5 Max lighting over the standard VIA RGB-matrix channel. The
  * Keychron vendor `0xa8` RGB protocol is not implemented by this firmware
  * (it answers `id_unhandled`), so a vendor read can never succeed.

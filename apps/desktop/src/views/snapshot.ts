@@ -4,36 +4,35 @@ import type { KeyboardDefinition } from "../domain";
 import { GenericViaStandardState } from "../devices/genericViaReader";
 import { KeychronV5MaxCapabilities, KeychronV5MaxIdentityFacts, KeychronV5MaxLighting, KeychronV5MaxReadSnapshot } from "../devices/keychronV5MaxReader";
 import { ViaKeymap, ViaMacros, ViaMacroStep } from "../devices/viaReadProtocol";
+import { illuminationBase, type IlluminationBase } from "../illumination";
+import { dimHex, inkFor } from "../color";
 import { decodeHardwareKeycode, isSysRqKeycode } from "../keycodes";
 import { keychronV5MaxKeyboard } from "../presets";
-import { definitionList, definitionRow, element, layoutBounds, uiButton } from "./primitives";
+import { definitionList, element, layoutBounds, uiButton } from "./primitives";
 
 export function snapshotContent(state: EditorState, actions: RenderActions): HTMLElement {
   const snapshot = state.hardwareSnapshot!;
   if (!isKeychronV5MaxSnapshot(snapshot)) {
-    return genericViaSnapshotContent(snapshot, state, actions);
+    return genericViaSnapshotContent(snapshot);
   }
-  const title = snapshot.identity.state === "available" ? snapshot.identity.value.model : "Keyboard";
   // Render the connected model's own layout, not a fixed preset: an unknown
   // model falls back to the current project's keyboard.
   const keyboard = keyboardForSelection(state.deviceSelection) ?? state.keyboard;
 
-  return element("section", { className: "snapshot-shell", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
-    snapshotHeader(title, state, actions),
-    element("section", { className: "snapshot-grid" }, [
-      snapshotKeymapField(
-        snapshot.keymap,
-        state.snapshotLayerIndex,
-        actions.selectSnapshotLayer,
-        state.snapshotSelectedKey,
-        actions.selectSnapshotKey,
-        keyboard,
-      ),
-      snapshotField("Identity", snapshot.identity, identitySnapshotRows),
-      snapshotField("Capabilities", snapshot.capabilities, capabilitySnapshotRows),
-      snapshotLightingField(snapshot.lighting),
-      snapshotField("Macros", snapshot.macros, macrosSnapshotRows),
-    ]),
+  return element("section", { className: "view-stack snapshot-grid", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
+    snapshotKeymapField(
+      snapshot.keymap,
+      state.snapshotLayerIndex,
+      actions.selectSnapshotLayer,
+      state.snapshotSelectedKey,
+      actions.selectSnapshotKey,
+      keyboard,
+      illuminationBase(snapshot),
+    ),
+    snapshotField("Identity", snapshot.identity, identitySnapshotRows),
+    snapshotField("Capabilities", snapshot.capabilities, capabilitySnapshotRows),
+    snapshotLightingField(snapshot.lighting),
+    snapshotField("Macros", snapshot.macros, macrosSnapshotRows),
     deviceWriteControls(state, actions, {
       description: `Selected key ${state.snapshotSelectedKey} on layer ${state.snapshotLayerIndex}.`,
       lightingSave: false,
@@ -62,40 +61,6 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
         return [keycodeInput, writeKey];
       },
     }),
-  ]);
-}
-
-/**
- * Shared header for both snapshot variants: device refresh plus "choose
- * another keyboard". Keeping one builder stops the two snapshot screens from
- * drifting apart.
- */
-function snapshotHeader(
-  title: string,
-  state: EditorState,
-  actions: RenderActions,
-): HTMLElement {
-  const refresh = uiButton({
-    className: "secondary-action",
-    text: state.snapshotReadStatus === "reading" ? "Refreshing device..." : "Refresh device",
-    type: "button",
-    attrs: {
-      "data-device-action": "refresh",
-      ...(state.snapshotReadStatus === "reading" ? { disabled: "" } : {}),
-    },
-  });
-  refresh.addEventListener("click", actions.readDevice);
-  const choose = uiButton({
-    className: "secondary-action",
-    text: "Choose another keyboard",
-    type: "button",
-    attrs: { "data-device-action": "connect" },
-  });
-  choose.addEventListener("click", actions.chooseBrowserKeyboard);
-
-  return element("header", { className: "snapshot-header" }, [
-    element("h1", { text: title }),
-    element("div", { className: "snapshot-actions" }, [refresh, choose]),
   ]);
 }
 
@@ -168,44 +133,39 @@ export function deviceWriteControls(
 
 export function genericViaSnapshotContent(
   snapshot: GenericViaStandardState,
-  state: EditorState,
-  actions: RenderActions,
 ): HTMLElement {
-  return element("section", { className: "snapshot-shell", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
-    snapshotHeader("VIA", state, actions),
-    element("section", { className: "snapshot-grid" }, [
-      snapshotGroup("Device", [
-        snapshotField("Identity", snapshot.identity, () => []),
-      ]),
-      snapshotGroup("Protocol", [
-        genericValueField("Protocol version", snapshot.protocolVersion, (version) => `0x${version.toString(16).padStart(4, "0")}`),
-        genericValueField("Uptime", snapshot.uptime),
-        genericValueField("Layout options", snapshot.layoutOptions),
-        genericValueField("Firmware version", snapshot.firmwareVersion),
-        genericValueField("Keycodes version", snapshot.keycodesVersion),
-        genericValueField("Layer count", snapshot.layerCount),
-      ]),
-      snapshotGroup("Keymap", [
-        snapshotField("Keymap", snapshot.keymap, () => []),
-        snapshotField("Switch matrix", snapshot.switchMatrix, () => []),
-      ]),
-      snapshotGroup("Lighting", [
-        genericValueField("Backlight brightness", snapshot.lighting.backlightBrightness),
-        genericValueField("Backlight effect", snapshot.lighting.backlightEffect),
-        genericValueField("RGB light brightness", snapshot.lighting.rgblightBrightness),
-        genericValueField("RGB light effect", snapshot.lighting.rgblightEffect),
-        genericValueField("RGB light effect speed", snapshot.lighting.rgblightEffectSpeed),
-        genericValueField("RGB light hue", snapshot.lighting.rgblightHue),
-        genericValueField("RGB light saturation", snapshot.lighting.rgblightSaturation),
-        genericValueField("RGB matrix brightness", snapshot.lighting.rgbMatrixBrightness),
-        genericValueField("RGB matrix effect", snapshot.lighting.rgbMatrixEffect),
-        genericValueField("RGB matrix effect speed", snapshot.lighting.rgbMatrixEffectSpeed),
-        genericValueField("RGB matrix hue", snapshot.lighting.rgbMatrixHue),
-        genericValueField("RGB matrix saturation", snapshot.lighting.rgbMatrixSaturation),
-        genericValueField("LED matrix brightness", snapshot.lighting.ledMatrixBrightness),
-        genericValueField("LED matrix effect", snapshot.lighting.ledMatrixEffect),
-        genericValueField("LED matrix effect speed", snapshot.lighting.ledMatrixEffectSpeed),
-      ]),
+  return element("section", { className: "view-stack snapshot-grid", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
+    snapshotGroup("Device", [
+      snapshotField("Identity", snapshot.identity, () => []),
+    ]),
+    snapshotGroup("Protocol", [
+      genericValueField("Protocol version", snapshot.protocolVersion, (version) => `0x${version.toString(16).padStart(4, "0")}`),
+      genericValueField("Uptime", snapshot.uptime),
+      genericValueField("Layout options", snapshot.layoutOptions),
+      genericValueField("Firmware version", snapshot.firmwareVersion),
+      genericValueField("Keycodes version", snapshot.keycodesVersion),
+      genericValueField("Layer count", snapshot.layerCount),
+    ]),
+    snapshotGroup("Keymap", [
+      snapshotField("Keymap", snapshot.keymap, () => []),
+      snapshotField("Switch matrix", snapshot.switchMatrix, () => []),
+    ]),
+    snapshotGroup("Lighting", [
+      genericValueField("Backlight brightness", snapshot.lighting.backlightBrightness),
+      genericValueField("Backlight effect", snapshot.lighting.backlightEffect),
+      genericValueField("RGB light brightness", snapshot.lighting.rgblightBrightness),
+      genericValueField("RGB light effect", snapshot.lighting.rgblightEffect),
+      genericValueField("RGB light effect speed", snapshot.lighting.rgblightEffectSpeed),
+      genericValueField("RGB light hue", snapshot.lighting.rgblightHue),
+      genericValueField("RGB light saturation", snapshot.lighting.rgblightSaturation),
+      genericValueField("RGB matrix brightness", snapshot.lighting.rgbMatrixBrightness),
+      genericValueField("RGB matrix effect", snapshot.lighting.rgbMatrixEffect),
+      genericValueField("RGB matrix effect speed", snapshot.lighting.rgbMatrixEffectSpeed),
+      genericValueField("RGB matrix hue", snapshot.lighting.rgbMatrixHue),
+      genericValueField("RGB matrix saturation", snapshot.lighting.rgbMatrixSaturation),
+      genericValueField("LED matrix brightness", snapshot.lighting.ledMatrixBrightness),
+      genericValueField("LED matrix effect", snapshot.lighting.ledMatrixEffect),
+      genericValueField("LED matrix effect speed", snapshot.lighting.ledMatrixEffectSpeed),
     ]),
   ]);
 }
@@ -273,6 +233,7 @@ export function snapshotKeymapField(
   selectedKey: string,
   selectKey: (matrixKey: string) => void,
   keyboard: KeyboardDefinition = keychronV5MaxKeyboard,
+  base: IlluminationBase | null = null,
 ): HTMLElement {
   if (field.state !== "available") {
     return snapshotField("Keymap", field, keymapSnapshotRows);
@@ -290,6 +251,7 @@ export function snapshotKeymapField(
     attrs: { "data-hardware-keymap-board": "true" },
   });
   const bounds = layoutBounds(layout.keys);
+  board.style.aspectRatio = `${bounds.width} / ${bounds.height}`;
   layout.keys.forEach((key) => {
     if (!key.matrix) {
       return;
@@ -306,13 +268,19 @@ export function snapshotKeymapField(
         "aria-pressed": String(matrixId === selectedMatrix),
         ...(keycode === undefined ? {} : { title: formatHardwareKeycode(keycode) }),
       },
-      text: keycode === undefined ? "Unavailable" : compactHardwareKeycode(keycode),
+      text: keycode === undefined ? "" : compactHardwareKeycode(keycode),
     });
     hardwareKey.addEventListener("click", () => selectKey(matrixId));
     hardwareKey.style.left = `${(key.x / bounds.width) * 100}%`;
     hardwareKey.style.top = `${(key.y / bounds.height) * 100}%`;
-    hardwareKey.style.width = `${((key.w ?? 1) / bounds.width) * 100}%`;
-    hardwareKey.style.height = `${((key.h ?? 1) / bounds.height) * 100}%`;
+    hardwareKey.style.width = `calc(${((key.w ?? 1) / bounds.width) * 100}% - var(--key-gap))`;
+    hardwareKey.style.height = `calc(${((key.h ?? 1) / bounds.height) * 100}% - var(--key-gap))`;
+    if (base) {
+      const lit = dimHex(base.color, base.brightness / 255);
+      hardwareKey.style.setProperty("--key-light", lit);
+      hardwareKey.style.setProperty("--key-ink", inkFor(lit));
+      hardwareKey.setAttribute("data-lighting-active", "true");
+    }
     board.append(hardwareKey);
   });
 
@@ -412,7 +380,6 @@ export function snapshotKeyRoles(layers: number[][][], matrixKey: string): HTMLE
     className: "hardware-key-roles",
     attrs: { "data-hardware-key-roles": matrixKey },
   }, [
-    element("h3", { text: `Key roles · ${matrixKey}` }),
     roleNodes.length === 0
       ? element("p", { text: "No keycodes reported for this position." })
       : element("ul", { className: "hardware-key-role-list" }, roleNodes),

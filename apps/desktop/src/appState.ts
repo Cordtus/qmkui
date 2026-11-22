@@ -15,7 +15,7 @@ import {
   type CommandHistory,
   type LightingProfileState,
 } from "./commands";
-import { BrowserKeyboardNavigator, BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
+import { BrowserKeyboardNavigator, BrowserKeyboardSelection, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
 import { buildViaModels } from "./devices/keychronModels";
 import { GenericViaStandardState } from "./devices/genericViaReader";
 import { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
@@ -85,6 +85,8 @@ export type EditorState = {
   snapshotLayerIndex: number;
   snapshotSelectedKey: string;
   snapshotReadStatus: "idle" | "reading" | "failed";
+  /** Result of the last lighting-only resync, shown next to the readout. */
+  lightingStatus: string;
   deviceWriteEnabled: boolean;
   projectStatus: string;
   /** Write-gate/result message, surfaced next to the write controls. */
@@ -170,6 +172,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     snapshotLayerIndex: 0,
     snapshotSelectedKey: "0:0",
     snapshotReadStatus: "idle",
+    lightingStatus: "",
     deviceWriteEnabled: false,
     projectStatus: "Project is not saved in this preview session.",
     deviceWriteStatus: "",
@@ -213,6 +216,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     state.snapshotLayerIndex = 0;
     state.snapshotSelectedKey = "0:0";
     state.snapshotReadStatus = "idle";
+    state.lightingStatus = "";
     actions.render();
     state.discoverBrowserKeyboard().then(
       (selection) => {
@@ -246,6 +250,63 @@ export function createActions(
   state: EditorState,
   requestDoctorReport: () => void,
 ) {
+  /**
+   * Resync the board's global RGB-matrix state without re-reading the keymap.
+   * VIA exposes no per-LED colour read, so this is the whole readable
+   * backlight state; the key map re-derives each key's colour from it.
+   * Skipped until a snapshot exists and while a full read is in flight.
+   */
+  const readLightingNow = () => {
+    if (!isBrowserReadSelection(state.deviceSelection)) {
+      return;
+    }
+    if (!isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
+      return;
+    }
+    if (state.snapshotReadStatus === "reading") {
+      return;
+    }
+    const session = browserReadSession(state.deviceSelection);
+    if (!("readLighting" in session) || !session.readLighting) {
+      return;
+    }
+    const readLighting = session.readLighting;
+    const selectionEpoch = state.deviceSelectionEpoch;
+    state.lightingStatus = "Reading lighting…";
+    actions.render();
+    readLighting().then(
+      (lighting) => {
+        if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+          return;
+        }
+        if (!isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
+          state.lightingStatus = "";
+          actions.render();
+          return;
+        }
+        if (lighting.state !== "available") {
+          state.lightingStatus = lighting.reason ?? "Lighting read failed.";
+          actions.render();
+          return;
+        }
+        state.hardwareSnapshot = {
+          ...state.hardwareSnapshot,
+          lighting,
+          readAt: new Date().toISOString(),
+        };
+        state.lightingStatus = "Lighting resynced from board.";
+        actions.render();
+      },
+      () => {
+        if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+          return;
+        }
+        state.lightingStatus = "Lighting read failed.";
+        actions.render();
+      },
+    );
+  };
+
   const actions = {
     render: () => {
       const focusedInput = captureFocusedInput(root);
@@ -263,6 +324,10 @@ export function createActions(
           selectView: (view) => {
             state.activeView = view;
             actions.render();
+            // The key map mirrors live board lighting, so resync on entry.
+            if (view === "keymap") {
+              readLightingNow();
+            }
           },
           openProjectDetails: () => {
             state.projectDetailsOpen = true;
@@ -368,6 +433,7 @@ export function createActions(
             state.hardwareSnapshot = undefined;
             state.snapshotLayerIndex = 0;
             state.snapshotReadStatus = "idle";
+            state.lightingStatus = "";
             actions.render();
             state.chooseBrowserKeyboard().then(
               (selection) => {
@@ -380,6 +446,7 @@ export function createActions(
                 state.snapshotLayerIndex = 0;
                 state.snapshotSelectedKey = "0:0";
                 state.snapshotReadStatus = "idle";
+                state.lightingStatus = "";
                 actions.render();
                 if (isProtocolVerifiableSelection(selection)) {
                   readDeviceSnapshot(state, () => actions.render());
@@ -422,6 +489,7 @@ export function createActions(
           readDevice: () => {
             readDeviceSnapshot(state, () => actions.render());
           },
+          refreshLighting: readLightingNow,
           selectKeycodeCategory: (categoryId) => {
             state.keycodeCategoryId = categoryId;
             state.keycodeSearch = "";
@@ -933,6 +1001,7 @@ export type RenderActions = {
   chooseBrowserKeyboard: () => void;
   verifyKeychronV5MaxProtocol: () => void;
   readDevice: () => void;
+  refreshLighting: () => void;
   selectSnapshotLayer: (layerIndex: number) => void;
   selectSnapshotKey: (matrixKey: string) => void;
   enableDeviceWrites: (confirmed: boolean) => void;
@@ -1102,6 +1171,7 @@ export function readDeviceSnapshot(state: EditorState, render: () => void): void
   const selectionEpoch = state.deviceSelectionEpoch;
   const session = browserReadSession(state.deviceSelection);
   state.snapshotReadStatus = "reading";
+  state.lightingStatus = "";
   render();
   ("readSnapshot" in session ? session.readSnapshot() : session.readStandardState()).then(
     (snapshot) => {
@@ -1120,6 +1190,7 @@ export function readDeviceSnapshot(state: EditorState, render: () => void): void
       }
       state.hardwareSnapshot = undefined;
       state.snapshotReadStatus = "failed";
+      state.lightingStatus = "";
       render();
     },
   );
