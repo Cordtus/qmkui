@@ -829,7 +829,7 @@ export function keyboardKey({
       "data-lighting-color": lighting.color,
       "data-lighting-effects": effectSummary,
       "data-lighting-mode": lighting.mode,
-      "data-lighting-source": lighting.hasPerKeyColor ? "override" : lighting.color ? "device" : "none",
+      "data-lighting-source": lighting.source,
       role: "button",
       tabindex: "0",
       title: lightingSummary,

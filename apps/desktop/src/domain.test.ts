@@ -229,9 +229,14 @@ describe("lighting validation", () => {
       { id: "p", name: "P", mode: "static", perKey: {}, global: { color: "red" } },
     ];
 
+    project.layers[0]!.assignments[1]!.qmk = "KC_A\n#include <evil.h>";
+    project.lightingProfiles[0]!.perKey = { k: "not-a-colour" };
+
     const codes = validateProject(project, keyboard).map((issue) => issue.code);
     expect(codes).toContain("assignment.qmk.empty");
+    expect(codes).toContain("assignment.qmk.invalid");
     expect(codes).toContain("lightingProfile.color.invalid");
+    expect(codes).toContain("lightingProfile.perKey.color.invalid");
   });
 });
 

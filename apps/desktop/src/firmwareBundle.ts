@@ -1,4 +1,5 @@
 import type { KeyboardDefinition, LightingProfile, Project } from "./domain";
+import { isSafeQmkKeycode } from "./keycodes";
 import { cCommentText, generateLightingRulesC } from "./lightingRules";
 
 export type FirmwareBundleFile = {
@@ -36,11 +37,14 @@ export function buildFirmwareBundle(
     "const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {",
   ];
   layers.forEach((layer) => {
-    const keycodes = layout.keys.map(
-      (key) =>
-        layer.assignments.find((assignment) => assignment.visualKeyId === key.id)?.qmk ||
-        "KC_NO",
-    );
+    const keycodes = layout.keys.map((key) => {
+      const qmk = layer.assignments
+        .find((assignment) => assignment.visualKeyId === key.id)
+        ?.qmk.trim();
+      // Validation rejects unsafe expressions; this keeps a malformed imported
+      // project from ever reaching C if validation is bypassed.
+      return qmk && isSafeQmkKeycode(qmk) ? qmk : "KC_NO";
+    });
     keymap.push(`    [${layer.index}] = ${layout.qmkLayoutMacro}(`);
     keymap.push(...wrapC(keycodes, 8).map((line) => `        ${line}`));
     keymap.push("    ),");

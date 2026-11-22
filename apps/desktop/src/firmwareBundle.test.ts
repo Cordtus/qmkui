@@ -119,7 +119,7 @@ describe("firmware bundle", () => {
     const files = buildFirmwareBundle(project(), noMatrix)!;
     const lighting = files.find((file) => file.name === "qmkui-lighting-rules.c")!;
     expect(lighting.contents).toContain("State rules: none configured");
-    expect(lighting.contents).not.toContain("qmkui_set_key_color(led_min");
+    expect(lighting.contents).not.toContain("\n    qmkui_set_key_color(");
   });
 
   it("sanitizes the project name and empty keycodes", () => {
@@ -136,6 +136,17 @@ describe("firmware bundle", () => {
     expect(keymap).toContain("KC_NO, MO(1),");
     expect(readme).toContain("# bad  name — QMK firmware bundle");
     expect(readme).not.toContain("bad */ name\\");
+  });
+
+  it("never emits an unsafe keycode expression", () => {
+    const unsafe = project();
+    unsafe.layers[0]!.assignments[0]!.qmk = "KC_A\n#include <evil.h>";
+
+    const files = buildFirmwareBundle(unsafe, keyboard)!;
+    const keymap = files.find((file) => file.name === "keymap.c")!.contents;
+
+    expect(keymap).toContain("KC_NO, MO(1),");
+    expect(keymap).not.toContain("evil");
   });
 
   it("returns null when the layout does not match", () => {

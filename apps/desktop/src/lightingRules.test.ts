@@ -95,13 +95,13 @@ describe("lighting rules C export", () => {
 
     expect(code).toContain("bool rgb_matrix_indicators_advanced_user(");
     expect(code).toContain("RGB_MATRIX_INDICATOR_SET_COLOR(led, r, g, b)");
-    expect(code).toContain("qmkui_set_key_color(led_min, led_max, 0, 0, 255, 0, 0);");
+    expect(code).toContain("qmkui_set_key_color(0, 0, 255, 0, 0);");
     expect(code).toContain("if (host_keyboard_led_state().caps_lock) {");
-    expect(code).toContain("qmkui_set_key_color(led_min, led_max, 2, 0, 0, 255, 0); // Caps");
+    expect(code).toContain("qmkui_set_key_color(2, 0, 0, 255, 0); // Caps");
     expect(code).toContain("if (layer_state_is(2)) {");
-    expect(code).toContain("qmkui_set_key_color(led_min, led_max, 5, 10, 0, 0, 255); // Fn");
+    expect(code).toContain("qmkui_set_key_color(5, 10, 0, 0, 255); // Fn");
     expect(code).toContain("if (get_highest_layer(layer_state | default_layer_state) == 0) {");
-    expect(code).toContain("qmkui_set_key_color(led_min, led_max, 5, 10, 255, 255, 255); // Fn");
+    expect(code).toContain("qmkui_set_key_color(5, 10, 255, 255, 255); // Fn");
     expect(code).toContain("if (matrix_is_on(5, 5)) {");
   });
 
@@ -124,7 +124,7 @@ describe("lighting rules C export", () => {
     const code = generateLightingRulesC(project(), keyboard);
 
     expect(code).toContain(
-      "qmkui_set_key_color(led_min, led_max, 3, 3, 1, 2, 3); // bad  label",
+      "qmkui_set_key_color(3, 3, 1, 2, 3); // bad  label",
     );
     expect(code).not.toContain("*/");
     expect(code).not.toContain("\\");

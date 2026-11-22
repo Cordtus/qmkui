@@ -1,5 +1,6 @@
 import { parseAdvancedAssignment } from "./advancedAssignments";
 import { normalizeHex } from "./color";
+import { isSafeQmkKeycode } from "./keycodes";
 
 export type Project = {
   schemaVersion: string;
@@ -416,6 +417,13 @@ export function validateProject(project: Project, keyboard: KeyboardDefinition):
           title: "Assignment has no keycode",
           path: `layers[${layerIndex}].assignments[${assignmentIndex}].qmk`,
         });
+      } else if (!isSafeQmkKeycode(assignment.qmk)) {
+        issues.push({
+          code: "assignment.qmk.invalid",
+          severity: "error",
+          title: "Assignment keycode is not a plain QMK expression",
+          path: `layers[${layerIndex}].assignments[${assignmentIndex}].qmk`,
+        });
       }
 
       const layerReference = scanLayerReference(assignment.qmk);
@@ -483,6 +491,17 @@ export function validateProject(project: Project, keyboard: KeyboardDefinition):
         });
       }
     });
+  });
+
+  Object.entries(project.lightingProfiles?.[0]?.perKey ?? {}).forEach(([keyId, color]) => {
+    if (!normalizeHex(color)) {
+      issues.push({
+        code: "lightingProfile.perKey.color.invalid",
+        severity: "error",
+        title: "Per-key lighting colour is not a hex value",
+        path: `lightingProfiles[0].perKey.${keyId}`,
+      });
+    }
   });
 
   const profileColor = project.lightingProfiles?.[0]?.global?.color;

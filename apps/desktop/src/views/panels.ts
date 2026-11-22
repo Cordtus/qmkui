@@ -3,7 +3,7 @@ import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
 import { CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, LightingRuleTrigger, UiIssue, validateProject } from "../domain";
 import { illuminationBase, type IlluminationBase } from "../illumination";
-import { buildSelectedKeyContext, lightingForKey } from "../keyDetails";
+import { DEFAULT_BOARD_COLOR, boardColor, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { HostKeyCapture } from "../keyTester";
 import { canDeleteLayer, scanLayerReferences } from "../layerActions";
 import { lightingSystemsForKeyboard, supportedLightingSystems } from "../lightingCapabilities";
@@ -538,6 +538,13 @@ function contextDisclosuresRow(
   );
 }
 
+function boardColorForPicker(
+  profile: LightingProfile,
+  base?: IlluminationBase | null,
+): string {
+  return boardColor(profile, base) || DEFAULT_BOARD_COLOR;
+}
+
 function firmwareButton(actions: RenderActions): HTMLElement {
   const download = uiButton({
     className: "secondary-action",
@@ -623,8 +630,7 @@ export function rgbMatrixControls(
       type: "color",
     },
   }) as HTMLInputElement;
-  boardColor.value =
-    typeof global.color === "string" ? global.color : (base?.color ?? "#5ed1aa");
+  boardColor.value = boardColorForPicker(profile, base);
   boardColor.addEventListener("change", () => {
     actions.updateLightingGlobal("color", boardColor.value);
   });

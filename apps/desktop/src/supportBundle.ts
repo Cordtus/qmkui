@@ -27,7 +27,7 @@ export type SupportBundleInput = {
 export const APP_VERSION = packageJson.version;
 
 const REDACTED = "[redacted]";
-const LOCAL_PATH = /(?:\/home\/|\/Users\/|\/root\/|\/tmp\/|[A-Za-z]:\\Users\\)[^\s"'`]+/g;
+const LOCAL_PATH = /(?:\/home\/|\/Users\/|\/root\/|\/tmp\/|[A-Za-z]:\\[^\s"'`]+)/g;
 
 /**
  * Builds a support bundle: app/environment, project identity (with the keymap
@@ -40,7 +40,7 @@ export function buildSupportBundle(input: SupportBundleInput): string {
     const record = macro as MacroRecord;
     return {
       id: macro.id,
-      name: macro.name ?? macro.id,
+      name: redactPaths(macro.name ?? macro.id),
       exportMode: macro.exportMode ?? "json",
       actions: input.includeSensitiveMacroText ? record.actions ?? "" : REDACTED,
     };
@@ -56,7 +56,7 @@ export function buildSupportBundle(input: SupportBundleInput): string {
     },
     project: {
       id: input.project.id,
-      name: input.project.name,
+      name: redactPaths(input.project.name),
       target: input.project.target,
       layers: input.project.layers.length,
       build: input.project.build,
@@ -67,7 +67,7 @@ export function buildSupportBundle(input: SupportBundleInput): string {
         .sort((left, right) => left.index - right.index)
         .map((layer) => ({
           index: layer.index,
-          name: layer.name,
+          name: redactPaths(layer.name),
           enabled: layer.enabled,
           assignments: layer.assignments.map((assignment) => ({
             visualKeyId: assignment.visualKeyId,

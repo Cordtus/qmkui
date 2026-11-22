@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { crc32, createZip } from "./zip";
 
-const decoder = new TextDecoder();
-
 describe("zip writer", () => {
   it("matches the CRC-32 reference value", () => {
     expect(crc32(new TextEncoder().encode("123456789"))).toBe(0xcbf43926);
@@ -16,11 +14,11 @@ describe("zip writer", () => {
     const zip = createZip(files, new Date(2026, 0, 2, 3, 4, 5));
     const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
     const decoder = new TextDecoder();
-
     const eocd = zip.length - 22;
     expect(view.getUint32(eocd, true)).toBe(0x06054b50);
     expect(view.getUint16(eocd + 10, true)).toBe(files.length);
-    let cursor = view.getUint32(eocd + 16, true);
+    const directoryStart = view.getUint32(eocd + 16, true);
+    let cursor = directoryStart;
 
     for (const file of files) {
       expect(view.getUint32(cursor, true)).toBe(0x02014b50);
@@ -35,6 +33,10 @@ describe("zip writer", () => {
       expect(view.getUint32(localOffset + 14, true)).toBe(crc);
       expect(view.getUint32(localOffset + 18, true)).toBe(size);
       const localNameLength = view.getUint16(localOffset + 26, true);
+      const localName = decoder.decode(
+        zip.slice(localOffset + 30, localOffset + 30 + localNameLength),
+      );
+      expect(localName).toBe(file.name);
       const dataStart = localOffset + 30 + localNameLength;
       const contents = decoder.decode(zip.slice(dataStart, dataStart + size));
       expect(contents).toBe(file.contents);
@@ -42,6 +44,7 @@ describe("zip writer", () => {
 
       cursor += 46 + nameLength;
     }
+    expect(view.getUint32(eocd + 12, true)).toBe(cursor - directoryStart);
   });
 
 });

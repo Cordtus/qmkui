@@ -453,7 +453,7 @@ export function createActions(
                 profile,
                 state.selectedKeyId,
                 illuminationBase(state.hardwareSnapshot),
-              ).color || "#5ed1aa";
+              ).color || DEFAULT_BOARD_COLOR;
             const rule: LightingRule = {
               id: `rule_${crypto.randomUUID()}`,
               targetKeyId: state.selectedKeyId,
@@ -1280,16 +1280,16 @@ function currentWriteSession(state: EditorState): WriteCapableSession | null {
 
 /**
  * A live write is only allowed when the connected device's USB identity matches
- * the keyboard the write is authored for. If the keyboard declares no USB id
- * (a generic VIA board) there is nothing to compare against, so the write is
- * permitted — the device was explicitly chosen by the operator.
+ * the keyboard the write is authored for. A keyboard that declares no USB id
+ * cannot be verified, so writes are refused rather than trusting whichever
+ * board happens to be connected.
  */
-function selectionMatchesTarget(state: EditorState): boolean {
+export function selectionMatchesTarget(
+  state: Pick<EditorState, "deviceSelection" | "keyboard">,
+): boolean {
   const identity = state.deviceSelection.state === "selected" ? state.deviceSelection.identity : undefined;
   const usb = state.keyboard.usb;
   if (!identity || !usb?.vid || !usb?.pid) {
-    // Without a declared USB target there is nothing to match; writes are
-    // refused rather than trusting whichever board is connected.
     return false;
   }
   return hexId(identity.vendorId) === normalizeUsbId(usb.vid)
@@ -1297,7 +1297,12 @@ function selectionMatchesTarget(state: EditorState): boolean {
 }
 
 /** Why a write was refused, distinguishing no-capability from wrong-target. */
-function writeRefusalReason(state: EditorState): string {
+export function writeRefusalReason(
+  state: Pick<EditorState, "deviceSelection" | "keyboard">,
+): string {
+  if (!state.keyboard.usb?.vid || !state.keyboard.usb?.pid) {
+    return "The keyboard definition has no USB id; the write target cannot be verified.";
+  }
   if (isBrowserReadSelection(state.deviceSelection) && !selectionMatchesTarget(state)) {
     return "Connected device does not match the project's target; refusing to write.";
   }

@@ -53,7 +53,7 @@ describe("support bundle", () => {
     expect(bundle.device.model).toBe("Keychron V5 Max");
     expect(bundle.validation.errors).toBe(1);
     expect(bundle.app.webhid).toBe(true);
-    expect(JSON.stringify(bundle)).not.toMatch(/home\/|\/home\//);
+    expect(JSON.stringify(bundle)).not.toContain("/home/");
     expect(bundle.doctor).toBeNull();
   });
 
@@ -80,7 +80,18 @@ describe("support bundle", () => {
     );
   });
 
-  it("redacts local paths and keeps probe/command facts", () => {
+  it("redacts local paths from doctor text and project names", () => {
+    const project = structuredClone(fixtureProject);
+    project.name = "repo at /home/u/proj";
+    project.layers[0]!.name = "layer /tmp/build";
+    const macro: MacroRecord = {
+      id: "m",
+      name: "/root/private",
+      exportMode: "json",
+      enabled: true,
+      actions: "",
+    };
+    project.macros = [macro];
     const doctor = {
       snapshot: {
         commands: [
@@ -91,7 +102,7 @@ describe("support bundle", () => {
         packageManager: "pacman",
         hardwareProbe: {
           status: "ready",
-          reason: "probe failed at /home/u/usb",
+          reason: "probe failed at /home/u/usb and C:\\Users\\u\\usb",
           detectedKeyboards: [
             { displayName: "Keychron V5 Max", device: { vid: "3434", pid: "0950" } },
           ],
@@ -108,11 +119,13 @@ describe("support bundle", () => {
     } as unknown as DoctorReport;
 
     const bundle = JSON.parse(
-      buildSupportBundle({ project: fixtureProject, doctor, includeSensitiveMacroText: false }),
+      buildSupportBundle({ project, doctor, includeSensitiveMacroText: false }),
     );
     const text = JSON.stringify(bundle);
 
     expect(text).not.toContain("/home/u");
+    expect(text).not.toContain("/tmp/build");
+    expect(text).not.toContain("/root/private");
     expect(text).not.toContain("C:\\Users\\u");
     expect(text).toContain("[path]");
     expect(bundle.doctor.hardwareProbe.detectedKeyboards).toEqual(["3434:0950"]);
