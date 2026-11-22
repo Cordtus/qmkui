@@ -1,4 +1,4 @@
-import type { Layer, LightingProfile } from "./domain";
+import type { Layer, LightingProfile, LightingRule } from "./domain";
 
 /**
  * Pure-data editor commands for undo/redo. Each command describes a mutation
@@ -41,11 +41,18 @@ export type LayersCommand = {
   after: Layer[];
 };
 
+export type LightingRulesCommand = {
+  kind: "lighting-rules";
+  before: LightingRule[];
+  after: LightingRule[];
+};
+
 export type Command =
   | AssignKeycodeCommand
   | SetLightingCommand
   | SetLightingProfileCommand
-  | LayersCommand;
+  | LayersCommand
+  | LightingRulesCommand;
 
 export type CommandHistory = {
   push(command: Command): void;

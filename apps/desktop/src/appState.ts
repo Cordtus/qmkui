@@ -20,8 +20,10 @@ import { buildViaModels } from "./devices/keychronModels";
 import { GenericViaStandardState } from "./devices/genericViaReader";
 import { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
 import { loadLocalDoctorReport } from "./doctorReport";
-import { DoctorReport, KeyboardDefinition, LightingProfile, Project, UiIssue, exportQmkJson, jsonExportBlockers, validateProject } from "./domain";
+import { DoctorReport, KeyboardDefinition, LightingProfile, LightingRule, LightingRuleTrigger, Project, UiIssue, exportQmkJson, jsonExportBlockers, validateProject } from "./domain";
 import { HostKeyCapture, captureHostKey } from "./keyTester";
+import { lightingForKey } from "./keyDetails";
+import { generateLightingRulesC, lightingRulesCFileName } from "./lightingRules";
 import { keycodeCategories, keycodeValue, kindForKeycode } from "./keycodes";
 import { addTransparentLayer, deleteLayer, duplicateLayer, renameLayer } from "./layerActions";
 import { keychronV5MaxKeyboard, keychronV5MaxProject } from "./presets";
@@ -68,6 +70,8 @@ export type EditorState = {
   selectedKeyId: string;
   /** All keys the next lighting edit applies to (multi-select). */
   selectedKeyIds: string[];
+  /** Click-to-paint mode: a click applies the current colour to that key. */
+  lightingPaint: boolean;
   commandHistory: CommandHistory;
   keycodeCategoryId: string;
   keycodeSearch: string;
@@ -156,6 +160,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     selectedLayerIndex: defaultSelectedLayerIndex(currentProject),
     selectedKeyId: layout.keys[0]?.id ?? "",
     selectedKeyIds: layout.keys[0] ? [layout.keys[0].id] : [],
+    lightingPaint: false,
     commandHistory: createCommandHistory(),
     keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
     keycodeSearch: "",
@@ -381,6 +386,116 @@ export function createActions(
             state.commandHistory.push({ kind: "set-lighting", keyIds, before, after: color });
             actions.render();
           },
+          toggleLightingPaint: () => {
+            state.lightingPaint = !state.lightingPaint;
+            actions.render();
+          },
+          paintKey: (keyId) => {
+            const brush = lightingForKey(
+              activeLightingProfile(state.project),
+              state.selectedKeyId,
+              illuminationBase(state.hardwareSnapshot),
+            ).color;
+            if (!brush) {
+              state.selectedKeyId = keyId;
+              state.selectedKeyIds = [keyId];
+              actions.render();
+              return;
+            }
+            const profile = activeLightingProfile(state.project);
+            const before = [profile.perKey[keyId] ?? ""];
+            setLightingColor(state.project, keyId, brush);
+            state.selectedKeyId = keyId;
+            state.selectedKeyIds = [keyId];
+            state.commandHistory.push({ kind: "set-lighting", keyIds: [keyId], before, after: brush });
+            actions.render();
+          },
+          clearSelectedLighting: () => {
+            const keyIds = state.selectedKeyIds.length ? state.selectedKeyIds : [state.selectedKeyId];
+            const profile = activeLightingProfile(state.project);
+            const before = keyIds.map((keyId) => profile.perKey[keyId] ?? "");
+            if (before.every((color) => !color)) {
+              return;
+            }
+            keyIds.forEach((keyId) => {
+              delete profile.perKey[keyId];
+            });
+            state.commandHistory.push({ kind: "set-lighting", keyIds, before, after: "" });
+            actions.render();
+          },
+          addLightingRule: (trigger) => {
+            const layout = selectedLayout(state.keyboard, state.project);
+            const target = layout.keys.find((key) => key.id === state.selectedKeyId);
+            if (!target?.matrix) {
+              state.projectStatus = "This key has no LED position; pick another key.";
+              actions.render();
+              return;
+            }
+            if (trigger.kind === "held") {
+              const source = layout.keys.find((key) => key.id === trigger.keyId);
+              if (!source?.matrix) {
+                state.projectStatus = "The held key has no matrix position; pick another key.";
+                actions.render();
+                return;
+              }
+            }
+            const profile = activeLightingProfile(state.project);
+            const color =
+              lightingForKey(
+                profile,
+                state.selectedKeyId,
+                illuminationBase(state.hardwareSnapshot),
+              ).color || "#5ed1aa";
+            const rule: LightingRule = {
+              id: `rule_${crypto.randomUUID()}`,
+              targetKeyId: state.selectedKeyId,
+              color,
+              trigger,
+            };
+            const before = structuredClone(state.project.lightingRules ?? []);
+            state.project.lightingRules = [...before, rule];
+            state.commandHistory.push({
+              kind: "lighting-rules",
+              before,
+              after: structuredClone(state.project.lightingRules),
+            });
+            actions.render();
+          },
+          removeLightingRule: (ruleId) => {
+            const before = structuredClone(state.project.lightingRules ?? []);
+            const after = before.filter((rule) => rule.id !== ruleId);
+            if (after.length === before.length) {
+              return;
+            }
+            state.project.lightingRules = after;
+            state.commandHistory.push({
+              kind: "lighting-rules",
+              before,
+              after: structuredClone(after),
+            });
+            actions.render();
+          },
+          downloadLightingRules: () => {
+            const issues = validateProject(state.project, state.keyboard);
+            if (issues.some((issue) => issue.severity === "error")) {
+              state.projectStatus = "Fix keymap and lighting rule errors before exporting rules C.";
+              actions.render();
+              return;
+            }
+            const code = generateLightingRulesC(
+              state.project,
+              state.keyboard,
+              activeLightingProfile(state.project),
+            );
+            if (!code) {
+              state.projectStatus = "The project layout does not match the selected keyboard.";
+              actions.render();
+              return;
+            }
+            downloadText(code, lightingRulesCFileName(state.project), "text/x-c");
+            state.projectStatus = "Lighting rules C downloaded; add it to the keymap and build with QMK.";
+            actions.render();
+          },
           undo: () => {
             const command = state.commandHistory.undo();
             if (command) {
@@ -405,6 +520,12 @@ export function createActions(
           downloadQmkJson: () => {
             const issues = validateProject(state.project, state.keyboard);
             if (issues.some((issue) => issue.severity === "error")) {
+              return;
+            }
+            const blockers = jsonExportBlockers(state.project);
+            if (blockers.length > 0) {
+              state.projectStatus = blockers.join(" ");
+              actions.render();
               return;
             }
             state.downloadQmkJson(
@@ -697,6 +818,7 @@ export function createActions(
             state.selectedKeyIds = state.selectedKeyId ? [state.selectedKeyId] : [];
             state.commandHistory.clear();
             state.catalogSearch = "";
+            state.lightingPaint = false;
             state.projectJsonDraft = JSON.stringify(state.project, null, 2);
             state.projectStatus = `Created ${state.project.name} from catalog.`;
             state.activeView = "keymap";
@@ -995,6 +1117,12 @@ export type RenderActions = {
   selectAllKeys: () => void;
   updateSelectedKeycode: (qmk: string) => void;
   updateSelectedLighting: (color: string) => void;
+  toggleLightingPaint: () => void;
+  paintKey: (keyId: string) => void;
+  clearSelectedLighting: () => void;
+  addLightingRule: (trigger: LightingRuleTrigger) => void;
+  removeLightingRule: (ruleId: string) => void;
+  downloadLightingRules: () => void;
   captureHostKey: (input: { code: string; key: string }) => void;
   downloadQmkJson: () => void;
   downloadViaDefinition: (qmkKeyboard: string) => void;
@@ -1373,7 +1501,11 @@ export function downloadProjectJson(project: Project): void {
 }
 
 export function downloadJson(contents: string, filename: string): void {
-  const blob = new Blob([contents], { type: "application/json" });
+  downloadText(contents, filename, "application/json");
+}
+
+export function downloadText(contents: string, filename: string, type: string): void {
+  const blob = new Blob([contents], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -1522,6 +1654,11 @@ function applyCommand(state: EditorState, command: Command, direction: "forward"
     }
     case "layers":
       state.project.layers = structuredClone(
+        direction === "forward" ? command.after : command.before,
+      );
+      break;
+    case "lighting-rules":
+      state.project.lightingRules = structuredClone(
         direction === "forward" ? command.after : command.before,
       );
       break;

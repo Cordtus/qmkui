@@ -567,6 +567,69 @@ function deferred<Value>() {
     expect(root.querySelectorAll("[data-hardware-snapshot]")).toHaveLength(1);
   });
 
+  it("paints keys and manages firmware lighting rules", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-key=v5_000]")?.click();
+    await flush();
+    root.querySelector<HTMLElement>("[data-lighting-paint]")?.click();
+    await flush();
+    expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("true");
+
+    root.querySelector<HTMLElement>("[data-key=v5_001]")?.click();
+    await flush();
+    const painted = root.querySelector<HTMLElement>("[data-key=v5_001]");
+    expect(painted?.getAttribute("data-lighting-source")).toBe("override");
+    expect(painted?.querySelector(".key-override-dot")).not.toBeNull();
+
+    const trigger = root.querySelector<HTMLSelectElement>("[data-lighting-rule-trigger]")!;
+    trigger.value = "lock:capsLock";
+    root.querySelector<HTMLElement>("[data-lighting-rule-add]")?.click();
+    await flush();
+    const rules = root.querySelectorAll("[data-lighting-rule]");
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.textContent).toContain("Caps Lock");
+
+    // Rules participate in the shared undo history.
+    root.querySelector<HTMLElement>("[data-editor-undo]")?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-lighting-rule]")).toHaveLength(0);
+
+    root.querySelector<HTMLElement>("[data-lighting-rule-add]")?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-lighting-rule]")).toHaveLength(1);
+
+    root.querySelector<HTMLElement>("[data-lighting-rule-remove]")?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-lighting-rule]")).toHaveLength(0);
+  }, 20_000);
+
+  it("turns paint mode off when another keyboard is loaded", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>("[data-lighting-paint]")?.click();
+    await flush();
+    expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("true");
+
+    root.querySelector<HTMLElement>('[data-view="catalog"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-catalog-keyboard="example/keyboard"] [data-catalog-action="select"]')?.click();
+    await flush();
+
+    expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("false");
+  }, 20_000);
+
   it("colours every selected key and undoes the whole selection in one step", async () => {
     const root = document.createElement("div");
     createApp(root, {

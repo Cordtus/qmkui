@@ -1,4 +1,5 @@
-import { SUPPORTED_PROJECT_SCHEMA_VERSION, type Project } from "./domain";
+import { normalizeHex } from "./color";
+import { MAX_QMK_LAYER_INDEX, SUPPORTED_PROJECT_SCHEMA_VERSION, type Project } from "./domain";
 
 export type ProjectSummary = {
   id: string;
@@ -188,6 +189,45 @@ function assertProjectPayload(value: unknown): asserts value is Project {
   ) {
     throw new Error("Project JSON has invalid lightingProfiles");
   }
+
+  if (
+    value.lightingRules !== undefined &&
+    (!Array.isArray(value.lightingRules) || !value.lightingRules.every(isLightingRule))
+  ) {
+    throw new Error("Project JSON has invalid lightingRules");
+  }
+}
+
+function isLightingRule(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.targetKeyId !== "string" ||
+    !value.targetKeyId ||
+    typeof value.color !== "string" ||
+    normalizeHex(value.color) === null ||
+    (value.enabled !== undefined && typeof value.enabled !== "boolean") ||
+    !isRecord(value.trigger)
+  ) {
+    return false;
+  }
+  const trigger = value.trigger;
+  if (trigger.kind === "lock") {
+    return trigger.lock === "capsLock" || trigger.lock === "numLock" || trigger.lock === "scrollLock";
+  }
+  if (trigger.kind === "layer") {
+    const layerIndex = trigger.layerIndex;
+    return (
+      typeof layerIndex === "number" &&
+      Number.isInteger(layerIndex) &&
+      layerIndex >= 0 &&
+      layerIndex <= MAX_QMK_LAYER_INDEX
+    );
+  }
+  if (trigger.kind === "held") {
+    return typeof trigger.keyId === "string" && trigger.keyId.length > 0;
+  }
+  return false;
 }
 
 function assertOptionalFeatureRecords(value: unknown, field: string): void {
