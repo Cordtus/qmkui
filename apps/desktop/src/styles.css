@@ -588,13 +588,6 @@ input[type="checkbox"] {
   min-width: 0;
 }
 
-.view-name {
-  color: var(--text-faint);
-  font-size: var(--type-meta);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 wa-button.keyboard-switch::part(base) {
   height: 26px;
   min-height: 26px;

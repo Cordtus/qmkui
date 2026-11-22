@@ -90,7 +90,6 @@ export function topbar(
   const hasErrors = issues.some((issue) => issue.severity === "error");
   const detected = detectedKeyboard(state);
   const connectedLabel = connectedDeviceLabel(state);
-  const deviceName = connectedLabel ?? detected?.displayName ?? state.keyboard.displayName;
   const deviceId = detected
     ? `${detected.device.vid}:${detected.device.pid}`
     : connectedLabel
@@ -103,12 +102,12 @@ export function topbar(
       type: "button",
       attrs: {
         "data-board-picker-open": "true",
-        title: "Choose a keyboard definition",
+        title: "Project keyboard target; click to change",
       },
     },
     [
       icon("keyboard", { size: 16 }),
-      element("span", { text: deviceName }),
+      element("span", { text: state.keyboard.displayName }),
       icon("caret-down", { size: 12 }),
     ],
   );
@@ -147,7 +146,6 @@ export function topbar(
       element("div", { className: "project-meta" }, [
         keyboardSwitch,
         element("small", { className: "device-id", text: deviceId }),
-        element("span", { className: "view-name", text: viewLabel(state.activeView) }),
       ]),
     ]),
     element("div", { className: "topbar-actions" }, [
@@ -304,19 +302,6 @@ function boardPickerDialog(state: EditorState, actions: RenderActions): HTMLElem
     }
   });
   return dialog;
-}
-
-export function viewLabel(view: AppView): string {
-  switch (view) {
-    case "keymap":
-      return "Keymap";
-    case "device":
-      return "Device";
-    case "firmware":
-      return "Firmware";
-    default:
-      return "Keymap";
-  }
 }
 
 /** Export is a single always-visible action; blocked states explain themselves. */
