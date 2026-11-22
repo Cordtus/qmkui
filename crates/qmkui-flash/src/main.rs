@@ -16,10 +16,10 @@ use qmkui_flash::adapter::{prepare_keymap, retain_log, run_flash, QmkOutput};
 use qmkui_flash::bootloader;
 use qmkui_flash::bundle::{crc32, read_bundle, MAX_ARCHIVE_SIZE};
 use qmkui_flash::request::{FlashRequest, FlashStatus};
-use qmkui_flash::{assess_target, FlashError};
+use qmkui_flash::FlashError;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const USAGE: &str = "\
 qmkui-flash — flash a QMKUI firmware bundle
@@ -70,7 +70,7 @@ fn main() {
 
 fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Error>> {
     let Some(args) = parse_args(args)? else {
-        print!("{USAGE}");
+        print!("{}", usage());
         return Ok(0);
     };
 
@@ -137,6 +137,16 @@ fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Er
         );
         return Ok(2);
     }
+    let declared = declared_bootloader(&args.qmk_path, &args.keyboard);
+    if declared.as_deref() != Some(spec.family) {
+        eprintln!(
+            "qmkui-flash: {} declares bootloader {:?}, not {:?}",
+            args.keyboard,
+            declared.as_deref().unwrap_or("unknown"),
+            spec.family
+        );
+        return Ok(4);
+    }
 
     let detected = bootloader::detect_all(&args.sysfs, spec);
     let detected = match detected.as_slice() {
@@ -176,6 +186,7 @@ fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Er
     );
 
     let digest = args.digest.clone().unwrap_or_else(|| sha256.clone());
+    let confirmed = args.confirm.as_deref() == Some(args.keyboard.as_str());
     let request = FlashRequest {
         target: qmkui_flash::FlashTarget {
             project_digest: digest.clone(),
@@ -184,15 +195,8 @@ fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Er
             bootloader: spec.family.to_owned(),
         },
         expected_device: detected.identity.clone(),
-        operator_confirmed: true,
+        operator_confirmed: confirmed,
     };
-    if let qmkui_flash::PolicyVerdict::Blocked { reason } =
-        assess_target(&request, Some(&detected.identity), Some(spec.family))
-    {
-        eprintln!("qmkui-flash: blocked: {reason}");
-        eprintln!("recovery: {}", spec.recovery);
-        return Ok(4);
-    }
 
     let prepared = prepare_keymap(
         &QmkOutput {
@@ -208,10 +212,13 @@ fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Er
     }
 
     let mut runner = SystemCommandRunner;
+    // The CLI has no separate project state. Its gate is the exact
+    // --confirm target, the keyboard's declared bootloader family, and one
+    // unique bootloader device; the request digest is recorded provenance.
     let result = run_flash(
         &prepared,
         &request,
-        &digest,
+        None,
         Some(&detected.identity),
         Some(spec.family),
         &mut runner,
@@ -221,11 +228,12 @@ fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Er
         format!("target: {} ({})", args.keyboard, args.keymap),
         format!("bundle: {} sha256 {sha256}", args.bundle.display()),
         format!(
-            "bootloader: {} at {}:{} ({})",
+            "bootloader: {} at {}:{} ({}), declared by {}",
             spec.family,
             detected.identity.vendor_id,
             detected.identity.product_id,
-            detected.sysfs_path.display()
+            detected.sysfs_path.display(),
+            args.keyboard
         ),
     ];
     log.extend(result.log.iter().cloned());
@@ -308,6 +316,38 @@ fn value(
     Ok(value)
 }
 
+fn usage() -> String {
+    let families = bootloader::BOOTLOADERS
+        .iter()
+        .map(|spec| spec.family)
+        .collect::<Vec<_>>()
+        .join(", ");
+    USAGE.replace("stm32-dfu, atmel-dfu", &families)
+}
+
+/// The keyboard's own `info.json`, or the closest parent that declares one.
+/// This is independent of what is plugged in, so a wrong `--bootloader` or a
+/// typo'd keyboard target is refused before staging.
+fn declared_bootloader(qmk_path: &Path, keyboard: &str) -> Option<String> {
+    let parts = keyboard.split('/').collect::<Vec<_>>();
+    for end in (1..=parts.len()).rev() {
+        let info = qmk_path
+            .join("keyboards")
+            .join(parts[..end].join("/"))
+            .join("info.json");
+        let Ok(text) = fs::read_to_string(info) else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
+        if let Some(bootloader) = json.get("bootloader").and_then(|value| value.as_str()) {
+            return Some(bootloader.to_owned());
+        }
+    }
+    None
+}
+
 fn default_log_dir() -> PathBuf {
     if let Some(state) = env::var_os("XDG_STATE_HOME") {
         return PathBuf::from(state).join("qmkui");
@@ -363,5 +403,76 @@ mod tests {
         let mut values = base();
         values.extend(["--confirm", "--dry-run"]);
         assert!(parse(&values).is_err());
+    }
+
+    fn temp_tree(name: &str) -> PathBuf {
+        let root = env::temp_dir().join(format!(
+            "qmkui-cli-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(root.join("keyboards/test/board")).unwrap();
+        fs::write(
+            root.join("keyboards/test/board/info.json"),
+            r#"{"bootloader":"stm32-dfu"}"#,
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("sysfs")).unwrap();
+        root
+    }
+
+    fn cli(target: &Path, sysfs: &Path, confirm: Option<&str>) -> Vec<String> {
+        let bundle = format!(
+            "{}/../../fixtures/firmware/app-bundle.zip",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let mut values = vec![
+            "--bundle".to_owned(),
+            bundle,
+            "--qmk-path".to_owned(),
+            target.display().to_string(),
+            "--keyboard".to_owned(),
+            "test/board".to_owned(),
+            "--keymap".to_owned(),
+            "qmkui_test".to_owned(),
+            "--bootloader".to_owned(),
+            "stm32-dfu".to_owned(),
+            "--sysfs".to_owned(),
+            sysfs.display().to_string(),
+            "--log-dir".to_owned(),
+            target.join("logs").display().to_string(),
+        ];
+        if let Some(confirm) = confirm {
+            values.extend(["--confirm".to_owned(), confirm.to_owned()]);
+        }
+        values
+    }
+
+    #[test]
+    fn refuses_without_the_matching_confirmation() {
+        let root = temp_tree("confirm");
+        let code = run(cli(&root, &root.join("sysfs"), None).into_iter()).unwrap();
+        assert_eq!(code, 4);
+        assert!(!root.join("keyboards/test/board/keymaps").exists());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn refuses_ambiguous_bootloader_devices() {
+        let root = temp_tree("ambiguous");
+        let sysfs = root.join("sysfs");
+        for name in ["1-1", "1-2"] {
+            let device = sysfs.join(name);
+            fs::create_dir_all(&device).unwrap();
+            fs::write(device.join("idVendor"), "0483\n").unwrap();
+            fs::write(device.join("idProduct"), "df11\n").unwrap();
+        }
+        let code = run(cli(&root, &sysfs, Some("test/board")).into_iter()).unwrap();
+        assert_eq!(code, 3);
+        assert!(!root.join(".qmkui").exists());
+        fs::remove_dir_all(&root).ok();
     }
 }

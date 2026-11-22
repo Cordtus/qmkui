@@ -21,8 +21,8 @@ default.
 | Read any other verified VIA device | Standard VIA state only, no inferred model or layout |
 | Edit a key map and lighting profile (project) | Works, local project data |
 | Write keycodes / RGB-matrix lighting to hardware | Implemented and gated; mock transports only until the bench test is signed off |
-| Flash / bootloader / firmware build | Not implemented |
-| In-app `qmk compile` execution | Not implemented; QMKUI can plan the command and run a flash policy dry-run |
+| Flash / bootloader / firmware build | Native `qmkui-flash` CLI; the browser only previews |
+| In-app `qmk compile` execution | Not implemented; QMKUI plans the command and hands the bundle to `qmkui-flash` |
 
 ## What a read gives you
 
@@ -92,14 +92,19 @@ cargo run -p qmkui-flash --release -- --bundle ~/Downloads/my-board-firmware.zip
 ```
 
 `--confirm` must repeat the `--keyboard` target: the operator names what they
-are flashing, rather than passing a bare flag. `--dry-run` prints the bundle
+are flashing, rather than passing a bare flag. The CLI also reads the
+keyboard's declared bootloader family from its QMK `info.json`; a typo'd target
+or wrong `--bootloader` is refused before anything is staged. STM32/ATmega DFU
+USB ids are family-generic, so the exact board model cannot be proven in
+bootloader mode: disconnect other boards and confirm the target. `--dry-run` prints the bundle
 checksum, extraction target and `qmk flash` command without probing the device
 or writing files. A real run reads only bootloader USB ids from sysfs, requires
 exactly one matching device, stages the keymap under `<qmk>/.qmkui/`, then moves
 it into `keyboards/<keyboard>/keymaps/<keymap>/` and invokes `qmk flash`. An
 existing keymap directory is kept under `.qmkui/backups/`. Runs keep a log with
-the target, detected identity, bootloader family and digest. Supported
-families: `stm32-dfu` (V5 Max) and `atmel-dfu`. The browser cannot see
+the target, detected identity, bootloader family and digest under
+`$XDG_STATE_HOME/qmkui` (default `~/.local/state/qmkui`). Supported families:
+`stm32-dfu` (V5 Max) and `atmel-dfu`. The browser cannot see
 bootloader mode, so it never flashes by itself.
 
 Exit codes: `0` success, `2` usage/IO, `3` no unique bootloader device, `4`
@@ -197,7 +202,7 @@ crates/qmkui-catalog  keyboard definition loading and search
 crates/qmkui-doctor   readiness CLI + opt-in read-only USB metadata probe
 crates/qmkui-hid      read-only VIA/Keychron protocol core
 crates/qmkui-build    build planning, command runner, artifact store
-crates/qmkui-flash    flash models, wrong-target policy, dry-run adapters
+crates/qmkui-flash    flash models, bootloader registry, wrong-target policy, gated qmk flash adapter/CLI
 fixtures/             catalog, projects, protocol vectors and allow-lists
 scripts/              check, audit and probe entrypoints
 packaging/            Arch PKGBUILD and the read-only udev rule

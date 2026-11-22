@@ -127,6 +127,7 @@ version = "0.1.0"
 dependencies = [
  "qmkui-build",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

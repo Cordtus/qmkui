@@ -1006,7 +1006,7 @@ function flashVerdictLabel(state: EditorState): string {
   if (!state.flashVerdict) {
     return "idle";
   }
-  return state.flashVerdict.pass ? "pass" : "blocked";
+  return state.flashVerdict.pass ? "preview-ok" : "preview-blocked";
 }
 
 export function commandRow(command: CommandStatus): HTMLElement {

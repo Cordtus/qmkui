@@ -9,6 +9,7 @@ use crate::bundle::read_bundle;
 use crate::policy::{assess_request, PolicyVerdict};
 use crate::request::{DeviceIdentity, FlashRequest, FlashResult, FlashStatus};
 use crate::FlashError;
+use qmkui_build::artifact::hex_sha256;
 use qmkui_build::runner::{CommandPlan, CommandRunner};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,6 +27,8 @@ pub struct PreparedFlash {
     pub keymap_dir: PathBuf,
     pub backup_dir: Option<PathBuf>,
     pub files: Vec<String>,
+    /// sha256 of the bundle that produced these files.
+    pub sha256: String,
     pub command: CommandPlan,
 }
 
@@ -48,6 +51,17 @@ pub fn prepare_keymap(output: &QmkOutput, bundle: &[u8]) -> Result<PreparedFlash
     let staging_root = work.join("staging");
     let backups = work.join("backups");
 
+    if !output
+        .qmk_path
+        .join("keyboards")
+        .join(&output.keyboard)
+        .is_dir()
+    {
+        return Err(FlashError::InvalidTarget(format!(
+            "{} is not a keyboard in this QMK checkout",
+            output.keyboard
+        )));
+    }
     fs::create_dir_all(&keymaps)?;
     fs::create_dir_all(&staging_root)?;
     fs::create_dir_all(&backups)?;
@@ -88,6 +102,7 @@ pub fn prepare_keymap(output: &QmkOutput, bundle: &[u8]) -> Result<PreparedFlash
         keymap_dir: target,
         backup_dir,
         files: files.into_iter().map(|file| file.name).collect(),
+        sha256: hex_sha256(bundle),
         command: CommandPlan {
             program: "qmk".to_owned(),
             args: vec![
@@ -107,24 +122,23 @@ pub fn prepare_keymap(output: &QmkOutput, bundle: &[u8]) -> Result<PreparedFlash
 pub fn run_flash<R: CommandRunner>(
     prepared: &PreparedFlash,
     request: &FlashRequest,
-    current_project_digest: &str,
+    current_project_digest: Option<&str>,
     detected_device: Option<&DeviceIdentity>,
     detected_bootloader: Option<&str>,
     runner: &mut R,
 ) -> FlashResult {
-    match assess_request(
-        request,
-        current_project_digest,
-        detected_device,
-        detected_bootloader,
-    ) {
-        PolicyVerdict::Blocked { reason } => {
-            return FlashResult {
-                status: FlashStatus::Blocked,
-                log: vec![reason],
-            };
-        }
-        PolicyVerdict::Pass => {}
+    let verdict = match current_project_digest {
+        Some(digest) => assess_request(request, digest, detected_device, detected_bootloader),
+        None => crate::policy::assess_target(request, detected_device, detected_bootloader),
+    };
+    if let PolicyVerdict::Blocked { reason } = verdict {
+        return blocked_result(prepared, reason);
+    }
+    if prepared.sha256 != request.target.firmware_sha256 {
+        return blocked_result(
+            prepared,
+            "Staged files do not match the request digest.".to_owned(),
+        );
     }
 
     let mut log = vec![format!(
@@ -157,23 +171,46 @@ pub fn run_flash<R: CommandRunner>(
     }
 }
 
+/// Rolls a blocked request back: removes the staged keymap and restores the
+/// previous directory. A flash failure keeps the staged keymap for retry.
+fn blocked_result(prepared: &PreparedFlash, reason: String) -> FlashResult {
+    let mut log = vec![reason];
+    match &prepared.backup_dir {
+        Some(backup) => {
+            fs::remove_dir_all(&prepared.keymap_dir).ok();
+            match fs::rename(backup, &prepared.keymap_dir) {
+                Ok(()) => log.push(format!(
+                    "restored the previous keymap at {}",
+                    prepared.keymap_dir.display()
+                )),
+                Err(error) => log.push(format!(
+                    "could not restore the previous keymap; it is at {}: {error}",
+                    backup.display()
+                )),
+            }
+        }
+        None => {
+            fs::remove_dir_all(&prepared.keymap_dir).ok();
+            log.push("removed the staged keymap".to_owned());
+        }
+    }
+    FlashResult {
+        status: FlashStatus::Blocked,
+        log,
+    }
+}
+
 /// Writes the run log next to the operator's state directory, returning the
 /// path. Failed runs keep their log; successful runs keep one too.
 pub fn retain_log(directory: &Path, log: &[String]) -> std::io::Result<PathBuf> {
     fs::create_dir_all(directory)?;
-    let path = directory.join(format!("flash-{}.log", stamp()));
+    let path = directory.join(format!("flash-{}-{}.log", stamp(), std::process::id()));
     fs::write(&path, log.join("\n") + "\n")?;
     Ok(path)
 }
 
 fn validate_keyboard(keyboard: &str) -> Result<(), FlashError> {
-    let parts: Vec<&str> = keyboard.split('/').collect();
-    if parts.len() < 2 {
-        return Err(FlashError::InvalidTarget(format!(
-            "keyboard target {keyboard:?} must look like vendor/board"
-        )));
-    }
-    for part in parts {
+    for part in keyboard.split('/') {
         validate_component("keyboard", part)?;
     }
     Ok(())
@@ -254,6 +291,7 @@ mod tests {
     }
 
     fn output(root: &Path) -> QmkOutput {
+        fs::create_dir_all(root.join("keyboards/keychron/v5_max/ansi_encoder")).unwrap();
         QmkOutput {
             qmk_path: root.to_path_buf(),
             keyboard: "keychron/v5_max/ansi_encoder".to_owned(),
@@ -342,13 +380,14 @@ mod tests {
         let result = run_flash(
             &prepared,
             &request("old", true),
-            "current",
+            Some("current"),
             None,
             Some("stm32-dfu"),
             &mut runner,
         );
         assert_eq!(result.status, FlashStatus::Blocked);
         assert!(runner.seen.is_empty());
+        assert!(!prepared.keymap_dir.exists());
         fs::remove_dir_all(&root).ok();
     }
 
@@ -365,11 +404,12 @@ mod tests {
             }),
             seen: Vec::new(),
         };
-        let request = request("same", true);
+        let mut request = request("same", true);
+        request.target.firmware_sha256 = prepared.sha256.clone();
         let result = run_flash(
             &prepared,
             &request,
-            "same",
+            Some("same"),
             Some(&request.expected_device),
             Some("stm32-dfu"),
             &mut runner,
@@ -380,6 +420,33 @@ mod tests {
 
         let log = retain_log(&root.join("logs"), &result.log).unwrap();
         assert!(fs::read_to_string(log).unwrap().contains("no device"));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn refuses_a_bundle_that_does_not_match_the_request_digest() {
+        let root = temp_root("digest");
+        let target = root.join("keyboards/keychron/v5_max/ansi_encoder/keymaps/qmkui_test");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("keymap.c"), "old").unwrap();
+        let prepared = prepare_keymap(&output(&root), &bundle()).unwrap();
+        let mut runner = FakeRunner::ok();
+        let request = request("same", true);
+        let result = run_flash(
+            &prepared,
+            &request,
+            Some("same"),
+            Some(&request.expected_device),
+            Some("stm32-dfu"),
+            &mut runner,
+        );
+        assert_eq!(result.status, FlashStatus::Blocked);
+        assert!(result.log.iter().any(|line| line.contains("digest")));
+        assert!(runner.seen.is_empty());
+        assert_eq!(
+            fs::read(prepared.keymap_dir.join("keymap.c")).unwrap(),
+            b"old"
+        );
         fs::remove_dir_all(&root).ok();
     }
 }

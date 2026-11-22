@@ -10,7 +10,8 @@ export type FirmwareBundleFile = {
 /**
  * Builds a drop-in QMK keymap directory: the project keymap as C, the lighting
  * indicator overlay, and build/flash instructions. This is firmware source —
- * QMKUI never builds or flashes it; the operator runs QMK CLI or Toolbox.
+ * QMKUI never builds or flashes it; the operator runs QMK CLI, Toolbox, or the
+ * gated `qmkui-flash` adapter.
  *
  * Returns `null` when the project's layout does not match the keyboard.
  */

@@ -8,7 +8,6 @@
 pub mod adapter;
 pub mod bootloader;
 pub mod bundle;
-pub mod dry_run;
 pub mod policy;
 pub mod request;
 

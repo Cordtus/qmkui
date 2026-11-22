@@ -60,7 +60,9 @@ pub fn read_bundle(bytes: &[u8]) -> Result<Vec<BundleFile>, FlashError> {
         let comment_length = read_u16(bytes, cursor + 32)? as usize;
         let local_offset = read_u32(bytes, cursor + 42)?;
 
-        if flags != 0 {
+        // Bit 11 is the UTF-8 name hint and is written by the app's zip.ts.
+        // Everything else (encryption, data descriptor, patched data) is out.
+        if flags & !0x0800 != 0 {
             return Err(invalid("only plain stored entries are supported"));
         }
         if method != 0 {
@@ -257,11 +259,18 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn reads_a_bundle_written_by_an_external_zip_tool() {
-        let bytes = include_bytes!("../../../fixtures/firmware/example.zip");
-        let files = read_bundle(bytes).unwrap();
-        assert_eq!(files.len(), 3);
-        assert!(files.iter().any(|file| file.name == "keymap.c"));
+    fn reads_bundles_from_the_app_and_an_external_zip_tool() {
+        let mut expected = BUNDLE_FILES.to_vec();
+        expected.sort_unstable();
+        for bytes in [
+            include_bytes!("../../../fixtures/firmware/app-bundle.zip").as_slice(),
+            include_bytes!("../../../fixtures/firmware/example.zip").as_slice(),
+        ] {
+            let files = read_bundle(bytes).unwrap();
+            let mut names: Vec<_> = files.iter().map(|file| file.name.as_str()).collect();
+            names.sort_unstable();
+            assert_eq!(names, expected);
+        }
     }
 
     #[test]
@@ -290,6 +299,21 @@ pub(crate) mod tests {
 
         let missing = stored_zip(&[("README.md", b"x")], false);
         assert!(read_bundle(&missing).is_err());
+    }
+
+    #[test]
+    fn accepts_the_utf8_flag_the_app_writes() {
+        let mut utf8 = bundle();
+        let eocd = utf8.len() - 22;
+        let directory = u32::from_le_bytes([
+            utf8[eocd + 16],
+            utf8[eocd + 17],
+            utf8[eocd + 18],
+            utf8[eocd + 19],
+        ]) as usize;
+        utf8[6..8].copy_from_slice(&0x0800u16.to_le_bytes());
+        utf8[directory + 8..directory + 10].copy_from_slice(&0x0800u16.to_le_bytes());
+        assert!(read_bundle(&utf8).is_ok());
     }
 
     #[test]
