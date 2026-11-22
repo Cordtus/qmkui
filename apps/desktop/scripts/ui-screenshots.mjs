@@ -30,7 +30,9 @@ if (!base) {
 
 let browser;
 try {
-  browser = await chromium.launch();
+  browser = await chromium.launch({
+    executablePath: process.env.QMKUI_CHROMIUM_EXECUTABLE_PATH || undefined,
+  });
   const page = await browser.newPage();
   for (const width of widths) {
     await page.setViewportSize({ width, height: 980 });
@@ -53,6 +55,16 @@ try {
       } else {
         await page.screenshot({ path: path.join(output, `${width}-${view}.png`) });
       }
+    }
+    if (width === 1440) {
+      await page.click("[data-command-palette-open]");
+      await page.locator("[data-focus-id=command-search]").waitFor();
+      await page.screenshot({ path: path.join(output, "1440-command-palette.png") });
+      await page.keyboard.press("Escape");
+      await page.click("[data-board-picker-open]");
+      await page.locator("[data-focus-id=catalog-search]").waitFor();
+      await page.screenshot({ path: path.join(output, "1440-board-picker.png") });
+      await page.keyboard.press("Escape");
     }
   }
   console.log(`wrote screenshots to ${output}`);

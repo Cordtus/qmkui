@@ -60,9 +60,15 @@ describe("device-first hardware workspace", () => {
     root.querySelector<HTMLElement>("[data-board-picker-open]")?.click();
     await flush();
     expect(root.querySelector("[data-board-picker]")?.hasAttribute("hidden")).toBe(false);
+    const search = root.querySelector<HTMLInputElement>("[data-focus-id=catalog-search]")!;
+    search.value = "example";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
     expect(
-      root.querySelector("[data-focus-id=catalog-search]"),
-    ).not.toBeNull();
+      root.querySelector<HTMLElement>('[data-catalog-keyboard="keychron/v5_max/ansi_encoder"]')?.hidden,
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLElement>('[data-catalog-keyboard="example/keyboard"]')?.hidden,
+    ).toBe(false);
 
     root.querySelector<HTMLElement>(
       '[data-catalog-keyboard="example/keyboard"] [data-catalog-action="select"]',
@@ -92,6 +98,40 @@ describe("device-first hardware workspace", () => {
     await flush();
     expect(root.querySelector("[data-command-palette]")?.hasAttribute("hidden")).toBe(true);
     expect(root.querySelector('[data-view="firmware"]')?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("filters the command palette and runs the active row with Enter", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>("[data-command-palette-open]")?.click();
+    await flush();
+
+    const input = root.querySelector<HTMLInputElement>("[data-focus-id=command-search]")!;
+    input.value = "firmware";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    const visible = [...root.querySelectorAll<HTMLElement>("[data-command]")].filter(
+      (row) => !row.hidden,
+    );
+    expect(visible).toHaveLength(2);
+    expect(visible[0]?.textContent).toContain("Go to Firmware");
+
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(root.querySelector('[data-view="firmware"]')?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("offers the connected-keyboard switch from the overflow menu", async () => {
+    const chooseBrowserKeyboard = vi.fn(async () => recognizedSelection(async () => availableSnapshot()));
+    const root = document.createElement("div");
+    createApp(root, { discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()), chooseBrowserKeyboard });
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-device-switch]")?.click();
+    await flush();
+    expect(chooseBrowserKeyboard).toHaveBeenCalled();
   });
 
   it("auto-reads a snapshot on selection and renders reported fields", async () => {

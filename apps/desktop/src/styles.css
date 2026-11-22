@@ -537,15 +537,6 @@ input[type="checkbox"] {
   gap: 4px;
 }
 
-.rail-group-label {
-  padding: var(--s3) 12px var(--s1);
-  color: var(--text-faint);
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
 .workspace {
   display: flex;
   flex-direction: column;
@@ -691,17 +682,6 @@ wa-button.menu-action:hover::part(base) {
   min-width: 0;
 }
 
-.device-chip {
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 0.76rem;
-  padding: 1px 7px;
-}
-
 .device-id {
   color: var(--text-faint);
   font-family: var(--mono);
@@ -736,6 +716,14 @@ wa-button.menu-action:hover::part(base) {
   color: var(--danger);
 }
 
+.topbar-status {
+  max-width: 70ch;
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: var(--type-meta);
+  overflow-wrap: anywhere;
+}
+
 .topbar-actions {
   display: flex;
   flex-wrap: wrap;
@@ -745,11 +733,9 @@ wa-button.menu-action:hover::part(base) {
   min-width: 0;
 }
 
-.action-group,
 .history-controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 /* ------------------------------------------------------------- view stack */
@@ -2334,10 +2320,6 @@ pre {
     gap: 2px;
   }
 
-  .rail-group-label {
-    display: none;
-  }
-
   wa-button.nav-item::part(base) {
     flex: 0 0 auto;
     border: 1px solid transparent;
@@ -2373,7 +2355,15 @@ pre {
     align-items: stretch;
   }
 
-  .topbar-actions {
+  .topbar-status {
+  max-width: 70ch;
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: var(--type-meta);
+  overflow-wrap: anywhere;
+}
+
+.topbar-actions {
     justify-content: flex-start;
     width: 100%;
   }
@@ -2434,7 +2424,15 @@ pre {
 
 /* Narrow desktop: keep the action strip on its own row rather than clipping. */
 @media (max-width: 1100px) {
-  .topbar-actions {
+  .topbar-status {
+  max-width: 70ch;
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: var(--type-meta);
+  overflow-wrap: anywhere;
+}
+
+.topbar-actions {
     flex-basis: 100%;
     justify-content: flex-end;
     border-top: 1px solid var(--line);
@@ -2475,7 +2473,8 @@ wa-dialog.board-picker-dialog::part(dialog) {
   padding-bottom: var(--s1);
 }
 
-wa-dialog.command-palette::part(dialog) {
+wa-dialog.command-palette::part(dialog),
+wa-dialog.board-picker-dialog::part(dialog) {
   width: min(520px, 92vw);
   margin-top: 12vh;
   border: 1px solid var(--line-strong);
@@ -2485,7 +2484,12 @@ wa-dialog.command-palette::part(dialog) {
   padding: 0;
 }
 
-.command-search {
+wa-dialog.command-palette::part(body),
+wa-dialog.board-picker-dialog::part(body) {
+  padding: 0;
+}
+
+.palette-search {
   display: flex;
   align-items: center;
   gap: var(--s2);
@@ -2494,7 +2498,13 @@ wa-dialog.command-palette::part(dialog) {
   color: var(--text-dim);
 }
 
-.command-search input {
+.palette-search:focus-within {
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 -1px 0 var(--accent);
+  color: var(--text);
+}
+
+.palette-search input {
   flex: 1;
   border: 0;
   background: transparent;
@@ -2503,7 +2513,7 @@ wa-dialog.command-palette::part(dialog) {
   outline: none;
 }
 
-.command-list {
+.palette-list {
   display: grid;
   max-height: 52vh;
   gap: 2px;
@@ -2511,7 +2521,12 @@ wa-dialog.command-palette::part(dialog) {
   padding: 6px;
 }
 
-wa-button.command-row::part(base) {
+wa-button.palette-row[hidden],
+.catalog-row[hidden] {
+  display: none;
+}
+
+wa-button.palette-row::part(base) {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
@@ -2529,34 +2544,7 @@ wa-button.command-row::part(base) {
   padding: 0 10px;
 }
 
-wa-button.command-row:hover::part(base) {
-  background: var(--panel-2);
-  color: var(--text);
-}
-
-.command-label {
-  flex: 1;
-  text-align: left;
-}
-
-.command-row kbd,
-.command-hint kbd {
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  color: var(--text-faint);
-  font-family: var(--mono);
-  font-size: 10px;
-  padding: 1px 5px;
-}
-
-.command-hint {
-  border-top: 1px solid var(--line);
-  padding: var(--s2) var(--s4) var(--s3);
-}
-
-/* Web Awesome wraps slotted children in its label part; lay that out directly. */
-wa-button.command-row::part(label),
-wa-button.menu-action::part(label) {
+wa-button.palette-row::part(label) {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
@@ -2566,6 +2554,30 @@ wa-button.menu-action::part(label) {
   width: 100%;
 }
 
-wa-button.menu-action::part(label) {
-  gap: 8px;
+wa-button.palette-row:hover::part(base),
+wa-button.palette-row.active::part(base) {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.palette-label {
+  flex: 1;
+  text-align: left;
+}
+
+.palette-empty {
+  padding: var(--s3) var(--s4);
+  color: var(--text-dim);
+  font-size: var(--type-body);
+}
+
+.palette-hint {
+  border-top: 1px solid var(--line);
+  padding: var(--s2) var(--s4) var(--s3);
+}
+
+@media (max-width: 640px) {
+  .topbar-actions {
+    justify-content: flex-start;
+  }
 }

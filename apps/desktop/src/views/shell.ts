@@ -1,6 +1,6 @@
 import { AppView, EditorState, RenderActions, isKeychronV5MaxSnapshot } from "../appState";
 import { KeyboardDefinition, UiIssue, jsonExportBlockers } from "../domain";
-import { icon } from "../icons";
+import { icon, type IconName } from "../icons";
 import { connectionContent, connectionScreen } from "./connection";
 import { catalogPanel, detectedKeyboard, projectDetailsDrawer, systemPanel, testPanel } from "./panels";
 import { element, uiButton } from "./primitives";
@@ -45,7 +45,7 @@ export function appShell(
 export function rail(activeView: AppView, selectView: (view: AppView) => void): HTMLElement {
   // Three destinations: shape the keymap, inspect the board, manage firmware.
   // Choosing a keyboard is a dialog, not a place you live in.
-  const views: Array<{ id: AppView; label: string; hint: string; icon: Parameters<typeof icon>[0] }> = [
+  const views: Array<{ id: AppView; label: string; hint: string; icon: IconName }> = [
     { id: "keymap", label: "Keymap", hint: "Assign keys and set lighting", icon: "keyboard" },
     { id: "device", label: "Device", hint: "Inspect the connected board", icon: "usb" },
     { id: "firmware", label: "Firmware", hint: "Build, flash and diagnostics", icon: "lightning" },
@@ -101,6 +101,8 @@ export function topbar(
       className: "keyboard-switch",
       type: "button",
       attrs: {
+        "aria-expanded": String(state.boardPickerOpen),
+        "aria-haspopup": "dialog",
         "data-board-picker-open": "true",
         title: "Project keyboard target; click to change",
       },
@@ -124,14 +126,19 @@ export function topbar(
     ? iconAction(
         "arrows-clockwise",
         state.snapshotReadStatus === "reading" ? "Reading device" : "Read device",
-        { "data-device-action": "refresh" },
+        {
+          "data-device-action": "refresh",
+          ...(state.snapshotReadStatus === "reading"
+            ? { disabled: "", "aria-busy": "true" }
+            : {}),
+        },
         actions.readDevice,
       )
     : undefined;
 
   const support = menuAction("file-code", "Support bundle", "data-support-bundle", actions.downloadSupportBundle);
-  const exportJson = exportJsonButton(state, issues, actions);
-  const choose = menuAction("keyboard", "Change keyboard", "data-device-action-choose", actions.openBoardPicker);
+  const exportJson = exportJsonMenuItem(state, issues, actions);
+  const choose = menuAction("plug", "Change connected keyboard", "data-device-switch", actions.chooseBrowserKeyboard);
 
   return element("header", { className: "topbar workspace-header" }, [
     element("div", { className: "project-heading" }, [
@@ -140,17 +147,35 @@ export function topbar(
         element("span", {
           className: `status ${hasErrors ? "blocked" : "ready"}`,
           text: topbarStatusLabel(issues),
-          attrs: { "data-keymap-status": "true" },
+          attrs: { "data-keymap-status": "true", title: "Keymap validation" },
         }),
       ]),
       element("div", { className: "project-meta" }, [
         keyboardSwitch,
-        element("small", { className: "device-id", text: deviceId }),
+        element("small", { className: "device-id", text: deviceId, attrs: { title: "Connected device id" } }),
       ]),
+      ...(state.projectStatus && !state.projectStatus.startsWith("Project is not saved")
+        ? [
+            element("p", {
+              className: "topbar-status",
+              text: state.projectStatus,
+              attrs: { "aria-live": "polite", "data-project-status": "true", role: "status" },
+            }),
+          ]
+        : []),
     ]),
     element("div", { className: "topbar-actions" }, [
       historyControls(state, actions),
-      iconAction("magnifying-glass", "Commands (Ctrl-K)", { "data-command-palette-open": "true" }, actions.openCommandPalette),
+      iconAction(
+        "magnifying-glass",
+        "Commands (Ctrl-K)",
+        {
+          "aria-expanded": String(state.commandPaletteOpen),
+          "aria-haspopup": "dialog",
+          "data-command-palette-open": "true",
+        },
+        actions.openCommandPalette,
+      ),
       save,
       project,
       ...(read ? [read] : []),
@@ -166,7 +191,7 @@ export function topbar(
 }
 
 function iconAction(
-  name: Parameters<typeof icon>[0],
+  name: IconName,
   label: string,
   attrs: Record<string, string>,
   onClick: () => void,
@@ -184,7 +209,7 @@ function iconAction(
 }
 
 function menuAction(
-  name: Parameters<typeof icon>[0],
+  name: IconName,
   label: string,
   marker: string,
   onClick: () => void,
@@ -202,72 +227,124 @@ function menuAction(
 }
 
 function commandPalette(state: EditorState, actions: RenderActions): HTMLElement {
+  const dialog = element("wa-dialog", {
+    className: "command-palette",
+    attrs: { label: "Commands", "data-command-palette": "true" },
+  });
+  if (!state.commandPaletteOpen) {
+    dialog.hidden = true;
+    dialog.removeAttribute("open");
+    (dialog as HTMLElement & { open: boolean }).open = false;
+    return dialog;
+  }
+  dialog.hidden = false;
+  dialog.setAttribute("open", "");
+  (dialog as HTMLElement & { open: boolean }).open = true;
+
   const input = element("input", {
     attrs: {
+      "aria-activedescendant": "",
+      "aria-controls": "palette-list",
+      "aria-expanded": "true",
       "aria-label": "Search commands",
+      autofocus: "",
       "data-focus-id": "command-search",
       placeholder: "Type a command",
+      role: "combobox",
       type: "search",
     },
   });
-  const list = element("div", { className: "command-list", attrs: { "data-command-list": "true" } });
-  const commands: Array<{
-    icon: Parameters<typeof icon>[0];
-    label: string;
-    hint: string;
-    run: () => void;
-  }> = [
-    { icon: "keyboard", label: "Go to Keymap", hint: "1", run: () => actions.selectView("keymap") },
-    { icon: "usb", label: "Go to Device", hint: "2", run: () => actions.selectView("device") },
-    { icon: "lightning", label: "Go to Firmware", hint: "3", run: () => actions.selectView("firmware") },
-    { icon: "floppy-disk", label: "Save project", hint: "", run: actions.saveProject },
-    { icon: "keyboard", label: "Change keyboard", hint: "", run: actions.openBoardPicker },
-    { icon: "file-code", label: "Project details", hint: "", run: actions.openProjectDetails },
-    { icon: "download-simple", label: "Export QMK JSON", hint: "", run: actions.downloadQmkJson },
-    { icon: "file-code", label: "Export support bundle", hint: "", run: actions.downloadSupportBundle },
-    { icon: "lightning", label: "Download firmware bundle", hint: "", run: actions.downloadFirmwareBundle },
-    { icon: "arrows-clockwise", label: "Read device", hint: "", run: actions.readDevice },
+  const list = element("div", {
+    className: "palette-list",
+    attrs: { id: "palette-list", role: "listbox", "data-command-list": "true" },
+  });
+  const empty = element("p", { className: "palette-empty", text: "No matching commands." });
+  empty.hidden = true;
+
+  const commands: Array<{ icon: IconName; label: string; run: () => void }> = [
+    { icon: "keyboard", label: "Go to Keymap", run: () => actions.selectView("keymap") },
+    { icon: "usb", label: "Go to Device", run: () => actions.selectView("device") },
+    { icon: "lightning", label: "Go to Firmware", run: () => actions.selectView("firmware") },
+    { icon: "floppy-disk", label: "Save project", run: actions.saveProject },
+    { icon: "keyboard", label: "Choose keyboard definition", run: actions.openBoardPicker },
+    { icon: "plug", label: "Change connected keyboard", run: actions.chooseBrowserKeyboard },
+    { icon: "file-code", label: "Project details", run: actions.openProjectDetails },
+    { icon: "download-simple", label: "Export QMK JSON", run: actions.downloadQmkJson },
+    { icon: "file-code", label: "Export support bundle", run: actions.downloadSupportBundle },
+    { icon: "lightning", label: "Download firmware bundle", run: actions.downloadFirmwareBundle },
+    { icon: "arrows-clockwise", label: "Read device", run: actions.readDevice },
   ];
-  commands.forEach((command) => {
+
+  const rows: HTMLElement[] = [];
+  let active = -1;
+  const visibleRows = () => rows.filter((row) => !row.hidden);
+  const setActive = (index: number) => {
+    const visible = visibleRows();
+    if (visible.length === 0) {
+      active = -1;
+      input.removeAttribute("aria-activedescendant");
+      return;
+    }
+    active = Math.max(0, Math.min(index, visible.length - 1));
+    rows.forEach((row) => row.classList.remove("active"));
+    const row = visible[active]!;
+    row.classList.add("active");
+    row.scrollIntoView?.({ block: "nearest" });
+    input.setAttribute("aria-activedescendant", row.id);
+  };
+
+  commands.forEach((command, index) => {
     const button = uiButton(
-      { className: "command-row", type: "button", attrs: { "data-command": command.label } },
+      {
+        className: "palette-row",
+        type: "button",
+        attrs: {
+          "data-command": command.label,
+          id: `palette-option-${index}`,
+          role: "option",
+        },
+      },
       [
         icon(command.icon, { size: 15 }),
-        element("span", { className: "command-label", text: command.label }),
-        ...(command.hint ? [element("kbd", { text: command.hint })] : []),
+        element("span", { className: "palette-label", text: command.label }),
       ],
     );
     button.addEventListener("click", () => {
       actions.closeCommandPalette();
       command.run();
     });
+    rows.push(button);
     list.append(button);
   });
+
   input.addEventListener("input", () => {
     const query = input.value.trim().toLowerCase();
-    list.querySelectorAll<HTMLElement>("[data-command]").forEach((row) => {
+    rows.forEach((row) => {
       row.hidden = !row.textContent?.toLowerCase().includes(query);
     });
+    empty.hidden = visibleRows().length > 0;
+    setActive(0);
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActive(active + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(active - 1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      visibleRows()[active]?.click();
+    }
   });
 
-  const dialog = element("wa-dialog", {
-    className: "command-palette",
-    attrs: { label: "Commands", "data-command-palette": "true" },
-  }, [
-    element("div", { className: "command-search" }, [icon("magnifying-glass", { size: 16 }), input]),
+  dialog.append(
+    element("div", { className: "palette-search" }, [icon("magnifying-glass", { size: 16 }), input]),
     list,
-    element("p", { className: "hint command-hint", text: "Ctrl-K opens this anywhere. Esc closes it." }),
-  ]);
-  if (state.commandPaletteOpen) {
-    dialog.hidden = false;
-    dialog.setAttribute("open", "");
-    (dialog as HTMLElement & { open: boolean }).open = true;
-    queueMicrotask(() => input.focus());
-  } else {
-    dialog.hidden = true;
-    dialog.removeAttribute("open");
-    (dialog as HTMLElement & { open: boolean }).open = false;
-  }
+    empty,
+    element("p", { className: "hint palette-hint", text: "Ctrl-K opens this anywhere. Esc closes it." }),
+  );
+  dialog.addEventListener("wa-after-show", () => input.focus());
   dialog.addEventListener("wa-after-hide", () => {
     if (state.commandPaletteOpen) {
       actions.closeCommandPalette();
@@ -280,22 +357,26 @@ function boardPickerDialog(state: EditorState, actions: RenderActions): HTMLElem
   const dialog = element("wa-dialog", {
     className: "board-picker-dialog",
     attrs: { label: "Choose keyboard", "data-board-picker": "true" },
-  }, [
+  });
+  if (!state.boardPickerOpen) {
+    dialog.hidden = true;
+    dialog.removeAttribute("open");
+    (dialog as HTMLElement & { open: boolean }).open = false;
+    return dialog;
+  }
+  dialog.hidden = false;
+  dialog.setAttribute("open", "");
+  (dialog as HTMLElement & { open: boolean }).open = true;
+  dialog.append(
     element("p", {
       className: "hint board-picker-hint",
       text: "Switch the project to another bundled definition.",
     }),
     catalogPanel(state, actions),
-  ]);
-  if (state.boardPickerOpen) {
-    dialog.hidden = false;
-    dialog.setAttribute("open", "");
-    (dialog as HTMLElement & { open: boolean }).open = true;
-  } else {
-    dialog.hidden = true;
-    dialog.removeAttribute("open");
-    (dialog as HTMLElement & { open: boolean }).open = false;
-  }
+  );
+  dialog.addEventListener("wa-after-show", () => {
+    dialog.querySelector<HTMLInputElement>("input")?.focus();
+  });
   dialog.addEventListener("wa-after-hide", () => {
     if (state.boardPickerOpen) {
       actions.closeBoardPicker();
@@ -304,27 +385,19 @@ function boardPickerDialog(state: EditorState, actions: RenderActions): HTMLElem
   return dialog;
 }
 
-/** Export is a single always-visible action; blocked states explain themselves. */
-function exportJsonButton(state: EditorState, issues: UiIssue[], actions: RenderActions): HTMLElement {
+/** Export menu row; blocked states explain themselves in the title. */
+function exportJsonMenuItem(state: EditorState, issues: UiIssue[], actions: RenderActions): HTMLElement {
   const invalid = issues.some((issue) => issue.severity === "error");
   const cBlockers = jsonExportBlockers(state.project);
   const blocked = invalid || cBlockers.length > 0;
-  const download = uiButton({
-    className: "secondary-action",
-    text: "QMK JSON",
-    attrs: {
-      "data-qmk-action": "download",
-      title: "QMK Configurator/VIA keymap JSON (layers only; lighting is in the firmware bundle)",
-      ...(blocked
-        ? {
-            disabled: "",
-            title: invalid ? "Resolve keymap validation errors first" : cBlockers.join(" "),
-          }
-        : {}),
-    },
-  });
-  download.addEventListener("click", actions.downloadQmkJson);
-  return download;
+  const row = menuAction("download-simple", "Export QMK JSON", "data-qmk-action", actions.downloadQmkJson);
+  row.setAttribute("data-qmk-action", "download");
+  if (blocked) {
+    row.setAttribute("disabled", "");
+    (row as HTMLElement & { disabled: boolean }).disabled = true;
+    row.setAttribute("title", invalid ? "Resolve keymap validation errors first" : cBlockers.join(" "));
+  }
+  return row;
 }
 
 export function topbarStatusLabel(issues: UiIssue[]): string {

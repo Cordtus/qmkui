@@ -328,13 +328,38 @@ export function createActions(
     );
   };
 
+  const closeOverlays = () => {
+    state.commandPaletteOpen = false;
+    state.boardPickerOpen = false;
+    state.projectDetailsOpen = false;
+  };
+
   const actions = {
     openCommandPalette: () => {
+      closeOverlays();
       state.commandPaletteOpen = true;
       actions.render();
     },
     closeCommandPalette: () => {
       state.commandPaletteOpen = false;
+      actions.render();
+    },
+    openBoardPicker: () => {
+      closeOverlays();
+      state.boardPickerOpen = true;
+      actions.render();
+    },
+    closeBoardPicker: () => {
+      state.boardPickerOpen = false;
+      actions.render();
+    },
+    openProjectDetails: () => {
+      closeOverlays();
+      state.projectDetailsOpen = true;
+      actions.render();
+    },
+    closeProjectDetails: () => {
+      state.projectDetailsOpen = false;
       actions.render();
     },
     render: () => {
@@ -364,25 +389,10 @@ export function createActions(
           },
           openCommandPalette: actions.openCommandPalette,
           closeCommandPalette: actions.closeCommandPalette,
-          openBoardPicker: () => {
-            state.boardPickerOpen = true;
-            actions.render();
-          },
-          closeBoardPicker: () => {
-            state.boardPickerOpen = false;
-  state.commandPaletteOpen = false;
-            actions.render();
-          },
-          openProjectDetails: () => {
-            state.projectDetailsOpen = true;
-            actions.render();
-          },
-          closeProjectDetails: () => {
-            state.projectDetailsOpen = false;
-  state.boardPickerOpen = false;
-  state.commandPaletteOpen = false;
-            actions.render();
-          },
+          openBoardPicker: actions.openBoardPicker,
+          closeBoardPicker: actions.closeBoardPicker,
+          openProjectDetails: actions.openProjectDetails,
+          closeProjectDetails: actions.closeProjectDetails,
           selectKey: (keyId, additive = false) => {
             state.selectedKeyId = keyId;
             if (additive) {
@@ -885,7 +895,15 @@ export function createActions(
             state.projectJsonDraft = JSON.stringify(state.project, null, 2);
             state.projectStatus = `Created ${state.project.name} from catalog.`;
             state.boardPickerOpen = false;
-  state.commandPaletteOpen = false;
+            state.commandPaletteOpen = false;
+            state.deviceWriteEnabled = false;
+            state.deviceWriteStatus = "";
+            state.flashConfirmed = false;
+            state.flashVerdict = undefined;
+            state.flashRun = undefined;
+            state.buildStatus = "idle";
+            state.buildStep = undefined;
+            state.artifacts = [];
             state.activeView = "keymap";
             actions.render();
           },
@@ -1417,7 +1435,7 @@ export function isCurrentProtocolSession(
 }
 
 export function readDeviceSnapshot(state: EditorState, render: () => void): void {
-  if (!isBrowserReadSelection(state.deviceSelection)) {
+  if (!isBrowserReadSelection(state.deviceSelection) || state.snapshotReadStatus === "reading") {
     return;
   }
   const selectionEpoch = state.deviceSelectionEpoch;

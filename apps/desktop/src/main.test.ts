@@ -10,7 +10,7 @@ it("registers the WebAwesome custom elements required by the UI", async () => {
 
   await import("./main");
 
-  for (const tagName of ["wa-button", "wa-details", "wa-drawer"]) {
+  for (const tagName of ["wa-button", "wa-details", "wa-drawer", "wa-dialog"]) {
     expect(customElements.get(tagName), `${tagName} should be registered`).toBeDefined();
   }
 });
