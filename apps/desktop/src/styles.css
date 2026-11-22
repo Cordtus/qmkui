@@ -44,6 +44,16 @@
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", monospace;
 
+  /* type roles: five sizes, two weights, mono for code only */
+  --type-display: 1.25rem;
+  --type-section: 0.875rem;
+  --type-body: 0.8125rem;
+  --type-meta: 0.75rem;
+  --type-code: 0.75rem;
+
+  /* shape: 4px controls, 8px panels, pill status only */
+  --r-panel: 8px;
+
   /* Web Awesome is themed here, not via ::part overrides everywhere. */
   --wa-font-family-body: var(--font);
   --wa-border-radius-m: var(--r);
@@ -96,27 +106,27 @@ figure {
 }
 
 h1 {
-  font-size: 1.45rem;
-  font-weight: 700;
+  font-size: var(--type-display);
+  font-weight: 650;
   letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
 
 h2 {
-  font-size: 0.95rem;
+  font-size: var(--type-section);
   font-weight: 650;
   color: var(--text);
 }
 
 h3 {
-  font-size: 0.82rem;
+  font-size: var(--type-body);
   font-weight: 650;
   color: var(--text);
 }
 
 h4 {
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: var(--type-meta);
+  font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -124,7 +134,7 @@ h4 {
 
 small {
   color: var(--text-dim);
-  font-size: 0.76rem;
+  font-size: var(--type-meta);
 }
 
 a {
@@ -134,6 +144,12 @@ a {
 code,
 pre {
   font-family: var(--mono);
+  font-size: var(--type-code);
+}
+
+.icon {
+  display: block;
+  flex: none;
 }
 
 :focus-visible {
