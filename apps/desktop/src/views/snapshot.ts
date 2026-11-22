@@ -8,6 +8,7 @@ import { illuminationBase, type IlluminationBase } from "../illumination";
 import { dimHex, inkFor } from "../color";
 import { decodeHardwareKeycode, isSysRqKeycode } from "../keycodes";
 import { keychronV5MaxKeyboard } from "../presets";
+import { icon } from "../icons";
 import { definitionList, element, layoutBounds, uiButton } from "./primitives";
 
 export function snapshotContent(state: EditorState, actions: RenderActions): HTMLElement {
@@ -81,6 +82,8 @@ export function deviceWriteControls(
     lightingSave?: boolean;
     /** Short explanation shown under the write actions. */
     note?: string;
+    /** One-row strip for the board footer. */
+    compact?: boolean;
   },
 ): HTMLElement {
   const confirmInput = element("input", {
@@ -91,26 +94,80 @@ export function deviceWriteControls(
     confirmInput,
     element("span", { text: "I understand this writes to the connected device." }),
   ]);
-  const enable = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: state.deviceWriteEnabled ? "Writes enabled" : "Enable device writes",
-    attrs: {
-      "data-device-write-enable": "true",
-      ...(state.deviceWriteEnabled ? { disabled: "" } : {}),
+  const enable = uiButton(
+    {
+      className: "secondary-action",
+      type: "button",
+      attrs: {
+        "data-device-write-enable": "true",
+        title: state.deviceWriteEnabled
+          ? "Device writes are enabled for this session"
+          : "Enable device writes for this session",
+        ...(state.deviceWriteEnabled ? { disabled: "" } : {}),
+      },
     },
-  });
+    [
+      icon(state.deviceWriteEnabled ? "check-circle" : "lock", { size: 15 }),
+      element("span", { text: state.deviceWriteEnabled ? "Writes on" : "Enable writes" }),
+    ],
+  );
   enable.addEventListener("click", () => actions.enableDeviceWrites(confirmed()));
-  const save = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: "Persist lighting",
-    attrs: {
-      "data-device-save-lighting": "true",
-      title: "Store the current RGB state in the keyboard EEPROM so it survives power cycles",
-    },
-  });
+  const save = options.compact
+    ? uiButton(
+        {
+          className: "icon-action",
+          type: "button",
+          attrs: {
+            "aria-label": "Persist lighting",
+            "data-device-save-lighting": "true",
+            title: "Store the current RGB state in the keyboard EEPROM so it survives power cycles",
+          },
+        },
+        [icon("floppy-disk", { size: 17 })],
+      )
+    : uiButton(
+        {
+          className: "secondary-action",
+          type: "button",
+          attrs: {
+            "data-device-save-lighting": "true",
+            title: "Store the current RGB state in the keyboard EEPROM so it survives power cycles",
+          },
+        },
+        [icon("floppy-disk", { size: 15 }), element("span", { text: "Persist lighting" })],
+      );
   save.addEventListener("click", () => actions.saveLightingToDevice(confirmed()));
+
+  if (options.compact) {
+    return element("section", {
+      className: "device-write-controls compact",
+      attrs: {
+        "data-device-write-controls": "true",
+        title: options.description,
+      },
+    }, [
+      element("div", { className: "write-bar" }, [
+        element("label", { className: "write-confirm compact" }, [
+          confirmInput,
+          element("span", { text: "Confirm writes" }),
+        ]),
+        enable,
+        element("div", { className: "write-bar-actions" }, [
+          ...options.controls(confirmed),
+          ...(options.lightingSave === false ? [] : [save]),
+        ]),
+      ]),
+      ...(state.deviceWriteStatus
+        ? [
+            element("p", {
+              className: "device-write-status",
+              text: state.deviceWriteStatus,
+              attrs: { "data-write-status": "true" },
+            }),
+          ]
+        : []),
+    ]);
+  }
 
   return element("section", {
     className: "device-write-controls",

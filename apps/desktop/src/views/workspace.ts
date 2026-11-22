@@ -145,22 +145,24 @@ export function workspaceControls(
     className: "rail-tabs",
     attrs: { "aria-label": "Keymap controls" },
   });
-  const entries: Array<[EditorState["keymapTab"], string]> = [
-    ["lighting", "Lighting"],
-    ["key", "Key"],
-    ["layer", "Layer"],
+  const entries: Array<[EditorState["keymapTab"], string, Parameters<typeof icon>[0]]> = [
+    ["lighting", "Lighting", "lightbulb"],
+    ["key", "Key", "key"],
+    ["layer", "Layer", "stack"],
   ];
-  entries.forEach(([id, label]) => {
+  entries.forEach(([id, label, glyph]) => {
     const selected = state.keymapTab === id;
-    const tab = uiButton({
-      className: `rail-tab ${selected ? "active" : ""}`,
-      type: "button",
-      text: label,
-      attrs: {
-        "aria-pressed": String(selected),
-        "data-keymap-tab": id,
+    const tab = uiButton(
+      {
+        className: `rail-tab ${selected ? "active" : ""}`,
+        type: "button",
+        attrs: {
+          "aria-pressed": String(selected),
+          "data-keymap-tab": id,
+        },
       },
-    });
+      [icon(glyph, { size: 15 }), element("span", { text: label })],
+    );
     tab.addEventListener("click", () => actions.selectKeymapTab(id));
     tabs.append(tab);
   });
@@ -186,22 +188,26 @@ export function workspaceControls(
 /** Writes live under the board so they are never buried in the rail. */
 function boardWriteControls(state: EditorState, actions: RenderActions): HTMLElement {
   return deviceWriteControls(state, actions, {
-    description: `Writes the project keymap (${state.project.layers.length} layers) and the board RGB state. Per-key colours are firmware-only.`,
-    note: "Persisting lighting stores the current RGB state in the keyboard's EEPROM so it survives unplugging.",
+    compact: true,
+    description: `Writes the project keymap (${state.project.layers.length} layers) and the board RGB state. Per-key colours are firmware-only. The floppy button persists lighting to EEPROM.`,
     controls: (confirmed) => {
-      const writeKeymap = uiButton({
-        className: "secondary-action",
-        type: "button",
-        text: "Write keymap",
-        attrs: { "data-write-keymap": "true" },
-      });
+      const writeKeymap = uiButton(
+        {
+          className: "secondary-action",
+          type: "button",
+          attrs: { "data-write-keymap": "true" },
+        },
+        [icon("keyboard", { size: 15 }), element("span", { text: "Write keymap" })],
+      );
       writeKeymap.addEventListener("click", () => actions.writeKeymapToDevice(confirmed()));
-      const writeLighting = uiButton({
-        className: "secondary-action",
-        type: "button",
-        text: "Write board lighting",
-        attrs: { "data-write-lighting": "true" },
-      });
+      const writeLighting = uiButton(
+        {
+          className: "secondary-action",
+          type: "button",
+          attrs: { "data-write-lighting": "true", title: "Write the board-wide RGB state" },
+        },
+        [icon("lightbulb", { size: 15 }), element("span", { text: "Write lighting" })],
+      );
       writeLighting.addEventListener("click", () => actions.writeLightingToDevice(confirmed()));
       return [writeKeymap, writeLighting];
     },
@@ -411,6 +417,17 @@ export function inspector(
   });
 
   return element("section", { className: "inspector", attrs: { "data-context-section": "assignment" } }, [
+    element("div", { className: "key-focus" }, [
+      element("div", { className: "key key-focus-cap", attrs: { "aria-hidden": "true" } }, [
+        element("span", { text: formatKeycap(assignment?.qmk ?? "KC_NO") }),
+      ]),
+      element("div", { className: "key-focus-meta" }, [
+        element("strong", { text: key.label ?? key.id }),
+        element("small", {
+          text: `Row ${key.matrix?.row ?? "–"} · Col ${key.matrix?.col ?? "–"} · Layer ${state.selectedLayerIndex}`,
+        }),
+      ]),
+    ]),
     element("div", { className: "selected-command-row" }, [
       fieldControl("QMK keycode", keycodeInput),
     ]),
