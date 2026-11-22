@@ -145,6 +145,12 @@ describe("device-first connection layout", () => {
     const page = await openReadResultPage({ width: 1440, height: 900 });
     await page.locator("[data-command-palette-open]").click();
     const input = page.locator("[data-focus-id=command-search]");
+    await input.waitFor();
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("data-focus-id") === "command-search",
+      undefined,
+      { timeout: 5_000 },
+    );
     await input.fill("firmware");
     expect(await page.locator("[data-command]:visible").count()).toBe(2);
     const hiddenRow = page.locator('[data-command="Go to Keymap"]');
@@ -155,8 +161,23 @@ describe("device-first connection layout", () => {
       await page.locator('[data-view="firmware"]').getAttribute("aria-current"),
     ).toBe("page");
 
+    await page.locator("[data-command-palette-open]").click();
+    await page.locator("[data-focus-id=command-search]").waitFor();
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("data-focus-id") === "command-palette-trigger",
+      undefined,
+      { timeout: 5_000 },
+    );
+
     await page.locator("[data-board-picker-open]").click();
     const search = page.locator("[data-focus-id=catalog-search]");
+    await search.waitFor();
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("data-focus-id") === "catalog-search",
+      undefined,
+      { timeout: 5_000 },
+    );
     await search.fill("ex");
     expect(
       await page.locator('[data-catalog-keyboard="example/keyboard"]').isVisible(),
@@ -166,6 +187,11 @@ describe("device-first connection layout", () => {
     ).toBe(true);
     expect(await search.evaluate((element) => document.activeElement === element)).toBe(true);
     await page.keyboard.press("Escape");
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("data-focus-id") === "board-picker-trigger",
+      undefined,
+      { timeout: 5_000 },
+    );
   }, 20_000);
 
   it("keeps the gated write confirmation inline", async () => {

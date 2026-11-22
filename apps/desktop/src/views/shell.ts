@@ -104,6 +104,8 @@ export function topbar(
         "aria-expanded": String(state.boardPickerOpen),
         "aria-haspopup": "dialog",
         "data-board-picker-open": "true",
+        "data-focus-id": "board-picker-trigger",
+        tabindex: "0",
         title: "Project keyboard target; click to change",
       },
     },
@@ -173,6 +175,8 @@ export function topbar(
           "aria-expanded": String(state.commandPaletteOpen),
           "aria-haspopup": "dialog",
           "data-command-palette-open": "true",
+          "data-focus-id": "command-palette-trigger",
+          tabindex: "0",
         },
         actions.openCommandPalette,
       ),
@@ -319,12 +323,19 @@ function commandPalette(state: EditorState, actions: RenderActions): HTMLElement
         element("span", { className: "palette-label", text: command.label }),
       ],
     );
-    button.addEventListener("click", () => {
-      actions.closeCommandPalette();
-      command.run();
-    });
     rows.push(button);
     list.append(button);
+  });
+  // Delegated: Web Awesome buttons live in shadow DOM, so read the command
+  // from the composed target's closest row.
+  list.addEventListener("click", (event) => {
+    const row = (event.target as HTMLElement).closest<HTMLElement>("[data-command]");
+    const command = commands.find((candidate) => candidate.label === row?.dataset.command);
+    if (!command) {
+      return;
+    }
+    actions.closeCommandPalette();
+    command.run();
   });
 
   input.addEventListener("input", () => {
@@ -344,7 +355,8 @@ function commandPalette(state: EditorState, actions: RenderActions): HTMLElement
       setActive(active - 1);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      visibleRows()[active]?.click();
+      const row = visibleRows()[active];
+      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     }
   });
 

@@ -254,14 +254,21 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
   };
 
   const actions = createActions(root, state, requestDoctorReport);
-  root.addEventListener("keydown", (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-      event.preventDefault();
-      actions.openCommandPalette();
-    } else if (event.key === "Escape" && state.commandPaletteOpen) {
-      actions.closeCommandPalette();
-    }
-  });
+  root.addEventListener(
+    "keydown",
+    (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        event.stopPropagation();
+        actions.openCommandPalette();
+      } else if (event.key === "Escape" && state.commandPaletteOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        actions.closeCommandPalette();
+      }
+    },
+    true,
+  );
   requestDoctorReport();
   requestBrowserKeyboardDiscovery();
 }
@@ -343,6 +350,7 @@ export function createActions(
     closeCommandPalette: () => {
       state.commandPaletteOpen = false;
       actions.render();
+      queueMicrotask(() => focusControl(root, '[data-focus-id="command-palette-trigger"]'));
     },
     openBoardPicker: () => {
       closeOverlays();
@@ -352,6 +360,7 @@ export function createActions(
     closeBoardPicker: () => {
       state.boardPickerOpen = false;
       actions.render();
+      queueMicrotask(() => focusControl(root, '[data-focus-id="board-picker-trigger"]'));
     },
     openProjectDetails: () => {
       closeOverlays();
@@ -1506,6 +1515,27 @@ export function restoreWorkspaceScroll(root: HTMLElement, scroll: WorkspaceScrol
   workspace.scrollTop = scroll.top;
 }
 
+function focusElement(element: HTMLElement): void {
+  // Web Awesome overrides host.focus() and throws while its shadow button is
+  // not mounted, so focus the inner control directly when it exists.
+  const inner = element.shadowRoot?.querySelector<HTMLElement>("button");
+  if (inner) {
+    inner.focus({ preventScroll: true });
+    return;
+  }
+  if (!element.hasAttribute("tabindex")) {
+    element.setAttribute("tabindex", "-1");
+  }
+  HTMLElement.prototype.focus.call(element, { preventScroll: true });
+}
+
+function focusControl(root: HTMLElement, selector: string): void {
+  const host = root.querySelector<HTMLElement>(selector);
+  if (host) {
+    focusElement(host);
+  }
+}
+
 export function captureFocusedInput(root: HTMLElement): FocusedElement {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement) || !root.contains(active)) {
@@ -1536,7 +1566,15 @@ export function restoreFocusedInput(root: HTMLElement, focusedInput: FocusedElem
     return;
   }
 
-  nextElement.focus({ preventScroll: true });
+  if (
+    nextElement instanceof HTMLInputElement ||
+    nextElement instanceof HTMLTextAreaElement ||
+    nextElement instanceof HTMLSelectElement
+  ) {
+    nextElement.focus({ preventScroll: true });
+  } else {
+    focusElement(nextElement);
+  }
   if (
     !(nextElement instanceof HTMLInputElement) ||
     focusedInput.selectionStart === null ||
