@@ -1,15 +1,15 @@
 import { EditorState, RenderActions, activeLightingProfile, bundledKeyboards, currentLayer, selectedLayout } from "../appState";
 import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
-import { Assignment, CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, Project, UiIssue, validateProject } from "../domain";
+import { CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, UiIssue, validateProject } from "../domain";
 import { illuminationBase, type IlluminationBase } from "../illumination";
 import { buildSelectedKeyContext, lightingForKey } from "../keyDetails";
-import { HostKeyCapture, captureHostKey } from "../keyTester";
+import { HostKeyCapture } from "../keyTester";
 import { canDeleteLayer, scanLayerReferences } from "../layerActions";
 import { lightingSystemsForKeyboard, supportedLightingSystems } from "../lightingCapabilities";
 import { ProjectSummary } from "../projectStorage";
-import { colorPicker, colorSwatch, contextDisclosure, controlGroup, definitionList, definitionRow, element, fieldControl, optionSelect, parameterBlock, rangeInput, uiButton } from "./primitives";
-import { inspector, keyLightingDetails, macroEditor, previewLightingColor } from "./workspace";
+import { colorPicker, contextDisclosure, controlGroup, definitionList, definitionRow, element, fieldControl, optionSelect, rangeInput, uiButton } from "./primitives";
+import { keyLightingDetails, macroEditor, previewLightingColor } from "./workspace";
 import { resolveRgbMatrixEffect, rgbMatrixEffectsFor, viaDefinitionFor, type ViaRgbMatrixEffect } from "../viaDefinition";
 
 export type BuildActions = {
@@ -275,7 +275,7 @@ export function lightingPanel(
   const selectedLighting = context?.lighting ?? lightingForKey(profile, state.selectedKeyId, base);
   const modeButtons = element("div", {
     className: "segmented",
-    attrs: { "aria-label": "Lighting mode" },
+    attrs: { "aria-label": "Lighting mode", role: "group" },
   });
   (["reactive", "static", "off"] as const).forEach((mode) => {
     const selected = profile.mode === mode;
@@ -315,62 +315,73 @@ export function lightingPanel(
     className: "lighting-panel",
     attrs: { "data-context-section": "lighting" },
   }, [
-    controlGroup("lighting-mode", "Mode", [modeButtons]),
-    controlGroup("selected-key-lighting", "Selected keys", [
-      element("div", { className: "lighting-quick-row" }, [
-        fieldControl("Selected keys colour", picker),
-        element("div", { className: "lighting-selection" }, [
-          element("div", { className: "lighting-selection-actions" }, [selectAll]),
-          element("dl", { className: "lighting-readouts" }, [
-            definitionRow("Selected keys", String(selectedCount)),
-            element("div", {}, [
-              element("dt", { text: "Configured" }),
-              element("dd", {
-                text: selectedLighting.color || "Not set",
-                attrs: { "data-lighting-color-readout": "true" },
-              }),
-            ]),
-            definitionRow("Effects", selectedLighting.conditions.map((condition) => condition.name).join(", ") || "None"),
-            definitionRow("Per-key overrides", String(Object.keys(profile.perKey).length)),
-          ]),
-        ]),
+    controlGroup("selected-key-lighting", "Key colour", [
+      fieldControl("Colour", picker),
+      element("div", { className: "selection-row" }, [
+        element("span", {
+          className: "selection-count",
+          text: `${selectedCount} of ${layout.keys.length} keys selected`,
+          attrs: { "data-lighting-selection-count": "true" },
+        }),
+        selectAll,
       ]),
-      element("p", {
-        className: "lighting-hint muted",
-        text: "Click a key to target it; Shift or Ctrl-click to add/remove; All keys colours the whole board.",
-      }),
-    ]),
-    controlGroup("lighting-source", "Actual illumination", [
-      element("div", { className: "lighting-live" }, [
-        base
-          ? colorSwatch(base.color)
-          : element("span", { className: "color-swatch muted-swatch", text: "?" }),
+      element("dl", { className: "lighting-readouts" }, [
         element("div", {}, [
-          element("strong", { text: base ? base.color : "Unavailable" }),
-          element("small", {
-            text: base
-              ? `${base.source} · brightness ${base.brightness}`
-              : "Connect and read a device to mirror its colour.",
+          element("dt", { text: "Configured" }),
+          element("dd", {
+            text: selectedLighting.color || "Not set",
+            attrs: { "data-lighting-color-readout": "true" },
           }),
         ]),
+        definitionRow(
+          "Draft overrides",
+          String(Object.keys(profile.perKey).length),
+        ),
       ]),
+      element("p", {
+        className: "hint",
+        text: "Click a key to target it; Shift or Ctrl-click to add or remove.",
+      }),
     ]),
-    controlGroup("lighting-options", "Lighting options", [
-      element("div", { className: "context-disclosures" }, [
-        contextDisclosure("Lighting capabilities", "lighting-capabilities", [
-          lightingCapabilityList(lightingSystems),
-        ]),
-        contextDisclosure("RGB Matrix", "rgb-matrix", [
-          supportedSystems.some((system) => system.id === "rgbMatrix")
-            ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard), base)
-            : element("p", { className: "empty muted", text: "Not supported" }),
-        ]),
-        contextDisclosure("Selected key lighting", "selected-key-lighting", [
-          context ? keyLightingDetails(context) : element("div"),
-        ]),
-      ]),
+    controlGroup("lighting-mode", "Map lighting", [
+      modeButtons,
+      element("p", {
+        className: "hint",
+        text: "Keys mirror the board read; Off hides the illumination preview.",
+      }),
+    ]),
+    controlGroup("lighting-write", "Write settings", [
+      supportedSystems.some((system) => system.id === "rgbMatrix")
+        ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard), base)
+        : element("p", { className: "hint", text: "This keyboard exposes no RGB-matrix write controls." }),
+    ]),
+    controlGroup("lighting-options", "Capabilities", [
+      contextDisclosuresRow(lightingDisclosures(context, lightingSystems)),
     ]),
   ]);
+}
+
+function lightingDisclosures(
+  context: ReturnType<typeof buildSelectedKeyContext>,
+  lightingSystems: ReturnType<typeof lightingSystemsForKeyboard>,
+): Array<[string, string, Array<Node | string>]> {
+  const entries: Array<[string, string, Array<Node | string>]> = [
+    ["Lighting capabilities", "lighting-capabilities", [lightingCapabilityList(lightingSystems)]],
+  ];
+  if (context) {
+    entries.push(["Selected key lighting", "selected-key-lighting", [keyLightingDetails(context)]]);
+  }
+  return entries;
+}
+
+function contextDisclosuresRow(
+  entries: ReadonlyArray<readonly [string, string, Array<Node | string>]>,
+): HTMLElement {
+  return element(
+    "div",
+    { className: "context-disclosures" },
+    entries.map(([summary, id, children]) => contextDisclosure(summary, id, children)),
+  );
 }
 
 export function lightingCapabilityList(
@@ -437,16 +448,30 @@ export function rgbMatrixControls(
   });
 
   return element("section", { className: "lighting-controls" }, [
-    element("h3", { text: "RGB Matrix" }),
     fieldControl("Effect", effectSelect),
-    fieldControl("Brightness", brightnessInput),
-    fieldControl("Speed", speedInput),
+    rangeField("Brightness", brightnessInput),
+    rangeField("Speed", speedInput),
+    element("p", {
+      className: "hint",
+      text: "These values are sent when you write lighting to the board.",
+    }),
+  ]);
+}
+
+/** A slider with its live value, so a drag has a number to aim at. */
+function rangeField(label: string, input: HTMLInputElement): HTMLElement {
+  const value = element("output", { className: "range-value", text: input.value });
+  input.addEventListener("input", () => {
+    value.textContent = input.value;
+  });
+  return element("label", { className: "assignment-field" }, [
+    element("span", { className: "range-head" }, [element("span", { text: label }), value]),
+    input,
   ]);
 }
 
 export function testPanel(
   state: EditorState,
-  layout: KeyboardDefinition["layouts"][number],
   actions: RenderActions,
 ): HTMLElement {
   const last = state.testEvents[0];
@@ -462,13 +487,16 @@ export function testPanel(
       },
     },
     [
-      element("h2", { text: "Host key test" }),
       definitionList([
         ["Layer", String(state.selectedLayerIndex)],
         ["Host", last ? `${last.code}` : ""],
         ["QMK", last?.qmk ?? ""],
         ["Matches", String(last?.matchedKeyIds.length ?? 0)],
       ]),
+      element("p", {
+        className: "hint",
+        text: "Focus this panel and press a key to see what the host receives.",
+      }),
     ],
   );
   captureArea.addEventListener("keydown", (event) => {
@@ -480,23 +508,11 @@ export function testPanel(
   });
 
   return element("section", { className: "test-panel", attrs: { "data-context-section": "test" } }, [
-    element("div", { className: "panel-heading" }, [
-      element("h2", { text: "Host key test" }),
-      element("small", {
-        text: last?.qmk ?? "",
-        attrs: {
-          "data-host-qmk": last?.qmk ?? "",
-          "data-test-match-count": String(last?.matchedKeyIds.length ?? 0),
-        },
-      }),
+    controlGroup("host-key-capture", "Host key test", [captureArea]),
+    contextDisclosure("Captured events", "test-events", [
+      testEventList(state.testEvents),
     ]),
-    controlGroup("host-key-capture", "Capture", [captureArea]),
-    controlGroup("host-key-events", "Captured events", [
-      contextDisclosure("Captured events", "test-events", [
-        testEventList(state.testEvents),
-      ]),
-    ]),
-    controlGroup("smoke-checklist", "Post-flash smoke check", [
+    contextDisclosure("Post-flash smoke check", "smoke-checklist", [
       postFlashSmokeChecklist(),
     ]),
   ]);
@@ -641,6 +657,14 @@ export function systemPanel(
   commands.forEach((command) => {
     commandList.append(commandRow(command));
   });
+  if (commands.length === 0) {
+    commandList.append(
+      element("p", {
+        className: "hint",
+        text: "No command probes reported. Run the doctor on this machine to populate them.",
+      }),
+    );
+  }
 
   const findings = report?.findings ?? [];
   const findingList = element("ul", { className: "issues", attrs: { "data-finding-count": String(findings.length) } });
@@ -655,6 +679,9 @@ export function systemPanel(
       ]),
     );
   });
+  if (findings.length === 0) {
+    findingList.append(element("li", { className: "hint", text: "No findings reported." }));
+  }
 
   const refresh = uiButton({ className: "secondary-action", text: "Refresh", type: "button" });
   refresh.addEventListener("click", reloadProbe);
@@ -662,19 +689,20 @@ export function systemPanel(
   return element("section", { className: "tab-panel system-panel", attrs: { "data-panel": "system" } }, [
     element("div", { className: "panel-heading" }, [
       element("h2", { text: "System" }),
+      element("small", { text: "Build readiness and diagnostics" }),
       refresh,
     ]),
     element("div", { className: "system-grid" }, [
-      element("section", {}, [
+      element("section", { className: "system-card" }, [
         element("h3", { text: "Commands" }),
         commandList,
       ]),
-      element("section", {}, [
+      element("section", { className: "system-card" }, [
         element("h3", { text: "Device" }),
         definitionList(systemRows(state)),
       ]),
       buildSection(buildPlan, layout.keys.length, state, buildActions),
-      element("section", {}, [
+      element("section", { className: "system-card" }, [
         element("h3", { text: "Findings" }),
         findingList,
       ]),
@@ -754,6 +782,7 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
   return element(
     "section",
     {
+      className: "system-card system-build",
       attrs: {
         "data-build-output": plan.output,
         "data-build-ready": String(plan.selectedReady),
@@ -892,15 +921,6 @@ export function requirementLabel(requirement: CommandStatus["requiredFor"]): str
   return "Flashing";
 }
 
-export function layerStrip(state: EditorState, actions: RenderActions): HTMLElement {
-  return element("section", { className: "layer-strip", attrs: { "data-layer-strip": "true" } }, [
-    // The outer "Layers" settings group already labels this; avoid a second
-    // "Layer selection" heading for the same tabs.
-    element("div", { className: "layer-tabs-block" }, [layerTabs(state, actions)]),
-    controlGroup("layer-details", "Layer details", [layerTools(state, actions)]),
-  ]);
-}
-
 export function layerTabs(state: EditorState, actions: RenderActions): HTMLElement {
   const tabs = element("div", {
     className: "layers",
@@ -996,21 +1016,15 @@ export function layerTools(state: EditorState, actions: RenderActions): HTMLElem
   }, [duplicate, remove]);
 
   return element("section", { className: "layer-tools", attrs: { "data-layer-tools": String(layer.index) } }, [
-    parameterBlock("Identity", [
-      element("label", { className: "layer-name-field assignment-field" }, [
-        element("span", { text: "Layer name" }),
-        nameInput,
-      ]),
+    element("label", { className: "layer-name-field assignment-field" }, [
+      element("span", { text: "Layer name" }),
+      nameInput,
     ]),
-    parameterBlock("Actions", [actionGroup]),
-    parameterBlock("Status", [
-      definitionList([
-        ["Index", String(layer.index)],
-        ["Keys", String(layer.assignments.length)],
-        ["Refs", String(references.length)],
-        ["Delete", deleteStateLabel(deleteState)],
-      ]),
-    ]),
+    actionGroup,
+    element("p", {
+      className: "hint",
+      text: `${layer.assignments.length} keys · ${references.length} layer key${references.length === 1 ? "" : "s"} point here${deleteState.deleted ? "" : ` · ${deleteStateLabel(deleteState)}`}`,
+    }),
   ]);
 }
 

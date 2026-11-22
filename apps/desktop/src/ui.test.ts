@@ -501,6 +501,35 @@ function deferred<Value>() {
     expect(activeMode()).toBe("reactive");
   });
 
+  it("resyncs the key map with the board's current lighting", async () => {
+    const root = document.createElement("div");
+    const selection = recognizedSelection(async () => availableSnapshot());
+    let reads = 0;
+    selection.session.readLighting = async () => {
+      reads += 1;
+      return {
+        state: "available",
+        value: { brightness: 255, effect: 1, effectSpeed: 127, hue: 170, saturation: 255 },
+      };
+    };
+
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    // Entering the keymap resyncs the lighting without re-reading the keymap.
+    expect(reads).toBe(1);
+    const key = root.querySelector<HTMLElement>("[data-key]")!;
+    expect(key.getAttribute("data-lighting-brightness")).toBe("255");
+    expect(key.getAttribute("data-lighting-source")).toBe("device");
+    expect(key.getAttribute("data-lighting-color")).toBe("#0000ff");
+
+    root.querySelector<HTMLElement>("[data-lighting-refresh]")?.click();
+    await flush();
+    expect(reads).toBe(2);
+  });
+
   it("colours every selected key and undoes the whole selection in one step", async () => {
     const root = document.createElement("div");
     createApp(root, {

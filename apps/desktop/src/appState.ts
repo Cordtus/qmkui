@@ -15,7 +15,7 @@ import {
   type CommandHistory,
   type LightingProfileState,
 } from "./commands";
-import { BrowserKeyboardNavigator, BrowserKeyboardSelection, BrowserKeyboardSession, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
+import { BrowserKeyboardNavigator, BrowserKeyboardSelection, chooseBrowserKeyboard, discoverAuthorizedBrowserKeyboard } from "./devices/browserKeyboardDiscovery";
 import { buildViaModels } from "./devices/keychronModels";
 import { GenericViaStandardState } from "./devices/genericViaReader";
 import { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
@@ -85,6 +85,8 @@ export type EditorState = {
   snapshotLayerIndex: number;
   snapshotSelectedKey: string;
   snapshotReadStatus: "idle" | "reading" | "failed";
+  /** Result of the last lighting-only resync, shown next to the readout. */
+  lightingStatus: string;
   deviceWriteEnabled: boolean;
   projectStatus: string;
   /** Write-gate/result message, surfaced next to the write controls. */
@@ -170,6 +172,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     snapshotLayerIndex: 0,
     snapshotSelectedKey: "0:0",
     snapshotReadStatus: "idle",
+    lightingStatus: "",
     deviceWriteEnabled: false,
     projectStatus: "Project is not saved in this preview session.",
     deviceWriteStatus: "",
@@ -246,6 +249,43 @@ export function createActions(
   state: EditorState,
   requestDoctorReport: () => void,
 ) {
+  /**
+   * Resync the board's global RGB-matrix state without re-reading the keymap.
+   * VIA exposes no per-LED colour read, so this is the whole readable
+   * backlight state; the key map re-derives each key's colour from it.
+   */
+  const readLightingNow = () => {
+    if (!isBrowserReadSelection(state.deviceSelection)) {
+      return;
+    }
+    const session = browserReadSession(state.deviceSelection);
+    if (!("readLighting" in session) || !session.readLighting) {
+      return;
+    }
+    const readLighting = session.readLighting;
+    state.lightingStatus = "Reading lighting…";
+    actions.render();
+    readLighting().then(
+      (lighting) => {
+        if (!isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
+          return;
+        }
+        if (lighting.state !== "available") {
+          state.lightingStatus = lighting.reason ?? "Lighting read failed.";
+          actions.render();
+          return;
+        }
+        state.hardwareSnapshot = { ...state.hardwareSnapshot, lighting };
+        state.lightingStatus = "Lighting resynced from board.";
+        actions.render();
+      },
+      () => {
+        state.lightingStatus = "Lighting read failed.";
+        actions.render();
+      },
+    );
+  };
+
   const actions = {
     render: () => {
       const focusedInput = captureFocusedInput(root);
@@ -263,6 +303,10 @@ export function createActions(
           selectView: (view) => {
             state.activeView = view;
             actions.render();
+            // The key map mirrors live board lighting, so resync on entry.
+            if (view === "keymap") {
+              readLightingNow();
+            }
           },
           openProjectDetails: () => {
             state.projectDetailsOpen = true;
@@ -422,6 +466,7 @@ export function createActions(
           readDevice: () => {
             readDeviceSnapshot(state, () => actions.render());
           },
+          refreshLighting: readLightingNow,
           selectKeycodeCategory: (categoryId) => {
             state.keycodeCategoryId = categoryId;
             state.keycodeSearch = "";
@@ -933,6 +978,7 @@ export type RenderActions = {
   chooseBrowserKeyboard: () => void;
   verifyKeychronV5MaxProtocol: () => void;
   readDevice: () => void;
+  refreshLighting: () => void;
   selectSnapshotLayer: (layerIndex: number) => void;
   selectSnapshotKey: (matrixKey: string) => void;
   enableDeviceWrites: (confirmed: boolean) => void;

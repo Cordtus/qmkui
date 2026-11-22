@@ -10,11 +10,14 @@ import {
   type KeychronV5MaxProtocolVersion,
 } from "./keychronV5MaxProtocol";
 import {
+  readKeychronV5MaxLighting,
   readKeychronV5MaxSnapshot,
+  type KeychronV5MaxLighting,
   type KeychronV5MaxReaderDevice,
   type KeychronV5MaxReaderOptions,
   type KeychronV5MaxReadSnapshot,
 } from "./keychronV5MaxReader";
+import type { ValueState } from "./hardwareSnapshot";
 import {
   readGenericViaStandardState,
   type GenericViaReaderDevice,
@@ -51,6 +54,8 @@ export type BrowserKeyboardSession = {
   };
   verifyProtocolVersion: () => Promise<KeychronV5MaxProtocolVersion>;
   readSnapshot: () => Promise<KeychronV5MaxReadSnapshot>;
+  /** Re-read only the board's lighting state (cheap compared to a keymap read). */
+  readLighting?: () => Promise<ValueState<KeychronV5MaxLighting>>;
   writeKeycode?: (layer: number, row: number, col: number, keycode: number) => Promise<void>;
   /** Global VIA RGB-matrix state write (volatile until `saveLighting`). */
   writeRgbMatrix?: (state: {
@@ -199,6 +204,7 @@ function protocolSession(
     capabilities: { canRead: true, canWrite: false, canFlash: false },
     verifyProtocolVersion: () => verifyProtocolVersion(device as KeychronV5MaxProtocolDevice),
     readSnapshot: () => readSnapshot(device, { model }),
+    readLighting: () => readKeychronV5MaxLighting(device),
     writeKeycode: (layer, row, col, keycode) =>
       withOpen(device, () => new ViaWriteProtocol(device).setKeycode(layer, row, col, keycode)),
     writeRgbMatrix: ({ brightness, effect, effectSpeed, hue, saturation }) =>

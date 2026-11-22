@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lightingForKey } from "../keyDetails";
-import { dimHex } from "./workspace";
+import { dimHex, inkFor } from "./workspace";
 
 describe("keymap lighting mirror", () => {
   it("dims a key color toward the board base as brightness falls", () => {
@@ -10,6 +10,13 @@ describe("keymap lighting mirror", () => {
     expect(dimHex("#5fb99a", 2)).toBe("#5fb99a");
     expect(dimHex("#5fb99a", -1)).toBe("#182631");
     expect(dimHex("not-a-color", 0.5)).toBe("not-a-color");
+  });
+
+  it("picks legible label ink for lit keycaps", () => {
+    // Bright fills get dark ink; dark fills keep light ink.
+    expect(inkFor("#22ffcb")).toBe("#0a1219");
+    expect(inkFor("#182631")).toBe("#eef5f3");
+    expect(inkFor("not-a-color")).toBe("#eef5f3");
   });
 
   it("exposes the profile brightness, defaulting and clamping it", () => {
