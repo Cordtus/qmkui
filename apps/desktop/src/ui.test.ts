@@ -530,6 +530,43 @@ function deferred<Value>() {
     expect(reads).toBe(2);
   });
 
+  it("does not start a lighting resync when there is no snapshot to update", async () => {
+    const root = document.createElement("div");
+    const selection = recognizedSelection(async () => Promise.reject(new Error("timeout")));
+    const readLighting = vi.fn(async () => ({
+      state: "available" as const,
+      value: { brightness: 1, effect: 1, effectSpeed: 1, hue: 1, saturation: 1 },
+    }));
+    selection.session.readLighting = readLighting;
+
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    expect(readLighting).not.toHaveBeenCalled();
+    expect(root.textContent).not.toContain("Reading lighting");
+  });
+
+  it("renders one key inspector, one lighting group and one board readout", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    expect(root.querySelectorAll("[data-key-info-panel]")).toHaveLength(1);
+    expect(root.querySelectorAll('[data-settings-group="lighting"]')).toHaveLength(1);
+    expect(root.querySelectorAll("[data-board-lighting]")).toHaveLength(1);
+    expect(root.querySelectorAll("[data-hardware-snapshot]")).toHaveLength(0);
+
+    root.querySelector<HTMLElement>('[data-view="device"]')?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-hardware-snapshot]")).toHaveLength(1);
+  });
+
   it("colours every selected key and undoes the whole selection in one step", async () => {
     const root = document.createElement("div");
     createApp(root, {

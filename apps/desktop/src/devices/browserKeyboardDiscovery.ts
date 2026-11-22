@@ -202,23 +202,44 @@ function protocolSession(
 ): BrowserKeyboardSession {
   return {
     capabilities: { canRead: true, canWrite: false, canFlash: false },
-    verifyProtocolVersion: () => verifyProtocolVersion(device as KeychronV5MaxProtocolDevice),
-    readSnapshot: () => readSnapshot(device, { model }),
-    readLighting: () => readKeychronV5MaxLighting(device),
+    verifyProtocolVersion: () =>
+      serialized(device, () => verifyProtocolVersion(device as KeychronV5MaxProtocolDevice)),
+    readSnapshot: () => serialized(device, () => readSnapshot(device, { model })),
+    readLighting: () => serialized(device, () => readKeychronV5MaxLighting(device)),
     writeKeycode: (layer, row, col, keycode) =>
-      withOpen(device, () => new ViaWriteProtocol(device).setKeycode(layer, row, col, keycode)),
+      serialized(device, () =>
+        withOpen(device, () => new ViaWriteProtocol(device).setKeycode(layer, row, col, keycode)),
+      ),
     writeRgbMatrix: ({ brightness, effect, effectSpeed, hue, saturation }) =>
-      withOpen(device, async () => {
-        const write = new ViaWriteProtocol(device);
-        await write.setRgbMatrixBrightness(brightness);
-        if (effect !== undefined) {
-          await write.setRgbMatrixEffect(effect);
-        }
-        await write.setRgbMatrixEffectSpeed(effectSpeed);
-        await write.setRgbMatrixColor(hue, saturation);
-      }),
-    saveLighting: () => withOpen(device, () => new ViaWriteProtocol(device).saveRgbMatrixEeprom()),
+      serialized(device, () =>
+        withOpen(device, async () => {
+          const write = new ViaWriteProtocol(device);
+          await write.setRgbMatrixBrightness(brightness);
+          if (effect !== undefined) {
+            await write.setRgbMatrixEffect(effect);
+          }
+          await write.setRgbMatrixEffectSpeed(effectSpeed);
+          await write.setRgbMatrixColor(hue, saturation);
+        }),
+      ),
+    saveLighting: () =>
+      serialized(device, () => withOpen(device, () => new ViaWriteProtocol(device).saveRgbMatrixEeprom())),
   };
+}
+
+/**
+ * Serializes every operation on one device: `withOpen` only tracks whether
+ * QMKUI opened the device, so overlapping reads/writes would close the handle
+ * under each other and cross-match HID responses. Operations queue per device
+ * instead of failing; a failed operation does not poison the queue.
+ */
+const deviceQueues = new WeakMap<object, Promise<unknown>>();
+
+function serialized<Value>(device: object, run: () => Promise<Value>): Promise<Value> {
+  const previous = deviceQueues.get(device) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(run);
+  deviceQueues.set(device, next.catch(() => undefined));
+  return next;
 }
 
 function genericViaSession(

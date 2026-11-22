@@ -298,7 +298,12 @@ export function lightingForKey(
   const override = profile.perKey[visualKeyId];
   const color = override ?? base?.color ?? "";
   const hasSource = Boolean(override) || Boolean(base);
-  const brightness = base?.brightness ?? Number(profile.global?.brightness ?? 180);
+  // A profile brightness is a draft of what a write will send, so it wins over
+  // the board value; with no draft the key mirrors the board read.
+  const profileBrightness = Number(profile.global?.brightness);
+  const brightness = Number.isFinite(profileBrightness)
+    ? profileBrightness
+    : (base?.brightness ?? 180);
   return {
     profileName: profile.name,
     mode: hasSource ? profile.mode : "off",

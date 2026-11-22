@@ -89,7 +89,7 @@ export function dimHex(hex: string, factor: number): string {
   }
   const clamped = Math.max(0, Math.min(1, factor));
   const value = Number.parseInt(match[1], 16);
-  const base = 0x182631;
+  const base = Number.parseInt(KEY_BASE_HEX.slice(1), 16);
   const channel = (shift: number) => {
     const source = (value >> shift) & 0xff;
     const target = (base >> shift) & 0xff;

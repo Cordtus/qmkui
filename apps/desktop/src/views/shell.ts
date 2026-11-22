@@ -290,7 +290,7 @@ export function editor(
   actions: RenderActions,
 ): HTMLElement {
   return element("section", {
-    className: "editor workbench-editor",
+    className: "editor",
     attrs: { "data-workbench-surface": "true" },
   }, [
     keyboardWorkspace(state, layout, actions),

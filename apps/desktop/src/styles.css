@@ -26,6 +26,7 @@
 
   /* accents */
   --accent: #5ed1aa;
+  --accent-strong: #7ee6c2;
   --accent-ink: #06120d;
   --warn: #efbd66;
   --danger: #f0a3a3;
@@ -817,6 +818,8 @@ input[type="checkbox"] {
   color: var(--key-ink, var(--text));
 }
 
+/* Keycaps are a deliberate exception to the wrap rule: a key has one line, and
+   the renderer shrinks the label to fit (down to 6px) instead of wrapping. */
 .key strong {
   max-width: 100%;
   overflow: hidden;
@@ -2136,6 +2139,7 @@ pre {
     display: block;
     justify-content: start;
     overflow-x: auto;
+    overflow-y: hidden;
   }
 
   .board {

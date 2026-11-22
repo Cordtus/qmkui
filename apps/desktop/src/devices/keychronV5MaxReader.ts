@@ -232,7 +232,17 @@ export async function readKeychronV5MaxLighting(
     throw new KeychronV5MaxReaderError("identity");
   }
   const timeoutMs = boundedTimeoutMs(options.timeoutMs);
-  return withOpen(device, () => readLighting(device, timeoutMs));
+  // Share the snapshot guard: a lighting resync and a full snapshot read must
+  // never hold two listeners on the same device.
+  if (pendingSnapshots.has(device)) {
+    throw new KeychronV5MaxReaderError("concurrent-read");
+  }
+  pendingSnapshots.add(device);
+  try {
+    return await withOpen(device, () => readLighting(device, timeoutMs));
+  } finally {
+    pendingSnapshots.delete(device);
+  }
 }
 
 /**

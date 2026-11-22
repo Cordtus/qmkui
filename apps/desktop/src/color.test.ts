@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hexToHsv, hsv255ToHex, hsvToHex, normalizeHex } from "./color";
+import { dimHex, hexToHsv, hsv255ToHex, hsvToHex, inkFor, normalizeHex } from "./color";
 
 describe("colour conversions", () => {
   it("normalizes 3- and 6-digit hex", () => {
@@ -19,5 +19,19 @@ describe("colour conversions", () => {
     // Full saturation, mid value, hue 0 -> pure red at 50% value.
     expect(hsv255ToHex(0, 255, 128)).toBe("#800000");
     expect(hsv255ToHex(255, 0, 255)).toBe("#ffffff");
+  });
+
+  it("dims a key colour toward the keycap base as brightness falls", () => {
+    expect(dimHex("#5fb99a", 1)).toBe("#5fb99a");
+    expect(dimHex("#5fb99a", 0)).toBe("#182631");
+    expect(dimHex("#5fb99a", 2)).toBe("#5fb99a");
+    expect(dimHex("#5fb99a", -1)).toBe("#182631");
+    expect(dimHex("not-a-color", 0.5)).toBe("not-a-color");
+  });
+
+  it("picks legible label ink for lit keycaps", () => {
+    expect(inkFor("#22ffcb")).toBe("#0a1219");
+    expect(inkFor("#182631")).toBe("#eef5f3");
+    expect(inkFor("not-a-color")).toBe("#eef5f3");
   });
 });

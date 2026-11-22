@@ -4,8 +4,6 @@ import { Assignment, KeyboardDefinition, VisualKey } from "../domain";
 import { MacroRecord } from "../macros";
 import { illuminationBase } from "../illumination";
 import { dimHex, inkFor } from "../color";
-
-export { dimHex, inkFor } from "../color";
 import { KeyLayerDetail, KeyLightingDetail, KeyRelation, SelectedKeyContext, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { KeycodeEntry, formatKeycap, keycodeCategories } from "../keycodes";
 import { rgbMatrixEffectsFor } from "../viaDefinition";
@@ -18,13 +16,13 @@ export function keyboardBoard(
   actions: RenderActions,
 ): HTMLElement {
   const canvas = element("div", {
-    className: "keyboard-scroll keyboard-canvas",
+    className: "keyboard-scroll",
     attrs: { "aria-label": "Keyboard layout", "data-keyboard-canvas": "true" },
   }, [
     board(state, layout, actions.selectKey),
   ]);
   const stage = element("section", {
-    className: "keyboard-stage workbench-stage",
+    className: "keyboard-stage",
     attrs: { "data-keyboard-stage": "true" },
   }, [
     element("div", { className: "keyboard-card" }, [
@@ -48,7 +46,6 @@ export function keyboardBoard(
       ]),
     ]),
   ]);
-  stage.style.width = "100%";
   return stage;
 }
 
@@ -130,7 +127,7 @@ export function selectedKeyInfoPanel(
   const fallbackKey = layout.keys[0];
 
   return element("aside", {
-    className: "key-info-panel workbench-inspector",
+    className: "key-info-panel",
     attrs: {
       "aria-label": "Selected key inspector",
       "data-key-info-panel": "true",

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  readKeychronV5MaxLighting,
   readKeychronV5MaxSnapshot,
   requestKeychronV5MaxRead,
   type KeychronV5MaxReaderDevice,
@@ -87,6 +88,48 @@ describe("Keychron V5 Max reader", () => {
       state: "unverified",
       reason: "Firmware version response is not printable ASCII.",
     });
+  });
+
+  it("re-reads only channel-3 lighting and releases the device", async () => {
+    const device = createTranscriptDevice();
+
+    const lighting = await readKeychronV5MaxLighting(device);
+
+    expect(lighting).toEqual({
+      state: "available",
+      value: { brightness: 200, effect: 7, effectSpeed: 128, hue: 12, saturation: 240 },
+    });
+    expect(sentFrames(device).map(([, bytes]) => bytes.slice(0, 3))).toEqual([
+      [0x08, 0x03, 0x01],
+      [0x08, 0x03, 0x02],
+      [0x08, 0x03, 0x03],
+      [0x08, 0x03, 0x04],
+    ]);
+    expect(device.open).toHaveBeenCalledOnce();
+    expect(device.close).toHaveBeenCalledOnce();
+    expect(device.listenerCount()).toBe(0);
+  });
+
+  it("rejects a lighting resync on a non-VIA device without touching HID", async () => {
+    const device = createDevice();
+    device.collections = [{ usagePage: 0x0001, usage: 0x0006 }];
+
+    await expect(readKeychronV5MaxLighting(device)).rejects.toMatchObject({ code: "identity" });
+    expect(device.sendReport).not.toHaveBeenCalled();
+    expect(device.listenerCount()).toBe(0);
+  });
+
+  it("rejects a lighting resync while a snapshot read is in flight", async () => {
+    const device = createDevice();
+    device.sendReport = vi.fn((() => {
+      throw new Error("HID unavailable");
+    }) as unknown as KeychronV5MaxReaderDevice["sendReport"]);
+    const first = readKeychronV5MaxSnapshot(device, { keymap: { layerCount: 1, rows: 1, columns: 1 } });
+
+    await expect(readKeychronV5MaxLighting(device)).rejects.toMatchObject({
+      code: "concurrent-read",
+    });
+    await expect(first).resolves.toMatchObject({ identity: { state: "unavailable" } });
   });
 
   it("rejects a save/set command before it can reach HID", async () => {

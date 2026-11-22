@@ -16,8 +16,8 @@ served over HTTPS or localhost; there is no native GUI binary or webview.
 ## Distribution
 
 - The static build (`apps/desktop/dist/`, produced by
-  `npm --prefix apps/desktop run build`) is the shippable artifact. It is
-  deployed to GitHub Pages from `main`; any static host works.
+  `npm --prefix apps/desktop run build`) is the shippable artifact. The public
+  instance is built by Vercel from `main`; any static host works.
 - To serve it locally, use any static file server on localhost (WebHID needs a
   secure context, so `file://` is not reliable).
 - There is no packaged desktop binary today; a thin launcher that serves the

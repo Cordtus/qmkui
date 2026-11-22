@@ -113,6 +113,34 @@ describe("device-first connection layout", () => {
     expect(layout.menuLeftEdges[1]).toBeGreaterThan(layout.menuLeftEdges[0]);
   });
 
+  it("keeps the keymap canvas scrollable and page-contained at phone width", async () => {
+    const page = await openReadResultPage({ width: 420, height: 820 });
+    await page.locator('[data-view="keymap"]').click();
+    await page.locator("[data-keyboard-workspace]").waitFor();
+    const layout = await page.evaluate(() => {
+      const canvas = document.querySelector<HTMLElement>("[data-keyboard-canvas]");
+      const board = canvas?.querySelector<HTMLElement>(".board");
+      if (!canvas || !board) throw new Error("Missing keymap canvas");
+      const style = getComputedStyle(canvas);
+      return {
+        boardWidth: board.getBoundingClientRect().width,
+        canvasClient: canvas.clientWidth,
+        canvasOverflowX: style.overflowX,
+        canvasOverflowY: style.overflowY,
+        canvasScroll: canvas.scrollWidth,
+        pageWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      };
+    });
+
+    // The page never scrolls sideways; the canvas itself does.
+    expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.canvasOverflowX).toBe("auto");
+    expect(layout.canvasOverflowY).toBe("hidden");
+    expect(layout.canvasScroll).toBeGreaterThan(layout.canvasClient);
+    expect(layout.boardWidth).toBeGreaterThanOrEqual(640);
+  });
+
   it("keeps the gated write confirmation inline", async () => {
     const page = await openReadResultPage({ width: 1200, height: 800 });
     await page.locator('[data-view="keymap"]').click();
