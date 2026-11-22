@@ -98,6 +98,8 @@ const sources: Record<IconName, string> = {
   "x-circle": xCircle,
 };
 
+const cache = new Map<IconName, SVGElement>();
+
 export type IconOptions = {
   size?: number;
   /** Accessible name. Omit for decorative icons. */
@@ -106,8 +108,13 @@ export type IconOptions = {
 };
 
 export function icon(name: IconName, options: IconOptions = {}): SVGSVGElement {
-  const parsed = new DOMParser().parseFromString(sources[name], "image/svg+xml");
-  const svg = document.importNode(parsed.documentElement, true) as unknown as SVGSVGElement;
+  let template = cache.get(name);
+  if (!template) {
+    const parsed = new DOMParser().parseFromString(sources[name], "image/svg+xml");
+    template = document.importNode(parsed.documentElement, true) as unknown as SVGElement;
+    cache.set(name, template);
+  }
+  const svg = template.cloneNode(true) as unknown as SVGSVGElement;
   svg.setAttribute("viewBox", "0 0 256 256");
   svg.setAttribute("width", String(options.size ?? 16));
   svg.setAttribute("height", String(options.size ?? 16));

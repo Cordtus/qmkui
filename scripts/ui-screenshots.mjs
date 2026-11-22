@@ -17,10 +17,19 @@ const base = `http://127.0.0.1:${port}`;
 const server = spawn(
   "npm",
   ["run", "dev", "--", "--port", String(port), "--strictPort"],
-  { cwd: desktop, stdio: "ignore" },
+  { cwd: desktop, stdio: "ignore", detached: true },
 );
+let serverExited = false;
+server.on("exit", () => {
+  serverExited = true;
+});
 const stop = () => {
-  server.kill("SIGTERM");
+  if (server.pid === undefined) return;
+  try {
+    process.kill(-server.pid, "SIGTERM");
+  } catch {
+    // already gone
+  }
 };
 process.on("exit", stop);
 process.on("SIGINT", () => {
@@ -30,6 +39,9 @@ process.on("SIGINT", () => {
 
 async function ready() {
   for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (serverExited) {
+      throw new Error("vite exited before it was ready (port in use?)");
+    }
     try {
       const response = await fetch(base);
       if (response.ok) return;
