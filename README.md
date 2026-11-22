@@ -166,8 +166,10 @@ serial numbers.
 
 ## Deployment
 
-Vercel builds `main` with `vercel.json` (install + build in `apps/desktop`,
-output `apps/desktop/dist`). GitHub Actions runs the checks only and does not
+The Vercel project uses `apps/desktop` as its root directory, so its
+`apps/desktop/vercel.json` runs `npm ci` + `npm run build` and publishes
+`apps/desktop/dist`. Pushes to `main` are gated by the `ci` check in branch
+protection. GitHub Actions runs the checks only and does not
 deploy. The public-build audit must pass before an artifact ships.
 
 ## Contributing
