@@ -7,7 +7,7 @@ import { FlashRun, PolicyVerdict, assessFlashRequest, dryRunFlash, flashTargetFr
 import { createMacroRecord } from "./macros";
 import { hexToHsv } from "./color";
 import { illuminationBase } from "./illumination";
-import { buildSupportBundle } from "./supportBundle";
+import { buildSupportBundle, type SupportDevice } from "./supportBundle";
 import { resolveRgbMatrixEffect, rgbMatrixEffectsFor, viaDefinitionFor } from "./viaDefinition";
 import {
   createCommandHistory,
@@ -23,7 +23,8 @@ import { loadLocalDoctorReport } from "./doctorReport";
 import { DoctorReport, KeyboardDefinition, LightingProfile, LightingRule, LightingRuleTrigger, Project, UiIssue, exportQmkJson, jsonExportBlockers, validateProject } from "./domain";
 import { HostKeyCapture, captureHostKey } from "./keyTester";
 import { lightingForKey } from "./keyDetails";
-import { generateLightingRulesC, lightingRulesCFileName } from "./lightingRules";
+import { buildFirmwareBundle, firmwareBundleFileName } from "./firmwareBundle";
+import { createZip } from "./zip";
 import { keycodeCategories, keycodeValue, kindForKeycode } from "./keycodes";
 import { addTransparentLayer, deleteLayer, duplicateLayer, renameLayer } from "./layerActions";
 import { keychronV5MaxKeyboard, keychronV5MaxProject } from "./presets";
@@ -72,6 +73,8 @@ export type EditorState = {
   selectedKeyIds: string[];
   /** Click-to-paint mode: a click applies the current colour to that key. */
   lightingPaint: boolean;
+  /** Which keymap rail tab is open. */
+  keymapTab: "lighting" | "key" | "layer";
   commandHistory: CommandHistory;
   keycodeCategoryId: string;
   keycodeSearch: string;
@@ -161,6 +164,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     selectedKeyId: layout.keys[0]?.id ?? "",
     selectedKeyIds: layout.keys[0] ? [layout.keys[0].id] : [],
     lightingPaint: false,
+    keymapTab: "lighting",
     commandHistory: createCommandHistory(),
     keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
     keycodeSearch: "",
@@ -326,6 +330,10 @@ export function createActions(
             state.selectedLayerIndex = nextLayerIndex;
             actions.render();
           },
+          selectKeymapTab: (tab) => {
+            state.keymapTab = tab;
+            actions.render();
+          },
           selectView: (view) => {
             state.activeView = view;
             actions.render();
@@ -475,25 +483,30 @@ export function createActions(
             });
             actions.render();
           },
-          downloadLightingRules: () => {
+          downloadFirmwareBundle: () => {
             const issues = validateProject(state.project, state.keyboard);
             if (issues.some((issue) => issue.severity === "error")) {
-              state.projectStatus = "Fix keymap and lighting rule errors before exporting rules C.";
+              state.projectStatus = "Fix keymap and lighting rule errors before exporting firmware.";
               actions.render();
               return;
             }
-            const code = generateLightingRulesC(
+            const files = buildFirmwareBundle(
               state.project,
               state.keyboard,
               activeLightingProfile(state.project),
             );
-            if (!code) {
+            if (!files) {
               state.projectStatus = "The project layout does not match the selected keyboard.";
               actions.render();
               return;
             }
-            downloadText(code, lightingRulesCFileName(state.project), "text/x-c");
-            state.projectStatus = "Lighting rules C downloaded; add it to the keymap and build with QMK.";
+            downloadBytes(
+              createZip(files),
+              firmwareBundleFileName(state.project),
+              "application/zip",
+            );
+            state.projectStatus =
+              "Firmware bundle downloaded: copy it into your QMK checkout, then compile and flash.";
             actions.render();
           },
           undo: () => {
@@ -699,7 +712,12 @@ export function createActions(
             }
             const profile = activeLightingProfile(state.project);
             const base = illuminationBase(state.hardwareSnapshot);
-            const color = profile.perKey[state.selectedKeyId] ?? base?.color ?? "#5fb99a";
+            // Board lighting is its own colour. A per-key override must never
+            // become the board's global colour just because that key is selected.
+            const color =
+              typeof profile.global?.color === "string"
+                ? profile.global.color
+                : (base?.color ?? "#5fb99a");
             const { h, s } = hexToHsv(color);
             // Default each field to the board's current value when the profile
             // has not set it, so a write does not silently change effect/speed.
@@ -819,6 +837,7 @@ export function createActions(
             state.commandHistory.clear();
             state.catalogSearch = "";
             state.lightingPaint = false;
+            state.keymapTab = "lighting";
             state.projectJsonDraft = JSON.stringify(state.project, null, 2);
             state.projectStatus = `Created ${state.project.name} from catalog.`;
             state.activeView = "keymap";
@@ -882,10 +901,42 @@ export function createActions(
             actions.render();
           },
           downloadSupportBundle: () => {
+            const snapshot = state.hardwareSnapshot;
+            const device: SupportDevice | null = isKeychronV5MaxSnapshot(snapshot)
+              ? {
+                  model:
+                    snapshot.identity.state === "available"
+                      ? snapshot.identity.value.model
+                      : undefined,
+                  firmware:
+                    snapshot.identity.state === "available"
+                      ? snapshot.identity.value.firmwareVersion
+                      : undefined,
+                  protocol:
+                    snapshot.identity.state === "available"
+                      ? snapshot.identity.value.protocolVersion
+                          .map((part) => `0x${part.toString(16).padStart(2, "0")}`)
+                          .join(" ")
+                      : undefined,
+                  lighting:
+                    snapshot.lighting.state === "available"
+                      ? { ...snapshot.lighting.value }
+                      : undefined,
+                }
+              : snapshot
+                ? { model: "Generic VIA" }
+                : null;
             const contents = buildSupportBundle({
               project: state.project,
               doctor: state.doctorReport,
-              includeSensitiveMacroText: true,
+              // Support bundles get shared; macro sequences are redacted.
+              includeSensitiveMacroText: false,
+              device,
+              validation: validateProject(state.project, state.keyboard),
+              environment: {
+                webhid: typeof navigator !== "undefined" && "hid" in navigator,
+                mode: import.meta.env.MODE,
+              },
             });
             downloadJson(contents, "qmkui-support-bundle.json");
             state.projectStatus = "Support bundle downloaded.";
@@ -1111,6 +1162,7 @@ export function createActions(
 export type RenderActions = {
   selectLayer: (layerIndex: number) => void;
   selectView: (view: AppView) => void;
+  selectKeymapTab: (tab: EditorState["keymapTab"]) => void;
   openProjectDetails: () => void;
   closeProjectDetails: () => void;
   selectKey: (keyId: string, additive?: boolean) => void;
@@ -1122,7 +1174,7 @@ export type RenderActions = {
   clearSelectedLighting: () => void;
   addLightingRule: (trigger: LightingRuleTrigger) => void;
   removeLightingRule: (ruleId: string) => void;
-  downloadLightingRules: () => void;
+  downloadFirmwareBundle: () => void;
   captureHostKey: (input: { code: string; key: string }) => void;
   downloadQmkJson: () => void;
   downloadViaDefinition: (qmkKeyboard: string) => void;
@@ -1506,6 +1558,18 @@ export function downloadJson(contents: string, filename: string): void {
 
 export function downloadText(contents: string, filename: string, type: string): void {
   const blob = new Blob([contents], { type });
+  downloadBlob(blob, filename);
+}
+
+export function downloadBytes(bytes: Uint8Array, filename: string, type: string): void {
+  const buffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+  downloadBlob(new Blob([buffer], { type }), filename);
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

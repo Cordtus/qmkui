@@ -42,26 +42,42 @@ they never receive Keychron vendor frames.
 
 ## Key map and backlighting
 
-The key map is the lighting canvas. Click a key (Shift/Ctrl/⌘-click for more,
-or **All keys**), then use the colour wheel in **Lighting → Key colour**: hue
-around the rim, saturation from the centre, brightness on the slider, plus a
-hex field. **Paint keys** turns clicks into a brush so you can colour key after
+The key map is the lighting canvas. The right rail has three tabs — **Lighting**,
+**Key**, **Layer** — so only one control set is on screen. Click a key
+(Shift/Ctrl/⌘-click for more, or **All keys**), then use the colour wheel in
+**Lighting → Key colour**: hue around the rim, saturation from the centre,
+brightness on the Value slider, plus a hex field. **Paint keys** turns clicks into a brush so you can colour key after
 key, **Clear** removes overrides, and the swatch row re-applies colours already
 used in the project.
 
 Colours read back from the board are mirrored per key, and **Resync** re-reads
 the board's lighting without re-reading the keymap. VIA exposes global
-RGB-matrix state only, so per-key colours live in the project and travel with
-the generated C, not the QMK JSON export (a project with per-key colours or
-rules deliberately blocks JSON export).
+RGB-matrix state only: per-key colours live in the project and the generated
+firmware bundle. **Board lighting** in the Lighting tab is the separate,
+global VIA write (effect, board colour, brightness, speed); **Persist lighting**
+stores that state in the keyboard EEPROM so it survives unplugging. Writing
+board lighting never converts a painted key colour into the whole board.
 
 **Key rules** add stateful lighting: Caps/Num/Scroll Lock indicators, “while
-layer N is active”, and “while key X is held”. **Download rules C** generates a
-`rgb_matrix_indicators_advanced_user()` overlay containing your per-key colours
-and every rule. Paste it into the keymap, then build and flash with your own QMK
-toolchain — QMKUI does not build or flash firmware.
+layer N is active”, and “while key X is held”. **Download firmware** builds a
+zip with `keymap.c` (all layers), `qmkui-lighting-rules.c`
+(`rgb_matrix_indicators_advanced_user` with every per-key colour and rule), and
+build/flash instructions. Copy it into your QMK checkout, then compile and
+flash with QMK CLI or Toolbox — QMKUI does not build or flash firmware.
 
 There is no flash or bootloader path.
+
+## Exports
+
+- **QMK JSON** (header) — layers only, in QMK Configurator/VIA format.
+- **Project JSON** (Project drawer) — the full project: layers, lighting
+  profile, per-key colours and rules. This is the backup format.
+- **Support bundle** — app version/mode/WebHID, project target, full keymap,
+  lighting profile + rules, device identity/lighting when connected, validation
+  issues, doctor findings (local paths redacted) and macros (actions redacted
+  unless requested).
+- **Firmware zip** (Lighting → Firmware) — `keymap.c`, the lighting overlay and
+  build/flash instructions.
 
 ## Safety model
 

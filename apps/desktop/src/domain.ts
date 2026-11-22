@@ -69,12 +69,9 @@ export function jsonExportBlockers(project: Project): string[] {
       blockers.push(`${label} require generated C and cannot be exported as QMK JSON.`);
     }
   }
-  if (Object.keys(project.lightingProfiles?.[0]?.perKey ?? {}).length > 0) {
-    blockers.push("Per-key lighting colours require generated C and cannot be exported as QMK JSON.");
-  }
-  if ((project.lightingRules ?? []).some((rule) => rule.enabled !== false)) {
-    blockers.push("Lighting rules require generated C and cannot be exported as QMK JSON.");
-  }
+  // QMK JSON carries layers only. Per-key colours and lighting rules live in
+  // the project export and the generated firmware bundle, but they do not stop
+  // a keymap-only JSON export.
   return blockers;
 }
 

@@ -366,10 +366,17 @@ export function lightingPanel(
     ...(supportedSystems.some((system) => system.id === "rgbMatrix")
       ? [controlGroup("lighting-rules", "Key rules", [lightingRulesPanel(state, layout, actions)])]
       : []),
-    controlGroup("lighting-write", "Write settings", [
+    controlGroup("lighting-write", "Board lighting", [
       supportedSystems.some((system) => system.id === "rgbMatrix")
         ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard), base)
         : element("p", { className: "hint", text: "No RGB-matrix controls on this keyboard." }),
+    ]),
+    controlGroup("firmware", "Firmware", [
+      firmwareButton(actions),
+      element("p", {
+        className: "hint",
+        text: "Buildable keymap, per-key colours and rules for QMK CLI or Toolbox.",
+      }),
     ]),
     controlGroup("lighting-options", "Capabilities", [
       contextDisclosuresRow(lightingDisclosures(context, lightingSystems)),
@@ -487,17 +494,6 @@ function lightingRulesPanel(
     }
   });
 
-  const download = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: "Download rules C",
-    attrs: {
-      "data-lighting-rules-download": "true",
-      title: "Export QMK C to paste into the keymap and build",
-    },
-  });
-  download.addEventListener("click", actions.downloadLightingRules);
-
   return element("section", { className: "lighting-rules" }, [
     list,
     element("label", { className: "assignment-field" }, [
@@ -505,7 +501,7 @@ function lightingRulesPanel(
       trigger,
     ]),
     element("div", { className: "rule-fields" }, [layerField, heldField]),
-    element("div", { className: "rule-actions" }, [add, download]),
+    element("div", { className: "rule-actions" }, [add]),
   ]);
 }
 
@@ -541,6 +537,20 @@ function contextDisclosuresRow(
     { className: "context-disclosures" },
     entries.map(([summary, id, children]) => contextDisclosure(summary, id, children)),
   );
+}
+
+function firmwareButton(actions: RenderActions): HTMLElement {
+  const download = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: "Download firmware",
+    attrs: {
+      "data-firmware-bundle": "true",
+      title: "Download keymap.c, the lighting overlay and build instructions",
+    },
+  });
+  download.addEventListener("click", actions.downloadFirmwareBundle);
+  return download;
 }
 
 export function lightingCapabilityList(
@@ -606,10 +616,29 @@ export function rgbMatrixControls(
     actions.updateLightingGlobal("speed", Number(speedInput.value));
   });
 
+  const boardColor = element("input", {
+    attrs: {
+      "aria-label": "Board colour",
+      "data-lighting-control": "colour",
+      "data-lighting-board-color": "true",
+      type: "color",
+    },
+  }) as HTMLInputElement;
+  boardColor.value =
+    typeof global.color === "string" ? global.color : (base?.color ?? "#5ed1aa");
+  boardColor.addEventListener("change", () => {
+    actions.updateLightingGlobal("color", boardColor.value);
+  });
+
   return element("section", { className: "lighting-controls" }, [
     fieldControl("Effect", effectSelect),
+    fieldControl("Board colour", boardColor),
     rangeField("Brightness", brightnessInput),
     rangeField("Speed", speedInput),
+    element("p", {
+      className: "hint",
+      text: "Sets the whole board over VIA; it does not write per-key colours.",
+    }),
   ]);
 }
 

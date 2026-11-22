@@ -890,6 +890,28 @@ input[type="checkbox"] {
   min-width: 0;
 }
 
+.rail-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+wa-button.rail-tab::part(base) {
+  justify-content: center;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  padding: 4px 8px;
+}
+
+wa-button.rail-tab.active::part(base) {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--line));
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel-2));
+  color: var(--text);
+}
+
 .settings-group {
   display: grid;
   gap: var(--s2);
@@ -1412,6 +1434,27 @@ input[type="checkbox"] {
   border: 1px solid var(--line);
   background: var(--panel);
   padding: var(--s3);
+}
+
+/* Inside the board card the write bar is a footer, not another card. */
+.keyboard-card > .device-write-controls {
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.keyboard-card > .device-write-controls h3 {
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+input[type="color"] {
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  padding: 2px;
 }
 
 .device-write-controls h3 {

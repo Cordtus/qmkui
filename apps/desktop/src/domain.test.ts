@@ -256,25 +256,6 @@ describe("json export blockers", () => {
     expect(codes).toContain("lightingRule.source.missing");
   });
 
-  it("blocks JSON export for per-key colours and lighting rules", () => {
-    const painted = structuredClone(fixtureProject);
-    painted.lightingProfiles = [
-      { id: "p", name: "P", mode: "static", perKey: { k1: "#ff0000" } },
-    ];
-    expect(jsonExportBlockers(painted).join(" ")).toContain("Per-key");
-
-    const ruled = structuredClone(fixtureProject);
-    ruled.lightingRules = [
-      {
-        id: "r",
-        targetKeyId: "k1",
-        color: "#ff0000",
-        trigger: { kind: "lock", lock: "capsLock" },
-      },
-    ];
-    expect(jsonExportBlockers(ruled).join(" ")).toContain("Lighting rules");
-  });
-
   it("allows JSON export for disabled or json-mode features", () => {
     const clean = structuredClone(fixtureProject);
     clean.macros = [

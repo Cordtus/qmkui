@@ -8,6 +8,7 @@ import { KeyLayerDetail, KeyLightingDetail, KeyRelation, SelectedKeyContext, bui
 import { KeycodeEntry, formatKeycap, keycodeCategories } from "../keycodes";
 import { rgbMatrixEffectsFor } from "../viaDefinition";
 import { layerTabs, layerTools, lightingPanel } from "./panels";
+import { deviceWriteControls } from "./snapshot";
 import { KEY_LABEL_INSET, KEY_LABEL_UNIT, colorSwatch, contextDisclosure, controlGroup, definitionRow, element, fieldControl, keycapLabel, layoutBounds, optionSelect, parameterBlock, settingsGroup, textInput, uiButton } from "./primitives";
 /** Board only, no side rail — used where the surrounding view owns the rail. */
 export function keyboardBoard(
@@ -42,6 +43,7 @@ export function keyboardBoard(
         ]),
         element("small", { text: `${layout.keys.length} keys` }),
       ]),
+      boardWriteControls(state, actions),
     ]),
   ]);
   return stage;
@@ -140,23 +142,72 @@ export function workspaceControls(
   layout: KeyboardDefinition["layouts"][number],
   actions: RenderActions,
 ): HTMLElement {
+  const tabs = element("div", {
+    className: "rail-tabs",
+    attrs: { "aria-label": "Keymap controls", role: "tablist" },
+  });
+  const entries: Array<[EditorState["keymapTab"], string]> = [
+    ["lighting", "Lighting"],
+    ["key", "Key"],
+    ["layer", "Layer"],
+  ];
+  entries.forEach(([id, label]) => {
+    const selected = state.keymapTab === id;
+    const tab = uiButton({
+      className: `rail-tab ${selected ? "active" : ""}`,
+      type: "button",
+      text: label,
+      attrs: {
+        "aria-selected": String(selected),
+        "data-keymap-tab": id,
+        role: "tab",
+      },
+    });
+    tab.addEventListener("click", () => actions.selectKeymapTab(id));
+    tabs.append(tab);
+  });
+
   return element("section", {
     className: "workspace-controls",
     attrs: { "data-workspace-controls": "true" },
   }, [
-    settingsGroup("lighting", "Lighting", [
-      lightingPanel(state, layout, actions),
-    ]),
-    settingsGroup("assignment", "Keycode", [
-      inspector(state, layout, actions),
-    ]),
-    settingsGroup("layers", "Layer", [
-      layerTools(state, actions),
-    ]),
-    settingsGroup("key", "Selected key", [
-      selectedKeyInfoPanel(state, layout),
-    ]),
+    tabs,
+    ...(state.keymapTab === "lighting"
+      ? [settingsGroup("lighting", "Lighting", [lightingPanel(state, layout, actions)])]
+      : state.keymapTab === "key"
+        ? [
+            settingsGroup("key", "Selected key", [
+              inspector(state, layout, actions),
+              selectedKeyInfoPanel(state, layout),
+            ]),
+          ]
+        : [settingsGroup("layer", "Layer", [layerTools(state, actions)])]),
   ]);
+}
+
+/** Writes live under the board so they are never buried in the rail. */
+function boardWriteControls(state: EditorState, actions: RenderActions): HTMLElement {
+  return deviceWriteControls(state, actions, {
+    description: `Writes the project keymap (${state.project.layers.length} layers) and the board RGB state. Per-key colours are firmware-only.`,
+    note: "Persisting lighting stores the current RGB state in the keyboard's EEPROM so it survives unplugging.",
+    controls: (confirmed) => {
+      const writeKeymap = uiButton({
+        className: "secondary-action",
+        type: "button",
+        text: "Write keymap",
+        attrs: { "data-write-keymap": "true" },
+      });
+      writeKeymap.addEventListener("click", () => actions.writeKeymapToDevice(confirmed()));
+      const writeLighting = uiButton({
+        className: "secondary-action",
+        type: "button",
+        text: "Write board lighting",
+        attrs: { "data-write-lighting": "true" },
+      });
+      writeLighting.addEventListener("click", () => actions.writeLightingToDevice(confirmed()));
+      return [writeKeymap, writeLighting];
+    },
+  });
 }
 
 export function macroEditor(state: EditorState, actions: RenderActions): HTMLElement {

@@ -6,6 +6,7 @@ import type {
 } from "./devices/browserKeyboardDiscovery";
 import type { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
 import type { GenericViaStandardState } from "./devices/genericViaReader";
+import { hexToHsv, hsv255ToHex } from "./color";
 import { createApp } from "./ui";
 
 afterEach(() => {
@@ -557,10 +558,14 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
 
-    expect(root.querySelectorAll("[data-key-info-panel]")).toHaveLength(1);
     expect(root.querySelectorAll('[data-settings-group="lighting"]')).toHaveLength(1);
     expect(root.querySelectorAll("[data-board-lighting]")).toHaveLength(1);
-    expect(root.querySelectorAll("[data-hardware-snapshot]")).toHaveLength(0);
+    expect(root.querySelectorAll("[data-key-info-panel]")).toHaveLength(0);
+
+    root.querySelector<HTMLElement>('[data-keymap-tab="key"]')?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-key-info-panel]")).toHaveLength(1);
+    expect(root.querySelectorAll('[data-settings-group="key"]')).toHaveLength(1);
 
     root.querySelector<HTMLElement>('[data-view="device"]')?.click();
     await flush();
@@ -587,6 +592,8 @@ function deferred<Value>() {
     const painted = root.querySelector<HTMLElement>("[data-key=v5_001]");
     expect(painted?.getAttribute("data-lighting-source")).toBe("override");
     expect(painted?.querySelector(".key-override-dot")).not.toBeNull();
+
+    expect(root.querySelector("[data-firmware-bundle]")).not.toBeNull();
 
     const trigger = root.querySelector<HTMLSelectElement>("[data-lighting-rule-trigger]")!;
     trigger.value = "lock:capsLock";
@@ -665,6 +672,50 @@ function deferred<Value>() {
       root.querySelectorAll('[data-key][data-lighting-color="#ff0000"]').length,
     ).toBe(0);
   });
+
+  it("writes the board colour, not the selected key's per-key colour", async () => {
+    const root = document.createElement("div");
+    const writeRgbMatrix = vi.fn(
+      async (_state: {
+        brightness: number;
+        effectSpeed: number;
+        hue: number;
+        saturation: number;
+        effect?: number;
+      }) => {},
+    );
+    const selection = recognizedSelection(async () => availableSnapshot());
+    (selection.session as { writeKeycode: unknown }).writeKeycode = vi.fn(async () => {});
+    (selection.session as { writeRgbMatrix: unknown }).writeRgbMatrix = writeRgbMatrix;
+
+    createApp(root, { discoverBrowserKeyboard: async () => selection });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    // Paint a key red, then write board lighting.
+    root.querySelector<HTMLElement>("[data-key=v5_000]")?.click();
+    await flush();
+    const hex = root.querySelector<HTMLInputElement>("[data-color-hex]")!;
+    hex.value = "#ff00ff";
+    hex.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
+    root.querySelector<HTMLElement>("[data-write-lighting]")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
+
+    expect(writeRgbMatrix).toHaveBeenCalledOnce();
+    const payload = writeRgbMatrix.mock.calls[0]![0];
+    // The write encodes the board's read colour (hue 12 / sat 34), not magenta.
+    const base = hexToHsv(hsv255ToHex(12, 34, 255));
+    expect(payload.hue).toBe(Math.round((base.h / 360) * 255));
+    expect(payload.saturation).toBe(Math.round(base.s * 255));
+  }, 20_000);
 
   it("shows a refused device write next to the write controls", async () => {
     const root = document.createElement("div");

@@ -36,10 +36,46 @@ describe("support bundle", () => {
 
   it("summarizes project identity without leaking local paths", () => {
     const bundle = JSON.parse(
-      buildSupportBundle({ project: fixtureProject, includeSensitiveMacroText: false }),
+      buildSupportBundle({
+        project: fixtureProject,
+        includeSensitiveMacroText: false,
+        device: { model: "Keychron V5 Max", firmware: "v1.0.0" },
+        validation: [
+          { code: "x", severity: "error", title: "Bad", path: "layers[0]" } as never,
+        ],
+        environment: { webhid: true, mode: "production" },
+      }),
     );
-    expect(bundle.project.qmkKeyboard).toBe("example/keyboard");
+    expect(bundle.project.target.qmkKeyboard).toBe("example/keyboard");
+    expect(bundle.keymap.layers).toHaveLength(fixtureProject.layers.length);
+    expect(bundle.lighting.perKey).toEqual({});
+    expect(bundle.device.model).toBe("Keychron V5 Max");
+    expect(bundle.validation.errors).toBe(1);
+    expect(bundle.app.webhid).toBe(true);
     expect(JSON.stringify(bundle)).not.toMatch(/home\/|\/home\//);
     expect(bundle.doctor).toBeNull();
+  });
+
+  it("includes lighting rules and keymap assignments", () => {
+    const project = structuredClone(fixtureProject);
+    project.lightingProfiles = [
+      { id: "p", name: "Default", mode: "static", perKey: { k: "#ff0000" } },
+    ];
+    project.lightingRules = [
+      {
+        id: "r",
+        targetKeyId: "k",
+        color: "#00ff00",
+        trigger: { kind: "lock", lock: "capsLock" },
+      },
+    ];
+    const bundle = JSON.parse(
+      buildSupportBundle({ project, includeSensitiveMacroText: false }),
+    );
+    expect(bundle.lighting.perKey.k).toBe("#ff0000");
+    expect(bundle.lighting.rules[0].trigger.lock).toBe("capsLock");
+    expect(bundle.keymap.layers[0].assignments).toHaveLength(
+      fixtureProject.layers[0].assignments.length,
+    );
   });
 });
