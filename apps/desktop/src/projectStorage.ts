@@ -1,4 +1,5 @@
-import { SUPPORTED_PROJECT_SCHEMA_VERSION, type Project } from "./domain";
+import { normalizeHex } from "./color";
+import { MAX_QMK_LAYER_INDEX, SUPPORTED_PROJECT_SCHEMA_VERSION, type Project } from "./domain";
 
 export type ProjectSummary = {
   id: string;
@@ -202,7 +203,9 @@ function isLightingRule(value: unknown): boolean {
     !isRecord(value) ||
     typeof value.id !== "string" ||
     typeof value.targetKeyId !== "string" ||
+    !value.targetKeyId ||
     typeof value.color !== "string" ||
+    normalizeHex(value.color) === null ||
     (value.enabled !== undefined && typeof value.enabled !== "boolean") ||
     !isRecord(value.trigger)
   ) {
@@ -213,10 +216,16 @@ function isLightingRule(value: unknown): boolean {
     return trigger.lock === "capsLock" || trigger.lock === "numLock" || trigger.lock === "scrollLock";
   }
   if (trigger.kind === "layer") {
-    return Number.isInteger(trigger.layerIndex);
+    const layerIndex = trigger.layerIndex;
+    return (
+      typeof layerIndex === "number" &&
+      Number.isInteger(layerIndex) &&
+      layerIndex >= 0 &&
+      layerIndex <= MAX_QMK_LAYER_INDEX
+    );
   }
   if (trigger.kind === "held") {
-    return typeof trigger.keyId === "string";
+    return typeof trigger.keyId === "string" && trigger.keyId.length > 0;
   }
   return false;
 }

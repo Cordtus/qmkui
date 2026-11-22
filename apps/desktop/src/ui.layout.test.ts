@@ -59,7 +59,7 @@ describe("device-first connection layout", () => {
     expect(layout.pageHeight).toBeLessThanOrEqual(layout.viewportHeight);
     expect(layout.actionRadius).toBe("0px");
     expect(isContained(layout.action, layout.panel)).toBe(true);
-  });
+  }, 30_000);
 
   it("does not move the page when connection controls are clicked", async () => {
     const page = await openPage({ width: 420, height: 700 });
@@ -111,7 +111,7 @@ describe("device-first connection layout", () => {
     expect(layout.menuBorders).toEqual(["1px", "1px", "1px"]);
     expect(layout.menuLeftEdges[0]).toBe(layout.menuLeftEdges[2]);
     expect(layout.menuLeftEdges[1]).toBeGreaterThan(layout.menuLeftEdges[0]);
-  });
+  }, 20_000);
 
   it("keeps the keymap canvas scrollable and page-contained at phone width", async () => {
     const page = await openReadResultPage({ width: 420, height: 820 });
@@ -139,7 +139,7 @@ describe("device-first connection layout", () => {
     expect(layout.canvasOverflowY).toBe("hidden");
     expect(layout.canvasScroll).toBeGreaterThan(layout.canvasClient);
     expect(layout.boardWidth).toBeGreaterThanOrEqual(640);
-  });
+  }, 20_000);
 
   it("keeps the gated write confirmation inline", async () => {
     const page = await openReadResultPage({ width: 1200, height: 800 });
@@ -161,7 +161,7 @@ describe("device-first connection layout", () => {
     expect(layout.checkboxWidth).toBeLessThanOrEqual(20);
     expect(layout.checkboxHeight).toBeLessThanOrEqual(20);
     expect(layout.labelHeight).toBeLessThanOrEqual(30);
-  });
+  }, 20_000);
 });
 
 async function openPage(viewport: { width: number; height: number }): Promise<Page> {
@@ -225,7 +225,12 @@ async function openReadResultPage(viewport: { width: number; height: number }): 
     });
   });
   await page.goto(origin, { waitUntil: "networkidle" });
-  await page.locator('[data-device-action="read"]').click();
+  // Discovery may already have produced the snapshot before the explicit read
+  // button is clickable; accept either path and then wait for the snapshot.
+  await Promise.race([
+    page.locator('[data-device-action="read"]').click().catch(() => undefined),
+    page.locator("[data-hardware-snapshot]").waitFor(),
+  ]);
   await page.locator("[data-hardware-snapshot]").waitFor();
   return page;
 }

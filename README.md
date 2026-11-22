@@ -51,8 +51,9 @@ used in the project.
 
 Colours read back from the board are mirrored per key, and **Resync** re-reads
 the board's lighting without re-reading the keymap. VIA exposes global
-RGB-matrix state only, so colours you assign in the project are stored in the
-project (and exported with it).
+RGB-matrix state only, so per-key colours live in the project and travel with
+the generated C, not the QMK JSON export (a project with per-key colours or
+rules deliberately blocks JSON export).
 
 **Key rules** add stateful lighting: Caps/Num/Scroll Lock indicators, “while
 layer N is active”, and “while key X is held”. **Download rules C** generates a

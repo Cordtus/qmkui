@@ -424,6 +424,21 @@ export function createActions(
             actions.render();
           },
           addLightingRule: (trigger) => {
+            const layout = selectedLayout(state.keyboard, state.project);
+            const target = layout.keys.find((key) => key.id === state.selectedKeyId);
+            if (!target?.matrix) {
+              state.projectStatus = "This key has no LED position; pick another key.";
+              actions.render();
+              return;
+            }
+            if (trigger.kind === "held") {
+              const source = layout.keys.find((key) => key.id === trigger.keyId);
+              if (!source?.matrix) {
+                state.projectStatus = "The held key has no matrix position; pick another key.";
+                actions.render();
+                return;
+              }
+            }
             const profile = activeLightingProfile(state.project);
             const color =
               lightingForKey(
@@ -437,21 +452,47 @@ export function createActions(
               color,
               trigger,
             };
-            state.project.lightingRules = [...(state.project.lightingRules ?? []), rule];
+            const before = structuredClone(state.project.lightingRules ?? []);
+            state.project.lightingRules = [...before, rule];
+            state.commandHistory.push({
+              kind: "lighting-rules",
+              before,
+              after: structuredClone(state.project.lightingRules),
+            });
             actions.render();
           },
           removeLightingRule: (ruleId) => {
-            state.project.lightingRules = (state.project.lightingRules ?? []).filter(
-              (rule) => rule.id !== ruleId,
-            );
+            const before = structuredClone(state.project.lightingRules ?? []);
+            const after = before.filter((rule) => rule.id !== ruleId);
+            if (after.length === before.length) {
+              return;
+            }
+            state.project.lightingRules = after;
+            state.commandHistory.push({
+              kind: "lighting-rules",
+              before,
+              after: structuredClone(after),
+            });
             actions.render();
           },
           downloadLightingRules: () => {
-            downloadText(
-              generateLightingRulesC(state.project, state.keyboard),
-              lightingRulesCFileName(state.project),
-              "text/x-c",
+            const issues = validateProject(state.project, state.keyboard);
+            if (issues.some((issue) => issue.severity === "error")) {
+              state.projectStatus = "Fix keymap and lighting rule errors before exporting rules C.";
+              actions.render();
+              return;
+            }
+            const code = generateLightingRulesC(
+              state.project,
+              state.keyboard,
+              activeLightingProfile(state.project),
             );
+            if (!code) {
+              state.projectStatus = "The project layout does not match the selected keyboard.";
+              actions.render();
+              return;
+            }
+            downloadText(code, lightingRulesCFileName(state.project), "text/x-c");
             state.projectStatus = "Lighting rules C downloaded; add it to the keymap and build with QMK.";
             actions.render();
           },
@@ -771,6 +812,7 @@ export function createActions(
             state.selectedKeyIds = state.selectedKeyId ? [state.selectedKeyId] : [];
             state.commandHistory.clear();
             state.catalogSearch = "";
+            state.lightingPaint = false;
             state.projectJsonDraft = JSON.stringify(state.project, null, 2);
             state.projectStatus = `Created ${state.project.name} from catalog.`;
             state.activeView = "keymap";
@@ -1606,6 +1648,11 @@ function applyCommand(state: EditorState, command: Command, direction: "forward"
     }
     case "layers":
       state.project.layers = structuredClone(
+        direction === "forward" ? command.after : command.before,
+      );
+      break;
+    case "lighting-rules":
+      state.project.lightingRules = structuredClone(
         direction === "forward" ? command.after : command.before,
       );
       break;

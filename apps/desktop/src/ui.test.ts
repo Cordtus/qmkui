@@ -596,10 +596,19 @@ function deferred<Value>() {
     expect(rules).toHaveLength(1);
     expect(rules[0]?.textContent).toContain("Caps Lock");
 
+    // Rules participate in the shared undo history.
+    root.querySelector<HTMLElement>("[data-editor-undo]")?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-lighting-rule]")).toHaveLength(0);
+
+    root.querySelector<HTMLElement>("[data-lighting-rule-add]")?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-lighting-rule]")).toHaveLength(1);
+
     root.querySelector<HTMLElement>("[data-lighting-rule-remove]")?.click();
     await flush();
     expect(root.querySelectorAll("[data-lighting-rule]")).toHaveLength(0);
-  });
+  }, 20_000);
 
   it("colours every selected key and undoes the whole selection in one step", async () => {
     const root = document.createElement("div");

@@ -11,6 +11,7 @@ import { ProjectSummary } from "../projectStorage";
 import { colorPicker, contextDisclosure, controlGroup, definitionList, element, fieldControl, optionSelect, rangeInput, uiButton } from "./primitives";
 import { keyLightingDetails, macroEditor, previewLightingColor } from "./workspace";
 import { resolveRgbMatrixEffect, rgbMatrixEffectsFor, viaDefinitionFor, type ViaRgbMatrixEffect } from "../viaDefinition";
+import { lockLabel } from "../lightingRules";
 
 export type BuildActions = {
   runLocalBuild: () => void;
@@ -311,6 +312,7 @@ export function lightingPanel(
   });
   selectAll.addEventListener("click", actions.selectAllKeys);
 
+  const canPaint = Boolean(selectedLighting.color);
   const paint = uiButton({
     className: `secondary-action ${state.lightingPaint ? "active" : ""}`,
     text: state.lightingPaint ? "Painting" : "Paint keys",
@@ -318,7 +320,8 @@ export function lightingPanel(
     attrs: {
       "aria-pressed": String(state.lightingPaint),
       "data-lighting-paint": "true",
-      title: "Click keys to apply the current colour",
+      title: canPaint ? "Click keys to apply the current colour" : "Pick a colour first",
+      ...(canPaint ? {} : { disabled: "" }),
     },
   });
   paint.addEventListener("click", actions.toggleLightingPaint);
@@ -360,9 +363,9 @@ export function lightingPanel(
       ]),
     ]),
     controlGroup("lighting-mode", "Map lighting", [modeButtons]),
-    controlGroup("lighting-rules", "Key rules", [
-      lightingRulesPanel(state, layout, actions),
-    ]),
+    ...(supportedSystems.some((system) => system.id === "rgbMatrix")
+      ? [controlGroup("lighting-rules", "Key rules", [lightingRulesPanel(state, layout, actions)])]
+      : []),
     controlGroup("lighting-write", "Write settings", [
       supportedSystems.some((system) => system.id === "rgbMatrix")
         ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard), base)
@@ -380,7 +383,10 @@ function swatchRow(
   actions: RenderActions,
 ): HTMLElement {
   const colors = [...new Set(Object.values(profile.perKey))].slice(0, 10);
-  const row = element("div", { className: "swatch-row", attrs: { "data-lighting-swatches": "true" } });
+  const row = element("div", {
+    className: "swatch-row",
+    attrs: { "data-lighting-recent-swatches": "true" },
+  });
   colors.forEach((color) => {
     const swatch = element("button", {
       className: "swatch",
@@ -398,7 +404,7 @@ function swatchRow(
  * Firmware-side rules. These are stored in the project and exported as QMK C;
  * the app does not write them over VIA. The target is always the selected key.
  */
-export function lightingRulesPanel(
+function lightingRulesPanel(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
   actions: RenderActions,
@@ -505,7 +511,7 @@ export function lightingRulesPanel(
 
 function ruleTriggerLabel(trigger: LightingRuleTrigger, layout: KeyboardDefinition["layouts"][number]): string {
   if (trigger.kind === "lock") {
-    return { capsLock: "Caps Lock", numLock: "Num Lock", scrollLock: "Scroll Lock" }[trigger.lock];
+    return lockLabel(trigger.lock);
   }
   if (trigger.kind === "layer") {
     return `Layer ${trigger.layerIndex}`;

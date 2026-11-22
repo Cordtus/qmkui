@@ -1,4 +1,5 @@
 import { parseAdvancedAssignment } from "./advancedAssignments";
+import { normalizeHex } from "./color";
 
 export type Project = {
   schemaVersion: string;
@@ -67,6 +68,12 @@ export function jsonExportBlockers(project: Project): string[] {
     if (requiringC.length > 0) {
       blockers.push(`${label} require generated C and cannot be exported as QMK JSON.`);
     }
+  }
+  if (Object.keys(project.lightingProfiles?.[0]?.perKey ?? {}).length > 0) {
+    blockers.push("Per-key lighting colours require generated C and cannot be exported as QMK JSON.");
+  }
+  if ((project.lightingRules ?? []).some((rule) => rule.enabled !== false)) {
+    blockers.push("Lighting rules require generated C and cannot be exported as QMK JSON.");
   }
   return blockers;
 }
@@ -205,7 +212,8 @@ export type UiIssue = {
 
 export const SUPPORTED_PROJECT_SCHEMA_VERSION = "0.1.0";
 const supportedSchemaVersions = new Set([SUPPORTED_PROJECT_SCHEMA_VERSION]);
-const maxQmkLayerIndex = 31;
+export const MAX_QMK_LAYER_INDEX = 31;
+const maxQmkLayerIndex = MAX_QMK_LAYER_INDEX;
 
 export function validateProject(project: Project, keyboard: KeyboardDefinition): UiIssue[] {
   const layout = keyboard.layouts.find((item) => item.id === project.target.layoutId);
@@ -469,6 +477,49 @@ export function validateProject(project: Project, keyboard: KeyboardDefinition):
         });
       }
     });
+  });
+
+  const keyById = new Map(layout.keys.map((key) => [key.id, key]));
+  (project.lightingRules ?? []).forEach((rule, ruleIndex) => {
+    const target = keyById.get(rule.targetKeyId);
+    if (!target || !target.matrix) {
+      issues.push({
+        code: "lightingRule.target.missing",
+        severity: "error",
+        title: "Lighting rule targets a key without an LED position",
+        path: `lightingRules[${ruleIndex}].targetKeyId`,
+      });
+    }
+    if (!normalizeHex(rule.color)) {
+      issues.push({
+        code: "lightingRule.color.invalid",
+        severity: "error",
+        title: "Lighting rule colour is not a hex value",
+        path: `lightingRules[${ruleIndex}].color`,
+      });
+    }
+    if (rule.trigger.kind === "layer") {
+      const index = rule.trigger.layerIndex;
+      if (!Number.isInteger(index) || index < 0 || index > maxQmkLayerIndex) {
+        issues.push({
+          code: "lightingRule.layer.range",
+          severity: "error",
+          title: "Lighting rule layer exceeds QMK limit",
+          path: `lightingRules[${ruleIndex}].trigger.layerIndex`,
+        });
+      }
+    }
+    if (rule.trigger.kind === "held") {
+      const source = keyById.get(rule.trigger.keyId);
+      if (!source || !source.matrix) {
+        issues.push({
+          code: "lightingRule.source.missing",
+          severity: "error",
+          title: "Lighting rule trigger key has no matrix position",
+          path: `lightingRules[${ruleIndex}].trigger.keyId`,
+        });
+      }
+    }
   });
 
   return issues;

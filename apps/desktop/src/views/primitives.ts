@@ -118,9 +118,11 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
     className: "color-wheel",
     attrs: {
       "aria-label": `${options.label} hue and saturation`,
+      "aria-valuemax": "360",
+      "aria-valuemin": "0",
+      "aria-valuenow": String(Math.round(hexToHsv(options.value).h)),
       "aria-valuetext": options.value,
-      "data-color-hue": "true",
-      "data-color-pad": "true",
+      "data-focus-id": `${options.focusId}-wheel`,
       role: "slider",
       tabindex: "0",
     },
@@ -155,6 +157,7 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
     preview.style.background = hex;
     value.value = String(Math.round(hsv.v * 100));
     wheel.setAttribute("aria-valuetext", hex);
+    wheel.setAttribute("aria-valuenow", String(Math.round(hsv.h)));
     if (document.activeElement !== hexInput) {
       hexInput.value = hex;
     }
@@ -169,13 +172,7 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
     }
     const dx = event.clientX - (rect.left + rect.width / 2);
     const dy = event.clientY - (rect.top + rect.height / 2);
-    const distance = Math.min(1, Math.hypot(dx, dy) / (rect.width / 2));
-    const degrees = (Math.atan2(dx, -dy) * 180) / Math.PI;
-    hsv = {
-      ...hsv,
-      h: (degrees + 360) % 360,
-      s: distance,
-    };
+    hsv = { ...hsv, ...hsvFromWheelPoint(dx, dy, rect.width / 2) };
     emitPreview();
   };
   let dragging = false;
@@ -238,7 +235,7 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
     wheel,
     element("div", { className: "color-picker-controls" }, [
       element("label", { className: "color-picker-brightness" }, [
-        element("span", { text: "Brightness" }),
+        element("span", { text: "Value" }),
         value,
       ]),
       element("div", { className: "color-picker-readout" }, [preview, hexInput]),
@@ -248,6 +245,23 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+/**
+ * Pointer offset from the wheel centre → hue (0 = up, clockwise) and
+ * saturation (centre 0, rim 1). Pure so the geometry has a unit test.
+ */
+export function hsvFromWheelPoint(
+  dx: number,
+  dy: number,
+  radius: number,
+): { h: number; s: number } {
+  const distance = radius > 0 ? Math.min(1, Math.hypot(dx, dy) / radius) : 0;
+  if (distance === 0) {
+    return { h: 0, s: 0 };
+  }
+  const degrees = (Math.atan2(dx, -dy) * 180) / Math.PI;
+  return { h: (degrees + 360) % 360, s: distance };
 }
 
 export function contextDisclosure(

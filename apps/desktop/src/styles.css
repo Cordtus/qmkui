@@ -1035,31 +1035,6 @@ input[type="checkbox"] {
   min-width: 0;
 }
 
-.lighting-readouts {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.lighting-readouts div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.lighting-readouts dt {
-  color: var(--text-dim);
-}
-
-.lighting-readouts dd {
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 0.76rem;
-  text-align: right;
-  overflow-wrap: anywhere;
-}
-
 /* --------------------------------------------------------- colour picker */
 
 .color-picker {
