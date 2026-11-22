@@ -5,6 +5,7 @@ import { MacroRecord } from "../macros";
 import { illuminationBase } from "../illumination";
 import { dimHex, inkFor } from "../color";
 import { KeyLayerDetail, KeyLightingDetail, KeyRelation, SelectedKeyContext, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
+import { icon } from "../icons";
 import { KeycodeEntry, formatKeycap, keycodeCategories } from "../keycodes";
 import { rgbMatrixEffectsFor } from "../viaDefinition";
 import { layerTabs, layerTools, lightingPanel } from "./panels";
@@ -249,25 +250,33 @@ export function macroEditor(state: EditorState, actions: RenderActions): HTMLEle
 }
 
 export function historyControls(state: EditorState, actions: RenderActions): HTMLElement {
-  const undo = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: "Undo",
-    attrs: {
-      "data-editor-undo": "true",
-      ...(state.commandHistory.canUndo() ? {} : { disabled: "" }),
+  const undo = uiButton(
+    {
+      className: "icon-action",
+      type: "button",
+      attrs: {
+        "aria-label": "Undo",
+        "data-editor-undo": "true",
+        title: "Undo",
+        ...(state.commandHistory.canUndo() ? {} : { disabled: "" }),
+      },
     },
-  });
+    [icon("arrow-u-up-left", { size: 17 })],
+  );
   undo.addEventListener("click", actions.undo);
-  const redo = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: "Redo",
-    attrs: {
-      "data-editor-redo": "true",
-      ...(state.commandHistory.canRedo() ? {} : { disabled: "" }),
+  const redo = uiButton(
+    {
+      className: "icon-action",
+      type: "button",
+      attrs: {
+        "aria-label": "Redo",
+        "data-editor-redo": "true",
+        title: "Redo",
+        ...(state.commandHistory.canRedo() ? {} : { disabled: "" }),
+      },
     },
-  });
+    [icon("arrow-u-up-right", { size: 17 })],
+  );
   redo.addEventListener("click", actions.redo);
   return element("div", { className: "history-controls" }, [undo, redo]);
 }
