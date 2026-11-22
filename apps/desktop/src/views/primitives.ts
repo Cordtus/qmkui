@@ -103,32 +103,34 @@ export type ColorPickerOptions = {
 };
 
 /**
- * Inline HSV picker: a saturation/brightness pad, a hue slider, and a hex
- * field. Dragging only calls `onPreview` so the element survives the gesture
- * (a re-render would drop pointer capture); the final value is committed once
- * the gesture ends.
+ * Per-key colour wheel: hue around the rim, saturation from the centre out,
+ * brightness on a slider, and a hex field. Dragging only calls `onPreview` so
+ * the element survives the gesture; the final value is committed once the
+ * gesture ends.
  */
 export function colorPicker(options: ColorPickerOptions): HTMLElement {
   let hsv = hexToHsv(options.value);
 
   const preview = element("span", { className: "color-picker-preview" });
-  const cursor = element("span", { className: "color-picker-cursor" });
-  const pad = element("div", {
-    className: "color-picker-pad",
+  const shade = element("span", { className: "color-wheel-shade", attrs: { "aria-hidden": "true" } });
+  const cursor = element("span", { className: "color-wheel-cursor" });
+  const wheel = element("div", {
+    className: "color-wheel",
     attrs: {
-      "aria-label": `${options.label} saturation and brightness`,
-      "aria-valuemax": "100",
-      "aria-valuemin": "0",
+      "aria-label": `${options.label} hue and saturation`,
+      "aria-valuetext": options.value,
+      "data-color-hue": "true",
       "data-color-pad": "true",
       role: "slider",
       tabindex: "0",
     },
-  }, [cursor]);
-  const hue = element("input", {
+  }, [element("span", { className: "color-wheel-disc", attrs: { "aria-hidden": "true" } }), shade, cursor]);
+
+  const value = element("input", {
     attrs: {
-      "aria-label": `${options.label} hue`,
-      "data-color-hue": "true",
-      max: "360",
+      "aria-label": `${options.label} brightness`,
+      "data-color-value": "true",
+      max: "100",
       min: "0",
       type: "range",
     },
@@ -145,12 +147,14 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
 
   const paint = (): string => {
     const hex = hsvToHex(hsv.h, hsv.s, hsv.v);
-    pad.style.background = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hsv.h} 100% 50%))`;
-    cursor.style.left = `${hsv.s * 100}%`;
-    cursor.style.top = `${(1 - hsv.v) * 100}%`;
+    const radians = (hsv.h * Math.PI) / 180;
+    const radius = hsv.s * 50;
+    cursor.style.left = `${50 + radius * Math.sin(radians)}%`;
+    cursor.style.top = `${50 - radius * Math.cos(radians)}%`;
+    shade.style.opacity = String(1 - hsv.v);
     preview.style.background = hex;
-    pad.setAttribute("aria-valuetext", hex);
-    hue.value = String(Math.round(hsv.h));
+    value.value = String(Math.round(hsv.v * 100));
+    wheel.setAttribute("aria-valuetext", hex);
     if (document.activeElement !== hexInput) {
       hexInput.value = hex;
     }
@@ -159,24 +163,28 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
   const emitPreview = () => options.onPreview(paint());
 
   const setFromPointer = (event: PointerEvent) => {
-    const rect = pad.getBoundingClientRect();
+    const rect = wheel.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) {
       return;
     }
+    const dx = event.clientX - (rect.left + rect.width / 2);
+    const dy = event.clientY - (rect.top + rect.height / 2);
+    const distance = Math.min(1, Math.hypot(dx, dy) / (rect.width / 2));
+    const degrees = (Math.atan2(dx, -dy) * 180) / Math.PI;
     hsv = {
       ...hsv,
-      s: clamp01((event.clientX - rect.left) / rect.width),
-      v: 1 - clamp01((event.clientY - rect.top) / rect.height),
+      h: (degrees + 360) % 360,
+      s: distance,
     };
     emitPreview();
   };
   let dragging = false;
-  pad.addEventListener("pointerdown", (event) => {
+  wheel.addEventListener("pointerdown", (event) => {
     dragging = true;
-    pad.setPointerCapture(event.pointerId);
+    wheel.setPointerCapture(event.pointerId);
     setFromPointer(event);
   });
-  pad.addEventListener("pointermove", (event) => {
+  wheel.addEventListener("pointermove", (event) => {
     if (dragging) {
       setFromPointer(event);
     }
@@ -186,25 +194,19 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
       return;
     }
     dragging = false;
-    if (pad.hasPointerCapture(event.pointerId)) {
-      pad.releasePointerCapture(event.pointerId);
+    if (wheel.hasPointerCapture(event.pointerId)) {
+      wheel.releasePointerCapture(event.pointerId);
     }
-    // Commit on cancel too: the preview has already updated the board, so
-    // reverting would silently discard the colour the operator just dragged to.
+    // Commit on cancel too: the preview has already updated the board.
     options.onCommit(paint());
   };
-  pad.addEventListener("pointerup", endDrag);
-  pad.addEventListener("pointercancel", endDrag);
-  pad.addEventListener("keydown", (event) => {
-    const step = event.shiftKey ? 0.1 : 0.02;
-    if (event.key === "ArrowLeft") {
-      hsv = { ...hsv, s: clamp01(hsv.s - step) };
-    } else if (event.key === "ArrowRight") {
-      hsv = { ...hsv, s: clamp01(hsv.s + step) };
-    } else if (event.key === "ArrowUp") {
-      hsv = { ...hsv, v: clamp01(hsv.v + step) };
-    } else if (event.key === "ArrowDown") {
-      hsv = { ...hsv, v: clamp01(hsv.v - step) };
+  wheel.addEventListener("pointerup", endDrag);
+  wheel.addEventListener("pointercancel", endDrag);
+  wheel.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      hsv = { ...hsv, h: (hsv.h + (event.key === "ArrowRight" ? 5 : -5) + 360) % 360 };
+    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      hsv = { ...hsv, s: clamp01(hsv.s + (event.key === "ArrowUp" ? 0.05 : -0.05)) };
     } else {
       return;
     }
@@ -212,11 +214,11 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
     options.onCommit(paint());
   });
 
-  hue.addEventListener("input", () => {
-    hsv = { ...hsv, h: Number(hue.value) };
+  value.addEventListener("input", () => {
+    hsv = { ...hsv, v: Number(value.value) / 100 };
     emitPreview();
   });
-  hue.addEventListener("change", () => options.onCommit(paint()));
+  value.addEventListener("change", () => options.onCommit(paint()));
 
   hexInput.addEventListener("input", () => {
     const normalized = normalizeHex(hexInput.value);
@@ -233,9 +235,12 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
   paint();
 
   return element("div", { className: "color-picker", attrs: { "data-color-picker": "true" } }, [
-    pad,
+    wheel,
     element("div", { className: "color-picker-controls" }, [
-      hue,
+      element("label", { className: "color-picker-brightness" }, [
+        element("span", { text: "Brightness" }),
+        value,
+      ]),
       element("div", { className: "color-picker-readout" }, [preview, hexInput]),
     ]),
   ]);

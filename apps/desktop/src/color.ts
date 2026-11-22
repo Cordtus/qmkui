@@ -70,6 +70,13 @@ export function hsvToHex(h: number, s: number, v: number): string {
     .join("")}`;
 }
 
+/** Convert `#rrggbb` (or `rrggbb`) into 0-255 channels; invalid input is grey. */
+export function hexToRgb(input: string): { r: number; g: number; b: number } {
+  const hex = normalizeHex(input) ?? "#808080";
+  const value = Number.parseInt(hex.slice(1), 16);
+  return { r: (value >> 16) & 0xff, g: (value >> 8) & 0xff, b: value & 0xff };
+}
+
 /** Convert the 0-255 hue/saturation/value triple the VIA protocol reports. */
 export function hsv255ToHex(hue: number, saturation: number, value: number): string {
   return hsvToHex((hue / 255) * 360, saturation / 255, value / 255);

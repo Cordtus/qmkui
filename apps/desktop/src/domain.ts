@@ -22,6 +22,22 @@ export type Project = {
   tapDances?: FeatureRecord[];
   encoders?: FeatureRecord[];
   lightingProfiles?: LightingProfile[];
+  /** Firmware-side per-key rules exported as QMK C (not a VIA write). */
+  lightingRules?: LightingRule[];
+};
+
+export type LightingRuleTrigger =
+  | { kind: "lock"; lock: "capsLock" | "numLock" | "scrollLock" }
+  | { kind: "layer"; layerIndex: number }
+  | { kind: "held"; keyId: string };
+
+export type LightingRule = {
+  id: string;
+  /** Physical key whose LED is recoloured. */
+  targetKeyId: string;
+  color: string;
+  trigger: LightingRuleTrigger;
+  enabled?: boolean;
 };
 
 export type FeatureRecord = {

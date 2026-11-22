@@ -188,6 +188,37 @@ function assertProjectPayload(value: unknown): asserts value is Project {
   ) {
     throw new Error("Project JSON has invalid lightingProfiles");
   }
+
+  if (
+    value.lightingRules !== undefined &&
+    (!Array.isArray(value.lightingRules) || !value.lightingRules.every(isLightingRule))
+  ) {
+    throw new Error("Project JSON has invalid lightingRules");
+  }
+}
+
+function isLightingRule(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.targetKeyId !== "string" ||
+    typeof value.color !== "string" ||
+    (value.enabled !== undefined && typeof value.enabled !== "boolean") ||
+    !isRecord(value.trigger)
+  ) {
+    return false;
+  }
+  const trigger = value.trigger;
+  if (trigger.kind === "lock") {
+    return trigger.lock === "capsLock" || trigger.lock === "numLock" || trigger.lock === "scrollLock";
+  }
+  if (trigger.kind === "layer") {
+    return Number.isInteger(trigger.layerIndex);
+  }
+  if (trigger.kind === "held") {
+    return typeof trigger.keyId === "string";
+  }
+  return false;
 }
 
 function assertOptionalFeatureRecords(value: unknown, field: string): void {

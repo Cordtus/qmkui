@@ -42,19 +42,23 @@ they never receive Keychron vendor frames.
 
 ## Key map and backlighting
 
-The key map mirrors the connected board's current lighting: each key is tinted
-with the colour the firmware reports, and the board header shows the readable
-state — source, effect, brightness, speed — plus a **Resync** action that
-re-reads lighting only (no keymap re-read). Lighting also resyncs when you open
-the Keymap view.
+The key map is the lighting canvas. Click a key (Shift/Ctrl/⌘-click for more,
+or **All keys**), then use the colour wheel in **Lighting → Key colour**: hue
+around the rim, saturation from the centre, brightness on the slider, plus a
+hex field. **Paint keys** turns clicks into a brush so you can colour key after
+key, **Clear** removes overrides, and the swatch row re-applies colours already
+used in the project.
 
-VIA exposes **global** RGB-matrix colour, not a per-LED map, and the V5 Max
-answers the vendor `0xA8` RGB request with `id_unhandled`. So:
+Colours read back from the board are mirrored per key, and **Resync** re-reads
+the board's lighting without re-reading the keymap. VIA exposes global
+RGB-matrix state only, so colours you assign in the project are stored in the
+project (and exported with it).
 
-- solid-colour effects are shown exactly as read;
-- multi-colour effects generate their palette on the board, and the UI says so
-  rather than inventing per-key colours;
-- a draft colour override is marked with a dot on the key it applies to.
+**Key rules** add stateful lighting: Caps/Num/Scroll Lock indicators, “while
+layer N is active”, and “while key X is held”. **Download rules C** generates a
+`rgb_matrix_indicators_advanced_user()` overlay containing your per-key colours
+and every rule. Paste it into the keymap, then build and flash with your own QMK
+toolchain — QMKUI does not build or flash firmware.
 
 There is no flash or bootloader path.
 

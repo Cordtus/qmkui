@@ -1,14 +1,14 @@
 import { EditorState, RenderActions, activeLightingProfile, bundledKeyboards, currentLayer, selectedLayout } from "../appState";
 import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
-import { CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, UiIssue, validateProject } from "../domain";
+import { CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, LightingRuleTrigger, UiIssue, validateProject } from "../domain";
 import { illuminationBase, type IlluminationBase } from "../illumination";
 import { buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { HostKeyCapture } from "../keyTester";
 import { canDeleteLayer, scanLayerReferences } from "../layerActions";
 import { lightingSystemsForKeyboard, supportedLightingSystems } from "../lightingCapabilities";
 import { ProjectSummary } from "../projectStorage";
-import { colorPicker, contextDisclosure, controlGroup, definitionList, definitionRow, element, fieldControl, optionSelect, rangeInput, uiButton } from "./primitives";
+import { colorPicker, contextDisclosure, controlGroup, definitionList, element, fieldControl, optionSelect, rangeInput, uiButton } from "./primitives";
 import { keyLightingDetails, macroEditor, previewLightingColor } from "./workspace";
 import { resolveRgbMatrixEffect, rgbMatrixEffectsFor, viaDefinitionFor, type ViaRgbMatrixEffect } from "../viaDefinition";
 
@@ -311,54 +311,207 @@ export function lightingPanel(
   });
   selectAll.addEventListener("click", actions.selectAllKeys);
 
+  const paint = uiButton({
+    className: `secondary-action ${state.lightingPaint ? "active" : ""}`,
+    text: state.lightingPaint ? "Painting" : "Paint keys",
+    type: "button",
+    attrs: {
+      "aria-pressed": String(state.lightingPaint),
+      "data-lighting-paint": "true",
+      title: "Click keys to apply the current colour",
+    },
+  });
+  paint.addEventListener("click", actions.toggleLightingPaint);
+
+  const clear = uiButton({
+    className: "secondary-action",
+    text: "Clear",
+    type: "button",
+    attrs: {
+      "data-lighting-clear": "true",
+      title: "Remove the colour override from the selected keys",
+    },
+  });
+  clear.addEventListener("click", actions.clearSelectedLighting);
+
+  const swatches = swatchRow(profile, actions);
+
   return element("section", {
     className: "lighting-panel",
     attrs: { "data-context-section": "lighting" },
   }, [
     controlGroup("selected-key-lighting", "Key colour", [
-      fieldControl("Colour", picker),
+      picker,
       element("div", { className: "selection-row" }, [
         element("span", {
           className: "selection-count",
-          text: `${selectedCount} of ${layout.keys.length} keys selected`,
+          text: `${selectedCount} of ${layout.keys.length} keys`,
           attrs: { "data-lighting-selection-count": "true" },
         }),
-        selectAll,
+        element("div", { className: "selection-actions" }, [paint, selectAll, clear]),
       ]),
-      element("dl", { className: "lighting-readouts" }, [
-        element("div", {}, [
-          element("dt", { text: "Configured" }),
-          element("dd", {
-            text: selectedLighting.color || "Not set",
-            attrs: { "data-lighting-color-readout": "true" },
-          }),
-        ]),
-        definitionRow(
-          "Draft overrides",
-          String(Object.keys(profile.perKey).length),
-        ),
+      swatches,
+      element("div", { className: "color-readout" }, [
+        element("span", { text: "Hex" }),
+        element("code", {
+          text: selectedLighting.color || "unset",
+          attrs: { "data-lighting-color-readout": "true" },
+        }),
       ]),
-      element("p", {
-        className: "hint",
-        text: "Click a key to target it; Shift or Ctrl-click to add or remove.",
-      }),
     ]),
-    controlGroup("lighting-mode", "Map lighting", [
-      modeButtons,
-      element("p", {
-        className: "hint",
-        text: "Keys mirror the board read; Off hides the illumination preview.",
-      }),
+    controlGroup("lighting-mode", "Map lighting", [modeButtons]),
+    controlGroup("lighting-rules", "Key rules", [
+      lightingRulesPanel(state, layout, actions),
     ]),
     controlGroup("lighting-write", "Write settings", [
       supportedSystems.some((system) => system.id === "rgbMatrix")
         ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard), base)
-        : element("p", { className: "hint", text: "This keyboard exposes no RGB-matrix write controls." }),
+        : element("p", { className: "hint", text: "No RGB-matrix controls on this keyboard." }),
     ]),
     controlGroup("lighting-options", "Capabilities", [
       contextDisclosuresRow(lightingDisclosures(context, lightingSystems)),
     ]),
   ]);
+}
+
+/** Recently used colours from the project, click to apply to the selection. */
+function swatchRow(
+  profile: ReturnType<typeof activeLightingProfile>,
+  actions: RenderActions,
+): HTMLElement {
+  const colors = [...new Set(Object.values(profile.perKey))].slice(0, 10);
+  const row = element("div", { className: "swatch-row", attrs: { "data-lighting-swatches": "true" } });
+  colors.forEach((color) => {
+    const swatch = element("button", {
+      className: "swatch",
+      type: "button",
+      attrs: { "data-lighting-swatch": color, title: color, "aria-label": `Use ${color}` },
+    });
+    swatch.style.background = color;
+    swatch.addEventListener("click", () => actions.updateSelectedLighting(color));
+    row.append(swatch);
+  });
+  return row;
+}
+
+/**
+ * Firmware-side rules. These are stored in the project and exported as QMK C;
+ * the app does not write them over VIA. The target is always the selected key.
+ */
+export function lightingRulesPanel(
+  state: EditorState,
+  layout: KeyboardDefinition["layouts"][number],
+  actions: RenderActions,
+): HTMLElement {
+  const rules = state.project.lightingRules ?? [];
+  const list = element("ul", { className: "rule-list", attrs: { "data-lighting-rules": String(rules.length) } });
+  rules.forEach((rule) => {
+    const target = layout.keys.find((key) => key.id === rule.targetKeyId);
+    const remove = uiButton({
+      className: "secondary-action compact",
+      type: "button",
+      text: "Remove",
+      attrs: { "data-lighting-rule-remove": rule.id },
+    });
+    remove.addEventListener("click", () => actions.removeLightingRule(rule.id));
+    const swatch = element("span", { className: "swatch", attrs: { "aria-hidden": "true" } });
+    swatch.style.background = rule.color;
+    list.append(
+      element("li", { className: "rule-row", attrs: { "data-lighting-rule": rule.id } }, [
+        swatch,
+        element("div", {}, [
+          element("strong", { text: ruleTriggerLabel(rule.trigger, layout) }),
+          element("small", { text: target?.label ?? rule.targetKeyId }),
+        ]),
+        remove,
+      ]),
+    );
+  });
+
+  const trigger = element("select", {
+    attrs: { "aria-label": "Rule trigger", "data-lighting-rule-trigger": "true" },
+  }, [
+    element("option", { text: "Caps Lock on", attrs: { value: "lock:capsLock" } }),
+    element("option", { text: "Num Lock on", attrs: { value: "lock:numLock" } }),
+    element("option", { text: "Scroll Lock on", attrs: { value: "lock:scrollLock" } }),
+    element("option", { text: "Layer active", attrs: { value: "layer" } }),
+    element("option", { text: "Key held", attrs: { value: "held" } }),
+  ]);
+  const layer = optionSelect(
+    "Rule layer",
+    "rule-layer",
+    state.project.layers.map((item) => ({ value: String(item.index), label: `${item.index} ${item.name}` })),
+    String(state.selectedLayerIndex),
+  );
+  layer.setAttribute("data-lighting-rule-layer", "true");
+  const held = optionSelect(
+    "Rule held key",
+    "rule-held",
+    layout.keys.map((key) => ({ value: key.id, label: key.label ?? key.id })),
+    state.selectedKeyId,
+  );
+  held.setAttribute("data-lighting-rule-held", "true");
+  const layerField = fieldControl("Layer", layer);
+  const heldField = fieldControl("Held key", held);
+  const syncRuleFields = () => {
+    layerField.style.display = trigger.value === "layer" ? "" : "none";
+    heldField.style.display = trigger.value === "held" ? "" : "none";
+  };
+  trigger.addEventListener("change", syncRuleFields);
+  syncRuleFields();
+
+  const target = layout.keys.find((key) => key.id === state.selectedKeyId);
+  const add = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: `Add rule for ${target?.label ?? "key"}`,
+    attrs: { "data-lighting-rule-add": "true" },
+  });
+  add.addEventListener("click", () => {
+    const value = trigger.value;
+    if (value.startsWith("lock:")) {
+      actions.addLightingRule({
+        kind: "lock",
+        lock: value.slice(5) as "capsLock" | "numLock" | "scrollLock",
+      });
+    } else if (value === "layer") {
+      actions.addLightingRule({ kind: "layer", layerIndex: Number(layer.value) });
+    } else {
+      actions.addLightingRule({ kind: "held", keyId: held.value });
+    }
+  });
+
+  const download = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: "Download rules C",
+    attrs: {
+      "data-lighting-rules-download": "true",
+      title: "Export QMK C to paste into the keymap and build",
+    },
+  });
+  download.addEventListener("click", actions.downloadLightingRules);
+
+  return element("section", { className: "lighting-rules" }, [
+    list,
+    element("label", { className: "assignment-field" }, [
+      element("span", { text: "Trigger" }),
+      trigger,
+    ]),
+    element("div", { className: "rule-fields" }, [layerField, heldField]),
+    element("div", { className: "rule-actions" }, [add, download]),
+  ]);
+}
+
+function ruleTriggerLabel(trigger: LightingRuleTrigger, layout: KeyboardDefinition["layouts"][number]): string {
+  if (trigger.kind === "lock") {
+    return { capsLock: "Caps Lock", numLock: "Num Lock", scrollLock: "Scroll Lock" }[trigger.lock];
+  }
+  if (trigger.kind === "layer") {
+    return `Layer ${trigger.layerIndex}`;
+  }
+  const key = layout.keys.find((candidate) => candidate.id === trigger.keyId);
+  return `${key?.label ?? trigger.keyId} held`;
 }
 
 function lightingDisclosures(
@@ -451,10 +604,6 @@ export function rgbMatrixControls(
     fieldControl("Effect", effectSelect),
     rangeField("Brightness", brightnessInput),
     rangeField("Speed", speedInput),
-    element("p", {
-      className: "hint",
-      text: "These values are sent when you write lighting to the board.",
-    }),
   ]);
 }
 

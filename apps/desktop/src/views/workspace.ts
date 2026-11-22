@@ -19,7 +19,7 @@ export function keyboardBoard(
     className: "keyboard-scroll",
     attrs: { "aria-label": "Keyboard layout", "data-keyboard-canvas": "true" },
   }, [
-    board(state, layout, actions.selectKey),
+    board(state, layout, actions),
   ]);
   const stage = element("section", {
     className: "keyboard-stage",
@@ -37,9 +37,7 @@ export function keyboardBoard(
         element("span", { className: "board-legend" }, [
           element("span", { className: "legend-light", attrs: { "aria-hidden": "true" } }),
           element("span", {
-            text: state.hardwareSnapshot
-              ? "Keys mirror the connected board; a dot marks a draft colour override."
-              : "No board read yet; keys show draft colours only.",
+            text: state.hardwareSnapshot ? "Keys mirror the connected board." : "No board read yet.",
           }),
         ]),
         element("small", { text: `${layout.keys.length} keys` }),
@@ -61,7 +59,6 @@ function boardLightingReadout(state: EditorState, actions: RenderActions): HTMLE
   const effect = base?.effect === undefined
     ? undefined
     : (effects.find((candidate) => candidate.id === base.effect)?.name ?? `Effect ${base.effect}`);
-  const generated = base?.effect !== undefined && base.effect !== 0 && base.effect !== 1;
   const read = uiButton({
     className: "secondary-action compact",
     type: "button",
@@ -85,14 +82,6 @@ function boardLightingReadout(state: EditorState, actions: RenderActions): HTMLE
           ? `Brightness ${base.brightness}${base.effectSpeed === undefined ? "" : ` · speed ${base.effectSpeed}`}`
           : "Connect a board to mirror its colours.",
       }),
-      ...(generated
-        ? [
-            element("small", {
-              className: "board-light-note",
-              text: "Effect colours are generated on the board; keys show the read base colour.",
-            }),
-          ]
-        : []),
     ]),
     ...(state.lightingStatus ? [element("small", { className: "board-light-status", text: state.lightingStatus })] : []),
     read,
@@ -238,7 +227,7 @@ export function historyControls(state: EditorState, actions: RenderActions): HTM
 export function board(
   state: EditorState,
   layout: KeyboardDefinition["layouts"][number],
-  selectKey: (keyId: string, additive?: boolean) => void,
+  actions: RenderActions,
 ): HTMLElement {
   const selectedLayer = currentLayer(state);
   const profile = activeLightingProfile(state.project);
@@ -267,7 +256,12 @@ export function board(
       bounds,
     });
     keyButton.addEventListener("click", (event) => {
-      selectKey(key.id, event.ctrlKey || event.metaKey || event.shiftKey);
+      const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+      if (state.lightingPaint && !additive) {
+        actions.paintKey(key.id);
+      } else {
+        actions.selectKey(key.id, additive);
+      }
     });
     panel.append(keyButton);
   });
@@ -282,7 +276,7 @@ export function board(
       return;
     }
     event.preventDefault();
-    selectKey(next);
+    actions.selectKey(next);
     panel.querySelector<HTMLElement>(`[data-key="${next}"]`)?.focus();
   });
 

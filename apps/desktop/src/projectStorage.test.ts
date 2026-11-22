@@ -53,6 +53,23 @@ describe("project storage", () => {
     expect(storage.load(fixtureProject.id)?.name).toBe(fixtureProject.name);
   });
 
+  it("accepts lighting rules and rejects malformed ones", () => {
+    const withRules = structuredClone(fixtureProject);
+    withRules.lightingRules = [
+      {
+        id: "rule",
+        targetKeyId: withRules.layers[0]!.assignments[0]!.visualKeyId,
+        color: "#ff0000",
+        trigger: { kind: "lock", lock: "capsLock" },
+      },
+    ];
+    expect(importProjectJson(JSON.stringify(withRules)).lightingRules).toHaveLength(1);
+
+    const broken = structuredClone(withRules as unknown as Record<string, unknown>);
+    broken.lightingRules = [{ id: "rule", targetKeyId: "k", color: "#ff0000", trigger: { kind: "nope" } }];
+    expect(() => importProjectJson(JSON.stringify(broken))).toThrow("lightingRules");
+  });
+
   it("imports valid project JSON and rejects non-project payloads", () => {
     expect(importProjectJson(JSON.stringify(fixtureProject))).toMatchObject({
       id: fixtureProject.id,
