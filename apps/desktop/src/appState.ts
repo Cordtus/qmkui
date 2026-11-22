@@ -995,6 +995,7 @@ export function createActions(
             const detected = state.doctorReport?.snapshot.hardwareProbe.detectedKeyboards?.[0];
             const device = detected ? { vendorId: detected.device.vid, productId: detected.device.pid } : null;
             const bootloader = state.keyboard.bootloader ?? null;
+            const usb = state.keyboard.usb;
             const latest = state.artifacts.at(-1);
             if (!latest) {
               state.flashVerdict = { pass: false, reason: "No build artifact is available to flash." };
@@ -1002,9 +1003,23 @@ export function createActions(
               actions.render();
               return;
             }
+            if (!bootloader) {
+              state.flashVerdict = { pass: false, reason: "Bootloader family is unknown for this keyboard." };
+              state.flashRun = undefined;
+              actions.render();
+              return;
+            }
+            if (!usb) {
+              state.flashVerdict = { pass: false, reason: "This keyboard declares no USB identity." };
+              state.flashRun = undefined;
+              actions.render();
+              return;
+            }
+            // Preview only: a browser cannot observe bootloader mode. The
+            // native qmkui-flash CLI detects the bootloader identity for real.
             const request = {
-              target: flashTargetFromArtifact(latest, bootloader ?? "atmel-dfu"),
-              expectedDevice: { vendorId: "3434", productId: "0950" },
+              target: flashTargetFromArtifact(latest, bootloader),
+              expectedDevice: { vendorId: usb.vid, productId: usb.pid },
               operatorConfirmed: state.flashConfirmed,
             };
             projectDigest(state.project).then((digest) => {

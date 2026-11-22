@@ -153,6 +153,7 @@ export const keychronV5MaxKeyboard: KeyboardDefinition = keyboardFromQmkMetadata
       vid: "3434",
       pid: "0950",
     },
+    bootloader: "stm32-dfu",
     source: {
       kind: "qmk",
       version: "keychron-qmk-b4bdf3f1-v5-max",

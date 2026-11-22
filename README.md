@@ -21,8 +21,8 @@ default.
 | Read any other verified VIA device | Standard VIA state only, no inferred model or layout |
 | Edit a key map and lighting profile (project) | Works, local project data |
 | Write keycodes / RGB-matrix lighting to hardware | Implemented and gated; mock transports only until the bench test is signed off |
-| Flash / bootloader / firmware build | Not implemented |
-| In-app `qmk compile` execution | Not implemented; QMKUI can plan the command and run a flash policy dry-run |
+| Flash / bootloader / firmware build | Native `qmkui-flash` CLI; the browser only previews |
+| In-app `qmk compile` execution | Not implemented; QMKUI plans the command and hands the bundle to `qmkui-flash` |
 
 ## What a read gives you
 
@@ -63,9 +63,8 @@ layer N is active”, and “while key X is held”. **Download firmware** build
 zip with `keymap.c` (all layers), `qmkui-lighting-rules.c`
 (`rgb_matrix_indicators_advanced_user` with every per-key colour and rule), and
 build/flash instructions. Copy it into your QMK checkout, then compile and
-flash with QMK CLI or Toolbox — QMKUI does not build or flash firmware.
-
-There is no flash or bootloader path.
+flash with QMK CLI or Toolbox. The browser app does not build or flash
+firmware; the native `qmkui-flash` adapter does (below).
 
 ## Exports
 
@@ -78,6 +77,41 @@ There is no flash or bootloader path.
   unless requested).
 - **Firmware zip** (Lighting → Firmware) — `keymap.c`, the lighting overlay and
   build/flash instructions.
+
+## Flash a firmware bundle
+
+**Download firmware** produces a zip with the keymap and lighting overlay. Put
+the board in bootloader mode, then use the native adapter (QMK CLI and
+`dfu-util` installed):
+
+```sh
+cargo run -p qmkui-flash --release -- --bundle ~/Downloads/my-board-firmware.zip \
+  --qmk-path ~/qmk_firmware --keyboard keychron/v5_max/ansi_encoder \
+  --keymap qmkui_my_board --bootloader stm32-dfu \
+  --confirm keychron/v5_max/ansi_encoder
+```
+
+`--confirm` must repeat the `--keyboard` target: the operator names what they
+are flashing, rather than passing a bare flag. The CLI also reads the
+keyboard's declared bootloader family from its QMK `info.json`; a typo'd target
+or wrong `--bootloader` is refused before anything is staged. STM32/ATmega DFU
+USB ids are family-generic, so the exact board model cannot be proven in
+bootloader mode: disconnect other boards, keep only the target in bootloader
+mode until the run finishes, and confirm the target. The bundle's README must
+name the same `-kb` keyboard, so a bundle built for another board is refused
+before staging. `--dry-run` prints the bundle
+checksum, extraction target and `qmk flash` command without probing the device
+or writing files. A real run reads only bootloader USB ids from sysfs, requires
+exactly one matching device, stages the keymap under `<qmk>/.qmkui/`, then moves
+it into `keyboards/<keyboard>/keymaps/<keymap>/` and invokes `qmk flash`. An
+existing keymap directory is kept under `.qmkui/backups/`. Runs keep a log with
+the target, detected identity, bootloader family and bundle sha256 under
+`$XDG_STATE_HOME/qmkui` (default `~/.local/state/qmkui`). Supported families:
+`stm32-dfu` (V5 Max) and `atmel-dfu`. The browser cannot see
+bootloader mode, so it never flashes by itself.
+
+Exit codes: `0` success, `2` usage/IO, `3` no unique bootloader device, `4`
+refused or flash failed.
 
 ## Safety model
 
@@ -92,8 +126,10 @@ the live dynamic keymap, and RGB-matrix lighting — go through one gated path:
 Keycodes persist immediately (QMK writes EEPROM on set). Lighting is volatile
 until a separate confirmed **Persist lighting** action stores it in EEPROM. The
 V5 Max lighting frames were validated against the documented manual test plan
-before hardware use. No flash/bootloader path is implemented yet; keep vendor
-recovery firmware separately, matched to the exact model and firmware.
+before hardware use. Flash goes only through `qmkui-flash`: an explicit target
+confirmation, one matching bootloader device, a checksummed bundle staged under
+`.qmkui/`, then `qmk flash`. Keep vendor recovery firmware separately, matched
+to the exact model and firmware.
 
 ## Run it
 
@@ -169,7 +205,7 @@ crates/qmkui-catalog  keyboard definition loading and search
 crates/qmkui-doctor   readiness CLI + opt-in read-only USB metadata probe
 crates/qmkui-hid      read-only VIA/Keychron protocol core
 crates/qmkui-build    build planning, command runner, artifact store
-crates/qmkui-flash    flash models, wrong-target policy, dry-run adapters
+crates/qmkui-flash    flash models, bootloader registry, wrong-target policy, gated qmk flash adapter/CLI
 fixtures/             catalog, projects, protocol vectors and allow-lists
 scripts/              check, audit and probe entrypoints
 packaging/            Arch PKGBUILD and the read-only udev rule
