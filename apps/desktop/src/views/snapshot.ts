@@ -79,6 +79,8 @@ export function deviceWriteControls(
     controls: (confirmed: () => boolean) => HTMLElement[];
     /** Show the channel-3 "save lighting to EEPROM" action. Default true. */
     lightingSave?: boolean;
+    /** Short explanation shown under the write actions. */
+    note?: string;
   },
 ): HTMLElement {
   const confirmInput = element("input", {
@@ -102,8 +104,11 @@ export function deviceWriteControls(
   const save = uiButton({
     className: "secondary-action",
     type: "button",
-    text: "Save lighting to EEPROM",
-    attrs: { "data-device-save-lighting": "true" },
+    text: "Persist lighting",
+    attrs: {
+      "data-device-save-lighting": "true",
+      title: "Store the current RGB state in the keyboard EEPROM so it survives power cycles",
+    },
   });
   save.addEventListener("click", () => actions.saveLightingToDevice(confirmed()));
 
@@ -119,6 +124,7 @@ export function deviceWriteControls(
       ...options.controls(confirmed),
       ...(options.lightingSave === false ? [] : [save]),
     ]),
+    ...(options.note ? [element("p", { className: "hint", text: options.note })] : []),
     ...(state.deviceWriteStatus
       ? [
           element("p", {

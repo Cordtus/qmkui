@@ -1,5 +1,6 @@
 import { parseAdvancedAssignment } from "./advancedAssignments";
 import { normalizeHex } from "./color";
+import { isSafeQmkKeycode } from "./keycodes";
 
 export type Project = {
   schemaVersion: string;
@@ -69,12 +70,9 @@ export function jsonExportBlockers(project: Project): string[] {
       blockers.push(`${label} require generated C and cannot be exported as QMK JSON.`);
     }
   }
-  if (Object.keys(project.lightingProfiles?.[0]?.perKey ?? {}).length > 0) {
-    blockers.push("Per-key lighting colours require generated C and cannot be exported as QMK JSON.");
-  }
-  if ((project.lightingRules ?? []).some((rule) => rule.enabled !== false)) {
-    blockers.push("Lighting rules require generated C and cannot be exported as QMK JSON.");
-  }
+  // QMK JSON carries layers only. Per-key colours and lighting rules live in
+  // the project export and the generated firmware bundle, but they do not stop
+  // a keymap-only JSON export.
   return blockers;
 }
 
@@ -412,6 +410,22 @@ export function validateProject(project: Project, keyboard: KeyboardDefinition):
         });
       }
 
+      if (!assignment.qmk.trim()) {
+        issues.push({
+          code: "assignment.qmk.empty",
+          severity: "error",
+          title: "Assignment has no keycode",
+          path: `layers[${layerIndex}].assignments[${assignmentIndex}].qmk`,
+        });
+      } else if (!isSafeQmkKeycode(assignment.qmk)) {
+        issues.push({
+          code: "assignment.qmk.invalid",
+          severity: "error",
+          title: "Assignment keycode is not a plain QMK expression",
+          path: `layers[${layerIndex}].assignments[${assignmentIndex}].qmk`,
+        });
+      }
+
       const layerReference = scanLayerReference(assignment.qmk);
       if (layerReference.malformed) {
         issues.push({
@@ -478,6 +492,27 @@ export function validateProject(project: Project, keyboard: KeyboardDefinition):
       }
     });
   });
+
+  Object.entries(project.lightingProfiles?.[0]?.perKey ?? {}).forEach(([keyId, color]) => {
+    if (!normalizeHex(color)) {
+      issues.push({
+        code: "lightingProfile.perKey.color.invalid",
+        severity: "error",
+        title: "Per-key lighting colour is not a hex value",
+        path: `lightingProfiles[0].perKey.${keyId}`,
+      });
+    }
+  });
+
+  const profileColor = project.lightingProfiles?.[0]?.global?.color;
+  if (profileColor !== undefined && (typeof profileColor !== "string" || !normalizeHex(profileColor))) {
+    issues.push({
+      code: "lightingProfile.color.invalid",
+      severity: "error",
+      title: "Lighting profile colour is not a hex value",
+      path: "lightingProfiles[0].global.color",
+    });
+  }
 
   const keyById = new Map(layout.keys.map((key) => [key.id, key]));
   (project.lightingRules ?? []).forEach((rule, ruleIndex) => {
@@ -562,7 +597,8 @@ type LayerReferenceScan = {
   wrapper?: string;
 };
 
-export function scanLayerReference(qmk: string): LayerReferenceScan {  const trimmed = qmk.trim();
+export function scanLayerReference(qmk: string): LayerReferenceScan {
+  const trimmed = qmk.trim();
   const match = /^([A-Z_]+)\((.*)\)$/.exec(trimmed);
   if (!match) {
     return isLayerWrapperPrefix(trimmed) ? { malformed: true } : { malformed: false };

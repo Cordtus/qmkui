@@ -221,6 +221,30 @@ describe("project validation", () => {
   });
 });
 
+describe("lighting validation", () => {
+  it("flags an empty keycode and a non-hex board colour", () => {
+    const project = structuredClone(fixtureProject);
+    project.layers[0]!.assignments[0]!.qmk = "";
+    project.lightingProfiles = [
+      { id: "p", name: "P", mode: "static", perKey: {}, global: { color: "red" } },
+    ];
+
+    project.layers[0]!.assignments[1]!.qmk = "KC_A\n#include <evil.h>";
+    project.lightingProfiles[0]!.perKey = { k: "not-a-colour" };
+
+    const codes = validateProject(project, keyboard).map((issue) => issue.code);
+    expect(codes).toContain("assignment.qmk.empty");
+    expect(codes).toContain("assignment.qmk.invalid");
+    expect(codes).toContain("lightingProfile.color.invalid");
+    expect(codes).toContain("lightingProfile.perKey.color.invalid");
+
+    project.layers[0]!.assignments[1]!.qmk = "KC_A, KC_B";
+    expect(
+      validateProject(project, keyboard).some((issue) => issue.code === "assignment.qmk.invalid"),
+    ).toBe(true);
+  });
+});
+
 describe("json export blockers", () => {
   it("blocks JSON export when an enabled feature requires generated C", () => {
     const withCMacro = structuredClone(fixtureProject);
@@ -256,23 +280,20 @@ describe("json export blockers", () => {
     expect(codes).toContain("lightingRule.source.missing");
   });
 
-  it("blocks JSON export for per-key colours and lighting rules", () => {
-    const painted = structuredClone(fixtureProject);
-    painted.lightingProfiles = [
-      { id: "p", name: "P", mode: "static", perKey: { k1: "#ff0000" } },
+  it("allows a keymap-only JSON export when lighting data exists", () => {
+    const lighting = structuredClone(fixtureProject);
+    lighting.lightingProfiles = [
+      { id: "p", name: "P", mode: "static", perKey: { k: "#ff0000" } },
     ];
-    expect(jsonExportBlockers(painted).join(" ")).toContain("Per-key");
-
-    const ruled = structuredClone(fixtureProject);
-    ruled.lightingRules = [
+    lighting.lightingRules = [
       {
         id: "r",
-        targetKeyId: "k1",
-        color: "#ff0000",
+        targetKeyId: "k",
+        color: "#00ff00",
         trigger: { kind: "lock", lock: "capsLock" },
       },
     ];
-    expect(jsonExportBlockers(ruled).join(" ")).toContain("Lighting rules");
+    expect(jsonExportBlockers(lighting)).toEqual([]);
   });
 
   it("allows JSON export for disabled or json-mode features", () => {

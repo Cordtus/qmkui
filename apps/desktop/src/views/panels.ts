@@ -3,7 +3,7 @@ import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
 import { CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, LightingRuleTrigger, UiIssue, validateProject } from "../domain";
 import { illuminationBase, type IlluminationBase } from "../illumination";
-import { buildSelectedKeyContext, lightingForKey } from "../keyDetails";
+import { DEFAULT_BOARD_COLOR, boardColor, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { HostKeyCapture } from "../keyTester";
 import { canDeleteLayer, scanLayerReferences } from "../layerActions";
 import { lightingSystemsForKeyboard, supportedLightingSystems } from "../lightingCapabilities";
@@ -252,10 +252,9 @@ export function projectDetailsDrawer(
 }
 
 /**
- * Lighting controls, rendered inside the Keymap view's rail as its own group.
- * The colour picker lives here (it is the only picker in the app) and applies
- * to the current key selection, so it sits with the mode and selection tools
- * rather than the keycode assignment.
+ * Lighting controls, rendered inside the Keymap view's Lighting tab. The wheel
+ * applies to the current key selection; the Board colour input is the separate
+ * board-wide VIA write.
  */
 export function lightingPanel(
   state: EditorState,
@@ -366,10 +365,17 @@ export function lightingPanel(
     ...(supportedSystems.some((system) => system.id === "rgbMatrix")
       ? [controlGroup("lighting-rules", "Key rules", [lightingRulesPanel(state, layout, actions)])]
       : []),
-    controlGroup("lighting-write", "Write settings", [
+    controlGroup("lighting-write", "Board lighting", [
       supportedSystems.some((system) => system.id === "rgbMatrix")
         ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard), base)
         : element("p", { className: "hint", text: "No RGB-matrix controls on this keyboard." }),
+    ]),
+    controlGroup("firmware", "Firmware", [
+      firmwareButton(actions),
+      element("p", {
+        className: "hint",
+        text: "Buildable keymap, per-key colours and rules for QMK CLI or Toolbox.",
+      }),
     ]),
     controlGroup("lighting-options", "Capabilities", [
       contextDisclosuresRow(lightingDisclosures(context, lightingSystems)),
@@ -487,17 +493,6 @@ function lightingRulesPanel(
     }
   });
 
-  const download = uiButton({
-    className: "secondary-action",
-    type: "button",
-    text: "Download rules C",
-    attrs: {
-      "data-lighting-rules-download": "true",
-      title: "Export QMK C to paste into the keymap and build",
-    },
-  });
-  download.addEventListener("click", actions.downloadLightingRules);
-
   return element("section", { className: "lighting-rules" }, [
     list,
     element("label", { className: "assignment-field" }, [
@@ -505,7 +500,7 @@ function lightingRulesPanel(
       trigger,
     ]),
     element("div", { className: "rule-fields" }, [layerField, heldField]),
-    element("div", { className: "rule-actions" }, [add, download]),
+    element("div", { className: "rule-actions" }, [add]),
   ]);
 }
 
@@ -541,6 +536,20 @@ function contextDisclosuresRow(
     { className: "context-disclosures" },
     entries.map(([summary, id, children]) => contextDisclosure(summary, id, children)),
   );
+}
+
+function firmwareButton(actions: RenderActions): HTMLElement {
+  const download = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: "Download firmware",
+    attrs: {
+      "data-firmware-bundle": "true",
+      title: "Download a zip with keymap.c, the lighting overlay and build instructions",
+    },
+  });
+  download.addEventListener("click", actions.downloadFirmwareBundle);
+  return download;
 }
 
 export function lightingCapabilityList(
@@ -606,10 +615,28 @@ export function rgbMatrixControls(
     actions.updateLightingGlobal("speed", Number(speedInput.value));
   });
 
+  const boardColorInput = element("input", {
+    attrs: {
+      "aria-label": "Board colour",
+      "data-lighting-control": "colour",
+      "data-lighting-board-color": "true",
+      type: "color",
+    },
+  }) as HTMLInputElement;
+  boardColorInput.value = boardColor(profile, base) || DEFAULT_BOARD_COLOR;
+  boardColorInput.addEventListener("change", () => {
+    actions.updateLightingGlobal("color", boardColorInput.value);
+  });
+
   return element("section", { className: "lighting-controls" }, [
     fieldControl("Effect", effectSelect),
+    fieldControl("Board colour", boardColorInput),
     rangeField("Brightness", brightnessInput),
     rangeField("Speed", speedInput),
+    element("p", {
+      className: "hint",
+      text: "Sets the whole board over VIA; it does not write per-key colours.",
+    }),
   ]);
 }
 

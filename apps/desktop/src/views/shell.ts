@@ -3,7 +3,7 @@ import { KeyboardDefinition, UiIssue, jsonExportBlockers } from "../domain";
 import { connectionContent, connectionScreen } from "./connection";
 import { catalogPanel, detectedKeyboard, projectDetailsDrawer, systemPanel, testPanel } from "./panels";
 import { element, uiButton } from "./primitives";
-import { deviceWriteControls, snapshotContent } from "./snapshot";
+import { snapshotContent } from "./snapshot";
 import { historyControls, keyboardWorkspace } from "./workspace";
 
 export function mainShell(
@@ -195,9 +195,10 @@ function exportJsonButton(state: EditorState, issues: UiIssue[], actions: Render
   const blocked = invalid || cBlockers.length > 0;
   const download = uiButton({
     className: "secondary-action",
-    text: "Export JSON",
+    text: "QMK JSON",
     attrs: {
       "data-qmk-action": "download",
+      title: "QMK Configurator/VIA keymap JSON (layers only; lighting is in the firmware bundle)",
       ...(blocked
         ? {
             disabled: "",
@@ -294,31 +295,7 @@ export function editor(
     attrs: { "data-workbench-surface": "true" },
   }, [
     keyboardWorkspace(state, layout, actions),
-    editorDeviceWrite(state, actions),
   ]);
-}
-
-function editorDeviceWrite(state: EditorState, actions: RenderActions): HTMLElement {
-  return deviceWriteControls(state, actions, {
-    description: `Writes the project keymap (${state.project.layers.length} layers) to the connected device.`,
-    controls: (confirmed) => {
-      const writeKeymap = uiButton({
-        className: "secondary-action",
-        type: "button",
-        text: "Write keymap to device",
-        attrs: { "data-write-keymap": "true" },
-      });
-      writeKeymap.addEventListener("click", () => actions.writeKeymapToDevice(confirmed()));
-      const writeLighting = uiButton({
-        className: "secondary-action",
-        type: "button",
-        text: "Write lighting to device",
-        attrs: { "data-write-lighting": "true" },
-      });
-      writeLighting.addEventListener("click", () => actions.writeLightingToDevice(confirmed()));
-      return [writeKeymap, writeLighting];
-    },
-  });
 }
 
 

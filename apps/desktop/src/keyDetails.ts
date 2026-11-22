@@ -1,5 +1,6 @@
 import type { Assignment, Layer, LightingProfile, Project, VisualKey } from "./domain";
 import type { IlluminationBase } from "./illumination";
+import { normalizeHex } from "./color";
 import { formatKeycap } from "./keycodes";
 
 export type SelectedKeyContext = {
@@ -48,6 +49,8 @@ export type KeyLightingDetail = {
   profileName: string;
   mode: LightingProfile["mode"];
   color: string;
+  /** Where the colour came from, for honest rendering and labels. */
+  source: "override" | "profile" | "device" | "none";
   /** Profile-level RGB Matrix brightness, 0–255. */
   brightness: number;
   hasPerKeyColor: boolean;
@@ -287,17 +290,46 @@ function uniqueRelations(relations: KeyRelation[]): KeyRelation[] {
   });
 }
 
+export const DEFAULT_BOARD_COLOR = "#5ed1aa";
+
+/**
+ * The board's RGB colour: an explicit board colour from the profile, else the
+ * colour read from the device. Per-key overrides never leak into this.
+ */
+export function boardColor(
+  profile: LightingProfile,
+  base?: IlluminationBase | null,
+): string {
+  const configured = profile.global?.color;
+  if (typeof configured === "string" && normalizeHex(configured)) {
+    return normalizeHex(configured)!;
+  }
+  return base?.color ?? "";
+}
+
 export function lightingForKey(
   profile: LightingProfile,
   visualKeyId: string,
   base?: IlluminationBase | null,
 ): KeyLightingDetail {
-  // An explicit per-key override wins; otherwise the key mirrors the board's
-  // actual illumination. With neither (no device read and no override) the key
-  // is unlit rather than teal — there is no colour to report.
+  // An explicit per-key override wins, then the profile's board colour, then
+  // the colour read from the device. With none of the three the key is unlit
+  // rather than teal — there is no colour to report.
   const override = profile.perKey[visualKeyId];
-  const color = override ?? base?.color ?? "";
-  const hasSource = Boolean(override) || Boolean(base);
+  const profileColor =
+    typeof profile.global?.color === "string"
+      ? normalizeHex(profile.global.color)
+      : null;
+  const deviceColor = base?.color || "";
+  const color = override ?? profileColor ?? deviceColor;
+  const source: KeyLightingDetail["source"] = override
+    ? "override"
+    : profileColor
+      ? "profile"
+      : deviceColor
+        ? "device"
+        : "none";
+  const hasSource = source !== "none";
   // A profile brightness is a draft of what a write will send, so it wins over
   // the board value; with no draft the key mirrors the board read.
   const profileBrightness = Number(profile.global?.brightness);
@@ -308,6 +340,7 @@ export function lightingForKey(
     profileName: profile.name,
     mode: hasSource ? profile.mode : "off",
     color,
+    source,
     brightness: Number.isFinite(brightness) ? Math.max(0, Math.min(255, brightness)) : 180,
     hasPerKeyColor: Object.hasOwn(profile.perKey, visualKeyId),
     conditions:

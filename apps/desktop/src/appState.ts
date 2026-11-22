@@ -7,7 +7,7 @@ import { FlashRun, PolicyVerdict, assessFlashRequest, dryRunFlash, flashTargetFr
 import { createMacroRecord } from "./macros";
 import { hexToHsv } from "./color";
 import { illuminationBase } from "./illumination";
-import { buildSupportBundle } from "./supportBundle";
+import { buildSupportBundle, type SupportDevice } from "./supportBundle";
 import { resolveRgbMatrixEffect, rgbMatrixEffectsFor, viaDefinitionFor } from "./viaDefinition";
 import {
   createCommandHistory,
@@ -22,8 +22,9 @@ import { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
 import { loadLocalDoctorReport } from "./doctorReport";
 import { DoctorReport, KeyboardDefinition, LightingProfile, LightingRule, LightingRuleTrigger, Project, UiIssue, exportQmkJson, jsonExportBlockers, validateProject } from "./domain";
 import { HostKeyCapture, captureHostKey } from "./keyTester";
-import { lightingForKey } from "./keyDetails";
-import { generateLightingRulesC, lightingRulesCFileName } from "./lightingRules";
+import { DEFAULT_BOARD_COLOR, boardColor, lightingForKey } from "./keyDetails";
+import { buildFirmwareBundle, firmwareBundleFileName } from "./firmwareBundle";
+import { createZip } from "./zip";
 import { keycodeCategories, keycodeValue, kindForKeycode } from "./keycodes";
 import { addTransparentLayer, deleteLayer, duplicateLayer, renameLayer } from "./layerActions";
 import { keychronV5MaxKeyboard, keychronV5MaxProject } from "./presets";
@@ -72,6 +73,8 @@ export type EditorState = {
   selectedKeyIds: string[];
   /** Click-to-paint mode: a click applies the current colour to that key. */
   lightingPaint: boolean;
+  /** Which keymap rail tab is open. */
+  keymapTab: "lighting" | "key" | "layer";
   commandHistory: CommandHistory;
   keycodeCategoryId: string;
   keycodeSearch: string;
@@ -161,6 +164,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     selectedKeyId: layout.keys[0]?.id ?? "",
     selectedKeyIds: layout.keys[0] ? [layout.keys[0].id] : [],
     lightingPaint: false,
+    keymapTab: "lighting",
     commandHistory: createCommandHistory(),
     keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
     keycodeSearch: "",
@@ -326,6 +330,10 @@ export function createActions(
             state.selectedLayerIndex = nextLayerIndex;
             actions.render();
           },
+          selectKeymapTab: (tab) => {
+            state.keymapTab = tab;
+            actions.render();
+          },
           selectView: (view) => {
             state.activeView = view;
             actions.render();
@@ -445,7 +453,7 @@ export function createActions(
                 profile,
                 state.selectedKeyId,
                 illuminationBase(state.hardwareSnapshot),
-              ).color || "#5ed1aa";
+              ).color || DEFAULT_BOARD_COLOR;
             const rule: LightingRule = {
               id: `rule_${crypto.randomUUID()}`,
               targetKeyId: state.selectedKeyId,
@@ -475,25 +483,30 @@ export function createActions(
             });
             actions.render();
           },
-          downloadLightingRules: () => {
+          downloadFirmwareBundle: () => {
             const issues = validateProject(state.project, state.keyboard);
             if (issues.some((issue) => issue.severity === "error")) {
-              state.projectStatus = "Fix keymap and lighting rule errors before exporting rules C.";
+              state.projectStatus = "Fix keymap and lighting rule errors before exporting firmware.";
               actions.render();
               return;
             }
-            const code = generateLightingRulesC(
+            const files = buildFirmwareBundle(
               state.project,
               state.keyboard,
               activeLightingProfile(state.project),
             );
-            if (!code) {
+            if (!files) {
               state.projectStatus = "The project layout does not match the selected keyboard.";
               actions.render();
               return;
             }
-            downloadText(code, lightingRulesCFileName(state.project), "text/x-c");
-            state.projectStatus = "Lighting rules C downloaded; add it to the keymap and build with QMK.";
+            downloadBytes(
+              createZip(files),
+              firmwareBundleFileName(state.project),
+              "application/zip",
+            );
+            state.projectStatus =
+              "Firmware bundle downloaded: copy it into your QMK checkout, then compile and flash.";
             actions.render();
           },
           undo: () => {
@@ -699,8 +712,24 @@ export function createActions(
             }
             const profile = activeLightingProfile(state.project);
             const base = illuminationBase(state.hardwareSnapshot);
-            const color = profile.perKey[state.selectedKeyId] ?? base?.color ?? "#5fb99a";
-            const { h, s } = hexToHsv(color);
+            // Board lighting is its own colour. A per-key override must never
+            // become the board's global colour just because that key is selected.
+            const color = boardColor(profile, base) || DEFAULT_BOARD_COLOR;
+            let hueByte: number;
+            let satByte: number;
+            if (typeof profile.global?.color === "string") {
+              const { h, s } = hexToHsv(color);
+              hueByte = Math.round((h / 360) * 255);
+              satByte = Math.round(s * 255);
+            } else if (base?.hue !== undefined && base.saturation !== undefined) {
+              // Use the device's exact channels so an untouched write is a no-op.
+              hueByte = base.hue;
+              satByte = base.saturation;
+            } else {
+              const { h, s } = hexToHsv(color);
+              hueByte = Math.round((h / 360) * 255);
+              satByte = Math.round(s * 255);
+            }
             // Default each field to the board's current value when the profile
             // has not set it, so a write does not silently change effect/speed.
             const effect = resolveRgbMatrixEffect(
@@ -710,8 +739,8 @@ export function createActions(
             const payload = {
               brightness: clampByte(profile.global?.brightness ?? base?.brightness ?? 180),
               effectSpeed: clampByte(profile.global?.speed ?? base?.effectSpeed ?? 128),
-              hue: Math.round((h / 360) * 255),
-              saturation: Math.round(s * 255),
+              hue: clampByte(hueByte),
+              saturation: clampByte(satByte),
               ...(effect === undefined ? {} : { effect }),
             };
             session
@@ -819,6 +848,7 @@ export function createActions(
             state.commandHistory.clear();
             state.catalogSearch = "";
             state.lightingPaint = false;
+            state.keymapTab = "lighting";
             state.projectJsonDraft = JSON.stringify(state.project, null, 2);
             state.projectStatus = `Created ${state.project.name} from catalog.`;
             state.activeView = "keymap";
@@ -882,10 +912,42 @@ export function createActions(
             actions.render();
           },
           downloadSupportBundle: () => {
+            const snapshot = state.hardwareSnapshot;
+            const device: SupportDevice | null = isKeychronV5MaxSnapshot(snapshot)
+              ? {
+                  model:
+                    snapshot.identity.state === "available"
+                      ? snapshot.identity.value.model
+                      : undefined,
+                  firmware:
+                    snapshot.identity.state === "available"
+                      ? snapshot.identity.value.firmwareVersion
+                      : undefined,
+                  protocol:
+                    snapshot.identity.state === "available"
+                      ? snapshot.identity.value.protocolVersion
+                          .map((part) => `0x${part.toString(16).padStart(2, "0")}`)
+                          .join(" ")
+                      : undefined,
+                  lighting:
+                    snapshot.lighting.state === "available"
+                      ? { ...snapshot.lighting.value }
+                      : undefined,
+                }
+              : snapshot
+                ? genericSupportDevice(snapshot)
+                : null;
             const contents = buildSupportBundle({
               project: state.project,
               doctor: state.doctorReport,
-              includeSensitiveMacroText: true,
+              // Support bundles get shared; macro sequences are redacted.
+              includeSensitiveMacroText: false,
+              device,
+              validation: validateProject(state.project, state.keyboard),
+              environment: {
+                webhid: typeof navigator !== "undefined" && "hid" in navigator,
+                mode: import.meta.env.MODE,
+              },
             });
             downloadJson(contents, "qmkui-support-bundle.json");
             state.projectStatus = "Support bundle downloaded.";
@@ -1111,6 +1173,7 @@ export function createActions(
 export type RenderActions = {
   selectLayer: (layerIndex: number) => void;
   selectView: (view: AppView) => void;
+  selectKeymapTab: (tab: EditorState["keymapTab"]) => void;
   openProjectDetails: () => void;
   closeProjectDetails: () => void;
   selectKey: (keyId: string, additive?: boolean) => void;
@@ -1122,7 +1185,7 @@ export type RenderActions = {
   clearSelectedLighting: () => void;
   addLightingRule: (trigger: LightingRuleTrigger) => void;
   removeLightingRule: (ruleId: string) => void;
-  downloadLightingRules: () => void;
+  downloadFirmwareBundle: () => void;
   captureHostKey: (input: { code: string; key: string }) => void;
   downloadQmkJson: () => void;
   downloadViaDefinition: (qmkKeyboard: string) => void;
@@ -1217,22 +1280,29 @@ function currentWriteSession(state: EditorState): WriteCapableSession | null {
 
 /**
  * A live write is only allowed when the connected device's USB identity matches
- * the keyboard the write is authored for. If the keyboard declares no USB id
- * (a generic VIA board) there is nothing to compare against, so the write is
- * permitted — the device was explicitly chosen by the operator.
+ * the keyboard the write is authored for. A keyboard that declares no USB id
+ * cannot be verified, so writes are refused rather than trusting whichever
+ * board happens to be connected.
  */
-function selectionMatchesTarget(state: EditorState): boolean {
+export function selectionMatchesTarget(
+  state: Pick<EditorState, "deviceSelection" | "keyboard">,
+): boolean {
   const identity = state.deviceSelection.state === "selected" ? state.deviceSelection.identity : undefined;
   const usb = state.keyboard.usb;
   if (!identity || !usb?.vid || !usb?.pid) {
-    return true;
+    return false;
   }
   return hexId(identity.vendorId) === normalizeUsbId(usb.vid)
     && hexId(identity.productId) === normalizeUsbId(usb.pid);
 }
 
 /** Why a write was refused, distinguishing no-capability from wrong-target. */
-function writeRefusalReason(state: EditorState): string {
+export function writeRefusalReason(
+  state: Pick<EditorState, "deviceSelection" | "keyboard">,
+): string {
+  if (!state.keyboard.usb?.vid || !state.keyboard.usb?.pid) {
+    return "The keyboard definition has no USB id; the write target cannot be verified.";
+  }
   if (isBrowserReadSelection(state.deviceSelection) && !selectionMatchesTarget(state)) {
     return "Connected device does not match the project's target; refusing to write.";
   }
@@ -1500,12 +1570,44 @@ export function downloadProjectJson(project: Project): void {
   downloadJson(`${contents}\n`, `${filename}-project.json`);
 }
 
+function genericSupportDevice(
+  snapshot: NonNullable<EditorState["hardwareSnapshot"]>,
+): SupportDevice {
+  const lighting = illuminationBase(snapshot);
+  return {
+    model: "Generic VIA",
+    ...(lighting?.hue !== undefined && lighting.saturation !== undefined
+      ? {
+          lighting: {
+            brightness: lighting.brightness,
+            effect: lighting.effect ?? 0,
+            effectSpeed: lighting.effectSpeed ?? 0,
+            hue: lighting.hue,
+            saturation: lighting.saturation,
+          },
+        }
+      : {}),
+  };
+}
+
 export function downloadJson(contents: string, filename: string): void {
   downloadText(contents, filename, "application/json");
 }
 
 export function downloadText(contents: string, filename: string, type: string): void {
   const blob = new Blob([contents], { type });
+  downloadBlob(blob, filename);
+}
+
+export function downloadBytes(bytes: Uint8Array, filename: string, type: string): void {
+  const buffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+  downloadBlob(new Blob([buffer], { type }), filename);
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

@@ -881,3 +881,52 @@ const KEYCODE_VALUE_MAP: Record<string, number> = (() => {
   }
   return map;
 })();
+
+/**
+ * True when a keycode is a plain QMK expression: an identifier with optional
+ * balanced call arguments (`MO(1)`, `LT(1, KC_SPC)`). Generated firmware pastes
+ * the value into C, so anything with quotes, braces, semicolons, comments or
+ * line breaks is refused rather than escaped.
+ */
+export function isSafeQmkKeycode(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 120) {
+    return false;
+  }
+  let depth = 0;
+  let sawIdentifier = false;
+  let closed = false;
+  for (const char of trimmed) {
+    if (closed) {
+      return false;
+    }
+    if (/[A-Za-z0-9_]/.test(char)) {
+      sawIdentifier = true;
+      continue;
+    }
+    if (char === "(") {
+      if (depth === 0 && !sawIdentifier) {
+        return false;
+      }
+      depth += 1;
+      if (depth > 4) {
+        return false;
+      }
+      continue;
+    }
+    if (char === ")") {
+      depth -= 1;
+      if (depth < 0) {
+        return false;
+      }
+      closed = depth === 0;
+      continue;
+    }
+    // Commas, pipes and spaces only separate call arguments.
+    if (depth > 0 && (char === "," || char === "|" || char === " ")) {
+      continue;
+    }
+    return false;
+  }
+  return depth === 0 && sawIdentifier && trimmed !== " " && !trimmed.startsWith(",");
+}
