@@ -96,13 +96,16 @@ are flashing, rather than passing a bare flag. The CLI also reads the
 keyboard's declared bootloader family from its QMK `info.json`; a typo'd target
 or wrong `--bootloader` is refused before anything is staged. STM32/ATmega DFU
 USB ids are family-generic, so the exact board model cannot be proven in
-bootloader mode: disconnect other boards and confirm the target. `--dry-run` prints the bundle
+bootloader mode: disconnect other boards, keep only the target in bootloader
+mode until the run finishes, and confirm the target. The bundle's README must
+name the same `-kb` keyboard, so a bundle built for another board is refused
+before staging. `--dry-run` prints the bundle
 checksum, extraction target and `qmk flash` command without probing the device
 or writing files. A real run reads only bootloader USB ids from sysfs, requires
 exactly one matching device, stages the keymap under `<qmk>/.qmkui/`, then moves
 it into `keyboards/<keyboard>/keymaps/<keymap>/` and invokes `qmk flash`. An
 existing keymap directory is kept under `.qmkui/backups/`. Runs keep a log with
-the target, detected identity, bootloader family and digest under
+the target, detected identity, bootloader family and bundle sha256 under
 `$XDG_STATE_HOME/qmkui` (default `~/.local/state/qmkui`). Supported families:
 `stm32-dfu` (V5 Max) and `atmel-dfu`. The browser cannot see
 bootloader mode, so it never flashes by itself.

@@ -78,10 +78,9 @@ Writes are gated, never unrestricted:
   when the device identity matches the selected target. Keycode writes persist
   immediately; lighting is persisted by a separate confirmed "save lighting to
   EEPROM" action.
-- No write reaches real hardware until the V5 Max manual test plan
-  (`dev-docs/plans/hardware-test-plan.md`) is signed off by the operator.
-  Until then, writes are exercised only against mock transports and the
-  dry-run adapter.
+- Writes follow the operator-signed V5 Max manual test plan
+  (`dev-docs/plans/hardware-test-plan.md`); the bench results table stays open
+  until the operator records it.
 - Never infer a bootloader, recovery artifact, firmware revision, or device
   protocol from a generic profile.
 

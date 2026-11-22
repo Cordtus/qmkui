@@ -325,27 +325,41 @@ fn usage() -> String {
     USAGE.replace("stm32-dfu, atmel-dfu", &families)
 }
 
-/// The keyboard's own `info.json`, or the closest parent that declares one.
-/// This is independent of what is plugged in, so a wrong `--bootloader` or a
-/// typo'd keyboard target is refused before staging.
+/// The keyboard's declared bootloader family. QMK keeps this in `keyboard.json`
+/// (current), `info.json` (older), or `rules.mk`; search the leaf then its
+/// parents. This is independent of what is plugged in, so a wrong
+/// `--bootloader` or a typo'd keyboard target is refused before staging.
 fn declared_bootloader(qmk_path: &Path, keyboard: &str) -> Option<String> {
     let parts = keyboard.split('/').collect::<Vec<_>>();
     for end in (1..=parts.len()).rev() {
-        let info = qmk_path
-            .join("keyboards")
-            .join(parts[..end].join("/"))
-            .join("info.json");
-        let Ok(text) = fs::read_to_string(info) else {
-            continue;
-        };
-        let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
-            continue;
-        };
-        if let Some(bootloader) = json.get("bootloader").and_then(|value| value.as_str()) {
-            return Some(bootloader.to_owned());
+        let dir = qmk_path.join("keyboards").join(parts[..end].join("/"));
+        for file in ["keyboard.json", "info.json"] {
+            if let Ok(text) = fs::read_to_string(dir.join(file)) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if let Some(bootloader) =
+                        json.get("bootloader").and_then(|value| value.as_str())
+                    {
+                        return Some(bootloader.to_owned());
+                    }
+                }
+            }
+        }
+        if let Ok(rules) = fs::read_to_string(dir.join("rules.mk")) {
+            if let Some(bootloader) = bootloader_from_rules(&rules) {
+                return Some(bootloader);
+            }
         }
     }
     None
+}
+
+fn bootloader_from_rules(rules: &str) -> Option<String> {
+    rules.lines().find_map(|line| {
+        let line = line.split('#').next()?.trim();
+        let (key, value) = line.split_once('=')?;
+        let key = key.trim().trim_end_matches('?').trim();
+        (key == "BOOTLOADER").then(|| value.trim().trim_matches('"').to_owned())
+    })
 }
 
 fn default_log_dir() -> PathBuf {
@@ -457,6 +471,36 @@ mod tests {
         let code = run(cli(&root, &root.join("sysfs"), None).into_iter()).unwrap();
         assert_eq!(code, 4);
         assert!(!root.join("keyboards/test/board/keymaps").exists());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn reads_a_bootloader_from_rules_mk() {
+        let root = temp_tree("rules");
+        fs::remove_file(root.join("keyboards/test/board/info.json")).unwrap();
+        fs::write(
+            root.join("keyboards/test/board/rules.mk"),
+            "BOOTLOADER ?= stm32-dfu\n",
+        )
+        .unwrap();
+        assert_eq!(
+            declared_bootloader(&root, "test/board").as_deref(),
+            Some("stm32-dfu")
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn refuses_a_declared_bootloader_mismatch_before_staging() {
+        let root = temp_tree("family");
+        fs::write(
+            root.join("keyboards/test/board/info.json"),
+            r#"{"bootloader":"atmel-dfu"}"#,
+        )
+        .unwrap();
+        let code = run(cli(&root, &root.join("sysfs"), Some("test/board")).into_iter()).unwrap();
+        assert_eq!(code, 4);
+        assert!(!root.join(".qmkui").exists());
         fs::remove_dir_all(&root).ok();
     }
 

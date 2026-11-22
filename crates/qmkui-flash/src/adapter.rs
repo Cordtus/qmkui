@@ -40,6 +40,26 @@ pub fn prepare_keymap(output: &QmkOutput, bundle: &[u8]) -> Result<PreparedFlash
     validate_component("keymap", &output.keymap)?;
 
     let files = read_bundle(bundle)?;
+    let readme = files
+        .iter()
+        .find(|file| file.name == "README.md")
+        .ok_or_else(|| FlashError::InvalidBundle("bundle has no README.md".to_owned()))?;
+    let readme = std::str::from_utf8(&readme.contents)
+        .map_err(|_| FlashError::InvalidBundle("bundle README is not UTF-8".to_owned()))?;
+    let target = readme
+        .lines()
+        .find_map(|line| {
+            let start = line.find("-kb ")?;
+            line[start + 4..].split_whitespace().next()
+        })
+        .ok_or_else(|| FlashError::InvalidBundle("bundle README has no -kb target".to_owned()))?;
+    if target != output.keyboard {
+        return Err(FlashError::InvalidTarget(format!(
+            "bundle targets {target}, not {}",
+            output.keyboard
+        )));
+    }
+
     let keymaps = output
         .qmk_path
         .join("keyboards")
@@ -284,7 +304,10 @@ mod tests {
             &[
                 ("keymap.c", b"// keymap\n"),
                 ("qmkui-lighting-rules.c", b"// rules\n"),
-                ("README.md", b"# bundle\n"),
+                (
+                    "README.md",
+                    b"qmk flash -kb keychron/v5_max/ansi_encoder -km qmkui_test\n",
+                ),
             ],
             false,
         )
@@ -420,6 +443,22 @@ mod tests {
 
         let log = retain_log(&root.join("logs"), &result.log).unwrap();
         assert!(fs::read_to_string(log).unwrap().contains("no device"));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn refuses_a_bundle_built_for_another_keyboard() {
+        let root = temp_root("wrong-board");
+        let other = stored_zip(
+            &[
+                ("keymap.c", b"// other\n"),
+                ("README.md", b"qmk flash -kb example/other -km qmkui_test\n"),
+            ],
+            false,
+        );
+        let error = prepare_keymap(&output(&root), &other).unwrap_err();
+        assert!(error.to_string().contains("targets example/other"));
+        assert!(!root.join(".qmkui").exists());
         fs::remove_dir_all(&root).ok();
     }
 
