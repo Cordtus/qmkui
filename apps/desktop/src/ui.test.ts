@@ -170,6 +170,7 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector('[data-view="system"]')).toBeNull();
     expect(root.querySelector("[data-board-picker]")).not.toBeNull();
     expect(root.querySelector('[data-view="device"]')?.getAttribute("aria-current")).toBe("page");
+    expect(root.querySelector("[data-device-save-lighting]")).not.toBeNull();
     expect(root.querySelector("[data-hardware-snapshot]")).not.toBeNull();
 
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();

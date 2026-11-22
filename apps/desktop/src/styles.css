@@ -2617,7 +2617,7 @@ wa-button.palette-row.active::part(base) {
 
 wa-button.rail-tab::part(label),
 wa-button.keyboard-switch::part(label),
-.write-bar .control-button::part(label),
+.device-write-controls .control-button::part(label),
 wa-button.menu-action::part(label) {
   display: flex;
   flex-direction: row;
