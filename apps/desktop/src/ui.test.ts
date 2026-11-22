@@ -170,6 +170,7 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector('[data-view="system"]')).toBeNull();
     expect(root.querySelector("[data-board-picker]")).not.toBeNull();
     expect(root.querySelector('[data-view="device"]')?.getAttribute("aria-current")).toBe("page");
+    expect(root.querySelector("[data-device-save-lighting]")).not.toBeNull();
     expect(root.querySelector("[data-hardware-snapshot]")).not.toBeNull();
 
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
@@ -656,6 +657,9 @@ function deferred<Value>() {
     await flush();
     expect(root.querySelectorAll("[data-key-info-panel]")).toHaveLength(1);
     expect(root.querySelectorAll('[data-settings-group="key"]')).toHaveLength(1);
+    expect(root.querySelector(".key-focus")?.textContent).toContain("Esc");
+    expect(root.querySelector(".key-focus")?.textContent).toContain("Row 0");
+    expect(root.querySelectorAll("[data-device-write-controls].compact")).toHaveLength(1);
 
     root.querySelector<HTMLElement>('[data-keymap-tab="layer"]')?.click();
     await flush();

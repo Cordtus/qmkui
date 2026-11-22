@@ -194,6 +194,27 @@ describe("device-first connection layout", () => {
     );
   }, 20_000);
 
+  it("keeps the compact write bar on one row at desktop widths", async () => {
+    for (const width of [1440, 1024]) {
+      const page = await openReadResultPage({ width, height: 900 });
+      await page.locator('[data-view="keymap"]').click();
+      const layout = await page.locator("[data-write-confirm]").evaluate((checkbox) => {
+        const bar = checkbox.closest(".write-bar")!;
+        const centers = [...bar.children].map((child) => {
+          const box = child.getBoundingClientRect();
+          return Math.round(box.top + box.height / 2);
+        });
+        return {
+          pageWidth: document.documentElement.scrollWidth,
+          centers,
+          viewportWidth: window.innerWidth,
+        };
+      });
+      expect(Math.max(...layout.centers) - Math.min(...layout.centers)).toBeLessThanOrEqual(2);
+      expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    }
+  }, 30_000);
+
   it("keeps the gated write confirmation inline", async () => {
     const page = await openReadResultPage({ width: 1200, height: 800 });
     await page.locator('[data-view="keymap"]').click();

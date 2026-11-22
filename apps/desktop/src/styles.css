@@ -230,7 +230,8 @@ wa-button.nav-item::part(base) {
 .nav-label {
   font-size: var(--type-meta);
   line-height: 1;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 wa-button.nav-item:hover::part(base) {
@@ -2580,4 +2581,102 @@ wa-button.palette-row.active::part(base) {
   .topbar-actions {
     justify-content: flex-start;
   }
+}
+
+/* Compact write strip under the board. */
+.keyboard-card > .device-write-controls.compact {
+  display: grid;
+  gap: var(--s1);
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: var(--panel-2);
+  padding: 6px var(--s3);
+}
+
+.write-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.write-confirm.compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: var(--type-meta);
+}
+
+.write-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+wa-button.rail-tab::part(label),
+wa-button.keyboard-switch::part(label),
+.device-write-controls .control-button::part(label),
+wa-button.menu-action::part(label) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Selected key: a physical keycap, not another table. */
+.key-focus {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--s2);
+}
+
+.key.key-focus-cap {
+  position: static;
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  cursor: default;
+  font-size: 8px;
+}
+
+.key.key-focus-cap:hover {
+  border-color: #324554;
+  transform: none;
+}
+
+.key-focus-cap span {
+  max-width: 100%;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.key-focus-meta {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.key-focus-meta strong {
+  font-size: var(--type-section);
+  font-weight: 650;
+}
+
+.key-focus-meta small {
+  font-family: var(--mono);
+  color: var(--text-faint);
+}
+
+wa-button.nav-item::part(label) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
 }
