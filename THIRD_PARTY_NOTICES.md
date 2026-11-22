@@ -7,6 +7,7 @@ the linked `qmkui-doctor` dependency graph. Versions are fixed by
 ## Browser bundle
 
 - `@awesome.me/webawesome` 3.9.0 — MIT
+- `@phosphor-icons/core` 2.1.1 — MIT
 - `@shoelace-style/animations` 1.2.0 — MIT
 - `@shoelace-style/localize` 3.2.2 — MIT
 - `@lit/reactive-element` 2.1.2 — BSD-3-Clause
@@ -16,6 +17,8 @@ the linked `qmkui-doctor` dependency graph. Versions are fixed by
 - Vite module-preload runtime from `vite` 7.3.6 — MIT
 
 Copyright (c) 2025 Fonticons, Inc.
+
+Copyright (c) 2023 Phosphor Icons
 
 Copyright (c) 2020 A Beautiful Site, LLC
 

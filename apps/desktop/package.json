@@ -12,10 +12,12 @@
     "preview": "vite preview --host 127.0.0.1",
     "audit:build": "../../scripts/audit-public-build.sh dist",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ui:screens": "node scripts/ui-screenshots.mjs"
   },
   "dependencies": {
-    "@awesome.me/webawesome": "^3.9.0"
+    "@awesome.me/webawesome": "^3.9.0",
+    "@phosphor-icons/core": "^2.1.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
