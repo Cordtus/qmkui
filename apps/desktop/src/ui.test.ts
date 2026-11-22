@@ -650,6 +650,9 @@ function deferred<Value>() {
     await flush();
 
     expect(root.querySelectorAll('[data-settings-group="lighting"]')).toHaveLength(1);
+    expect(
+      root.querySelector('[data-context-detail="board-lighting"]')?.hasAttribute("open"),
+    ).toBe(false);
     expect(root.querySelectorAll("[data-board-lighting]")).toHaveLength(1);
     expect(root.querySelectorAll("[data-key-info-panel]")).toHaveLength(0);
 
@@ -695,8 +698,6 @@ function deferred<Value>() {
     const painted = root.querySelector<HTMLElement>("[data-key=v5_001]");
     expect(painted?.getAttribute("data-lighting-source")).toBe("override");
     expect(painted?.querySelector(".key-override-dot")).not.toBeNull();
-
-    expect(root.querySelector("[data-firmware-bundle]")).not.toBeNull();
 
     const trigger = root.querySelector<HTMLSelectElement>("[data-lighting-rule-trigger]")!;
     trigger.value = "lock:capsLock";
@@ -879,6 +880,9 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>('[data-project-action="import"]')?.click();
     await flush();
 
+    root.querySelector<HTMLElement>('[data-view="firmware"]')?.click();
+    await flush();
+    expect(root.querySelector("[data-firmware-bundle]")).not.toBeNull();
     root.querySelector<HTMLElement>("[data-firmware-bundle]")?.click();
     await flush();
 
