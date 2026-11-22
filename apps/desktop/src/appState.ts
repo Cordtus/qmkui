@@ -43,7 +43,7 @@ export const bundledKeyboards = [keychronV5MaxKeyboard, fixtureKeyboard];
 /** Known VIA models derived from the bundled keyboards, for device identity. */
 export const bundledViaModels = buildViaModels(bundledKeyboards);
 
-export type AppView = "keymap" | "device" | "catalog" | "system";
+export type AppView = "keymap" | "device" | "firmware";
 
 export type AppOptions = {
   keyboard?: KeyboardDefinition;
@@ -66,6 +66,8 @@ export type EditorState = {
   qmkDetected: boolean;
   activeView: AppView;
   projectDetailsOpen: boolean;
+  boardPickerOpen: boolean;
+  commandPaletteOpen: boolean;
   selectedLayerIndex: number;
   /** Last-clicked key; drives the inspector. */
   selectedKeyId: string;
@@ -160,6 +162,8 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     qmkDetected: options.qmkDetected ?? false,
     activeView: initialView(),
     projectDetailsOpen: false,
+    boardPickerOpen: false,
+    commandPaletteOpen: false,
     selectedLayerIndex: defaultSelectedLayerIndex(currentProject),
     selectedKeyId: layout.keys[0]?.id ?? "",
     selectedKeyIds: layout.keys[0] ? [layout.keys[0].id] : [],
@@ -250,6 +254,14 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
   };
 
   const actions = createActions(root, state, requestDoctorReport);
+  root.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      actions.openCommandPalette();
+    } else if (event.key === "Escape" && state.commandPaletteOpen) {
+      actions.closeCommandPalette();
+    }
+  });
   requestDoctorReport();
   requestBrowserKeyboardDiscovery();
 }
@@ -317,6 +329,14 @@ export function createActions(
   };
 
   const actions = {
+    openCommandPalette: () => {
+      state.commandPaletteOpen = true;
+      actions.render();
+    },
+    closeCommandPalette: () => {
+      state.commandPaletteOpen = false;
+      actions.render();
+    },
     render: () => {
       const focusedInput = captureFocusedInput(root);
       const workspaceScroll = captureWorkspaceScroll(root);
@@ -342,12 +362,25 @@ export function createActions(
               readLightingNow();
             }
           },
+          openCommandPalette: actions.openCommandPalette,
+          closeCommandPalette: actions.closeCommandPalette,
+          openBoardPicker: () => {
+            state.boardPickerOpen = true;
+            actions.render();
+          },
+          closeBoardPicker: () => {
+            state.boardPickerOpen = false;
+  state.commandPaletteOpen = false;
+            actions.render();
+          },
           openProjectDetails: () => {
             state.projectDetailsOpen = true;
             actions.render();
           },
           closeProjectDetails: () => {
             state.projectDetailsOpen = false;
+  state.boardPickerOpen = false;
+  state.commandPaletteOpen = false;
             actions.render();
           },
           selectKey: (keyId, additive = false) => {
@@ -851,6 +884,8 @@ export function createActions(
             state.keymapTab = "lighting";
             state.projectJsonDraft = JSON.stringify(state.project, null, 2);
             state.projectStatus = `Created ${state.project.name} from catalog.`;
+            state.boardPickerOpen = false;
+  state.commandPaletteOpen = false;
             state.activeView = "keymap";
             actions.render();
           },
@@ -1189,6 +1224,10 @@ export type RenderActions = {
   selectLayer: (layerIndex: number) => void;
   selectView: (view: AppView) => void;
   selectKeymapTab: (tab: EditorState["keymapTab"]) => void;
+  openCommandPalette: () => void;
+  closeCommandPalette: () => void;
+  openBoardPicker: () => void;
+  closeBoardPicker: () => void;
   openProjectDetails: () => void;
   closeProjectDetails: () => void;
   selectKey: (keyId: string, additive?: boolean) => void;
@@ -1651,6 +1690,8 @@ export function openProject(
   state.projectStatus = status;
   state.activeView = "keymap";
   state.projectDetailsOpen = false;
+  state.boardPickerOpen = false;
+  state.commandPaletteOpen = false;
 }
 
 export function qmkDetectedFromReport(report: DoctorReport): boolean {

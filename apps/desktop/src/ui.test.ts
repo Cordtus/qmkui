@@ -48,6 +48,52 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector('[data-device-action="flash"]')).toBeNull();
   });
 
+  it("opens the board picker from the keyboard chip and closes it", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+
+    expect(root.querySelector("[data-board-picker]")?.hasAttribute("hidden")).toBe(true);
+
+    root.querySelector<HTMLElement>("[data-board-picker-open]")?.click();
+    await flush();
+    expect(root.querySelector("[data-board-picker]")?.hasAttribute("hidden")).toBe(false);
+    expect(
+      root.querySelector("[data-focus-id=catalog-search]"),
+    ).not.toBeNull();
+
+    root.querySelector<HTMLElement>(
+      '[data-catalog-keyboard="example/keyboard"] [data-catalog-action="select"]',
+    )?.click();
+    await flush();
+    expect(root.querySelector("[data-board-picker]")?.hasAttribute("hidden")).toBe(true);
+    expect(root.textContent).toContain("Example 60% Test Board");
+  });
+
+  it("opens the command palette with Ctrl-K and runs a command", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+
+    root.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }),
+    );
+    await flush();
+    expect(root.querySelector("[data-command-palette]")?.hasAttribute("hidden")).toBe(false);
+
+    const firmware = [...root.querySelectorAll<HTMLElement>("[data-command]")].find(
+      (row) => row.textContent?.includes("Go to Firmware"),
+    );
+    firmware?.click();
+    await flush();
+    expect(root.querySelector("[data-command-palette]")?.hasAttribute("hidden")).toBe(true);
+    expect(root.querySelector('[data-view="firmware"]')?.getAttribute("aria-current")).toBe("page");
+  });
+
   it("auto-reads a snapshot on selection and renders reported fields", async () => {
     const root = document.createElement("div");
     const readSnapshot = vi.fn(async () => availableSnapshot());
@@ -76,10 +122,13 @@ describe("device-first hardware workspace", () => {
     });
     await flush();
 
-    for (const view of ["keymap", "device", "catalog", "system"]) {
+    for (const view of ["keymap", "device", "firmware"]) {
       expect(root.querySelector(`[data-view="${view}"]`)).not.toBeNull();
     }
     expect(root.querySelector('[data-view="lighting"]')).toBeNull();
+    expect(root.querySelector('[data-view="catalog"]')).toBeNull();
+    expect(root.querySelector('[data-view="system"]')).toBeNull();
+    expect(root.querySelector("[data-board-picker]")).not.toBeNull();
     expect(root.querySelector('[data-view="device"]')?.getAttribute("aria-current")).toBe("page");
     expect(root.querySelector("[data-hardware-snapshot]")).not.toBeNull();
 
@@ -461,7 +510,7 @@ function deferred<Value>() {
       discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
     });
     await flush();
-    root.querySelector<HTMLElement>('[data-view="catalog"]')?.click();
+    root.querySelector<HTMLElement>("[data-board-picker-open]")?.click();
     await flush();
 
     const viaButton = root.querySelector<HTMLElement>(
@@ -639,7 +688,7 @@ function deferred<Value>() {
     await flush();
     expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("true");
 
-    root.querySelector<HTMLElement>('[data-view="catalog"]')?.click();
+    root.querySelector<HTMLElement>("[data-board-picker-open]")?.click();
     await flush();
     root.querySelector<HTMLElement>('[data-catalog-keyboard="example/keyboard"] [data-catalog-action="select"]')?.click();
     await flush();
@@ -1116,14 +1165,14 @@ function deferred<Value>() {
     expect(root.textContent).toContain("does not match the project's target");
   });
 
-  it("downloads a support bundle from the System panel", async () => {
+  it("downloads a support bundle from the Firmware panel", async () => {
     const root = document.createElement("div");
     createApp(root, {
       discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
     });
     await flush();
 
-    root.querySelector<HTMLElement>('[data-view="system"]')?.click();
+    root.querySelector<HTMLElement>('[data-view="firmware"]')?.click();
     await flush();
 
     const download = root.querySelector<HTMLElement>("[data-download-support-bundle]");
@@ -1161,7 +1210,7 @@ function deferred<Value>() {
     });
     await flush();
 
-    root.querySelector<HTMLElement>('[data-view="system"]')?.click();
+    root.querySelector<HTMLElement>('[data-view="firmware"]')?.click();
     await flush();
 
     root.querySelector<HTMLElement>("[data-build-run]")?.click();
@@ -1179,7 +1228,7 @@ function deferred<Value>() {
     });
     await flush();
 
-    root.querySelector<HTMLElement>('[data-view="system"]')?.click();
+    root.querySelector<HTMLElement>('[data-view="firmware"]')?.click();
     await flush();
 
     root.querySelector<HTMLElement>("[data-flash-dry-run]")?.click();

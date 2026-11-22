@@ -9,7 +9,7 @@ import { createServer } from "vite";
 
 const desktop = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const output = path.join(desktop, ".local", "ui-screens");
-const views = ["keymap", "device", "catalog", "system"];
+const views = ["keymap", "device", "firmware"];
 const widths = [1440, 1024, 768];
 
 await rm(output, { recursive: true, force: true });

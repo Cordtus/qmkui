@@ -1,5 +1,6 @@
 import { AppView, EditorState, RenderActions, isKeychronV5MaxSnapshot } from "../appState";
 import { KeyboardDefinition, UiIssue, jsonExportBlockers } from "../domain";
+import { icon } from "../icons";
 import { connectionContent, connectionScreen } from "./connection";
 import { catalogPanel, detectedKeyboard, projectDetailsDrawer, systemPanel, testPanel } from "./panels";
 import { element, uiButton } from "./primitives";
@@ -34,58 +35,43 @@ export function appShell(
     element("section", { className: "workspace" }, [
       topbar(state, issues, actions),
       activePanel(state, layout, issues, qmkJson, actions),
+      commandPalette(state, actions),
+      boardPickerDialog(state, actions),
       projectDetailsDrawer(state, actions),
     ]),
   ]);
 }
 
 export function rail(activeView: AppView, selectView: (view: AppView) => void): HTMLElement {
-  // One navigation, three jobs: shape the keymap, set the lighting, inspect the
-  // board you have plugged in. Catalog/System are supporting surfaces, not
-  // places you live in. Hints live in the tooltip so labels never truncate.
-  const groups: Array<{ label: string; views: Array<{ id: AppView; label: string; hint: string }> }> = [
-    {
-      label: "Edit",
-      views: [
-        { id: "keymap", label: "Keymap", hint: "Assign keys and set lighting" },
-        { id: "device", label: "Device", hint: "Read the connected board" },
-      ],
-    },
-    {
-      label: "Setup",
-      views: [
-        { id: "catalog", label: "Catalog", hint: "Pick a keyboard" },
-        { id: "system", label: "System", hint: "Build, flash, diagnostics" },
-      ],
-    },
+  // Three destinations: shape the keymap, inspect the board, manage firmware.
+  // Choosing a keyboard is a dialog, not a place you live in.
+  const views: Array<{ id: AppView; label: string; hint: string; icon: Parameters<typeof icon>[0] }> = [
+    { id: "keymap", label: "Keymap", hint: "Assign keys and set lighting", icon: "keyboard" },
+    { id: "device", label: "Device", hint: "Inspect the connected board", icon: "usb" },
+    { id: "firmware", label: "Firmware", hint: "Build, flash and diagnostics", icon: "lightning" },
   ];
-  const nav = element("nav");
-  groups.forEach((group) => {
-    nav.append(element("p", { className: "rail-group-label", text: group.label }));
-    group.views.forEach((view) => {
-      const selected = view.id === activeView;
-      const button = uiButton({
+  const nav = element("nav", { attrs: { "aria-label": "Workbench" } });
+  views.forEach((view) => {
+    const selected = view.id === activeView;
+    const button = uiButton(
+      {
         className: `nav-item ${selected ? "active" : ""}`,
         type: "button",
-        text: view.label,
         attrs: {
           "aria-current": selected ? "page" : "false",
           "data-view": view.id,
           title: view.hint,
         },
-      });
-      button.addEventListener("click", () => selectView(view.id));
-      nav.append(button);
-    });
+      },
+      [icon(view.icon, { size: 20 }), element("span", { className: "nav-label", text: view.label })],
+    );
+    button.addEventListener("click", () => selectView(view.id));
+    nav.append(button);
   });
 
   return element("aside", { className: "rail app-rail" }, [
-    element("div", { className: "brand" }, [
+    element("div", { className: "brand", attrs: { title: "QMKUI" } }, [
       element("span", { className: "mark", text: "Q" }),
-      element("div", { className: "brand-text" }, [
-        element("strong", { text: "QMKUI" }),
-        element("small", { text: "via read/write" }),
-      ]),
     ]),
     nav,
   ]);
@@ -102,7 +88,6 @@ export function topbar(
   actions: RenderActions,
 ): HTMLElement {
   const hasErrors = issues.some((issue) => issue.severity === "error");
-  const statusClass = hasErrors ? "blocked" : "ready";
   const detected = detectedKeyboard(state);
   const connectedLabel = connectedDeviceLabel(state);
   const deviceName = connectedLabel ?? detected?.displayName ?? state.keyboard.displayName;
@@ -112,67 +97,213 @@ export function topbar(
       ? "Connected"
       : "Preset";
 
-  const save = uiButton({
-    className: "secondary-action",
-    text: "Save",
-    attrs: { "data-project-action": "save", title: "Save the current project" },
-  });
-  save.addEventListener("click", actions.saveProject);
+  const keyboardSwitch = uiButton(
+    {
+      className: "keyboard-switch",
+      type: "button",
+      attrs: {
+        "data-board-picker-open": "true",
+        title: "Choose a keyboard definition",
+      },
+    },
+    [
+      icon("keyboard", { size: 16 }),
+      element("span", { text: deviceName }),
+      icon("caret-down", { size: 12 }),
+    ],
+  );
+  keyboardSwitch.addEventListener("click", actions.openBoardPicker);
 
-  const projectDetails = uiButton({
-    className: "secondary-action",
-    text: "Project",
-    attrs: { "data-project-details-action": "open", title: "Project details and import/export" },
-  });
-  projectDetails.addEventListener("click", actions.openProjectDetails);
+  const save = iconAction("floppy-disk", "Save project", { "data-project-action": "save" }, actions.saveProject);
+  const project = iconAction(
+    "file-code",
+    "Project details",
+    { "data-project-details-action": "open" },
+    actions.openProjectDetails,
+  );
+  const read = state.hardwareSnapshot
+    ? iconAction(
+        "arrows-clockwise",
+        state.snapshotReadStatus === "reading" ? "Reading device" : "Read device",
+        { "data-device-action": "refresh" },
+        actions.readDevice,
+      )
+    : undefined;
+
+  const support = menuAction("file-code", "Support bundle", "data-support-bundle", actions.downloadSupportBundle);
+  const exportJson = exportJsonButton(state, issues, actions);
+  const choose = menuAction("keyboard", "Change keyboard", "data-device-action-choose", actions.openBoardPicker);
 
   return element("header", { className: "topbar workspace-header" }, [
     element("div", { className: "project-heading" }, [
-      element("p", { className: "eyebrow", text: viewLabel(state.activeView) }),
-      element("h1", { text: state.project.name }),
-      element("div", { className: "project-meta" }, [
-        element("span", { className: "device-chip", text: deviceName, attrs: { title: "Connected device" } }),
-        element("small", { className: "device-id", text: deviceId }),
+      element("div", { className: "project-title-row" }, [
+        element("h1", { text: state.project.name }),
         element("span", {
-          className: `status ${statusClass}`,
+          className: `status ${hasErrors ? "blocked" : "ready"}`,
           text: topbarStatusLabel(issues),
           attrs: { "data-keymap-status": "true" },
         }),
       ]),
+      element("div", { className: "project-meta" }, [
+        keyboardSwitch,
+        element("small", { className: "device-id", text: deviceId }),
+        element("span", { className: "view-name", text: viewLabel(state.activeView) }),
+      ]),
     ]),
     element("div", { className: "topbar-actions" }, [
       historyControls(state, actions),
-      element("div", { className: "action-group" }, [
-        exportJsonButton(state, issues, actions),
-        save,
-        projectDetails,
+      iconAction("magnifying-glass", "Commands (Ctrl-K)", { "data-command-palette-open": "true" }, actions.openCommandPalette),
+      save,
+      project,
+      ...(read ? [read] : []),
+      element("details", { className: "overflow-menu", attrs: { "data-overflow-menu": "true" } }, [
+        element("summary", {
+          className: "overflow-trigger",
+          attrs: { "aria-label": "More actions", title: "More actions" },
+        }, [icon("dots-three", { size: 18 })]),
+        element("div", { className: "overflow-list" }, [exportJson, support, choose]),
       ]),
-      ...(state.hardwareSnapshot ? [deviceActions(state, actions)] : []),
     ]),
   ]);
 }
 
-/**
- * Device actions for whichever view is open. One read controls the snapshot:
- * it is the header action, not a second button inside the view.
- */
-function deviceActions(state: EditorState, actions: RenderActions): HTMLElement {
-  const refresh = uiButton({
-    className: "secondary-action",
-    text: state.snapshotReadStatus === "reading" ? "Reading..." : "Read device",
+function iconAction(
+  name: Parameters<typeof icon>[0],
+  label: string,
+  attrs: Record<string, string>,
+  onClick: () => void,
+): HTMLElement {
+  const button = uiButton(
+    {
+      className: "icon-action",
+      type: "button",
+      attrs: { ...attrs, "aria-label": label, title: label },
+    },
+    [icon(name, { size: 17 })],
+  );
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function menuAction(
+  name: Parameters<typeof icon>[0],
+  label: string,
+  marker: string,
+  onClick: () => void,
+): HTMLElement {
+  const button = uiButton(
+    {
+      className: "menu-action",
+      type: "button",
+      attrs: { [marker]: "true" },
+    },
+    [icon(name, { size: 15 }), element("span", { text: label })],
+  );
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function commandPalette(state: EditorState, actions: RenderActions): HTMLElement {
+  const input = element("input", {
     attrs: {
-      "data-device-action": "refresh",
-      ...(state.snapshotReadStatus === "reading" ? { disabled: "" } : {}),
+      "aria-label": "Search commands",
+      "data-focus-id": "command-search",
+      placeholder: "Type a command",
+      type: "search",
     },
   });
-  refresh.addEventListener("click", actions.readDevice);
-  const choose = uiButton({
-    className: "secondary-action",
-    text: "Change keyboard",
-    attrs: { "data-device-action": "connect" },
+  const list = element("div", { className: "command-list", attrs: { "data-command-list": "true" } });
+  const commands: Array<{
+    icon: Parameters<typeof icon>[0];
+    label: string;
+    hint: string;
+    run: () => void;
+  }> = [
+    { icon: "keyboard", label: "Go to Keymap", hint: "1", run: () => actions.selectView("keymap") },
+    { icon: "usb", label: "Go to Device", hint: "2", run: () => actions.selectView("device") },
+    { icon: "lightning", label: "Go to Firmware", hint: "3", run: () => actions.selectView("firmware") },
+    { icon: "floppy-disk", label: "Save project", hint: "", run: actions.saveProject },
+    { icon: "keyboard", label: "Change keyboard", hint: "", run: actions.openBoardPicker },
+    { icon: "file-code", label: "Project details", hint: "", run: actions.openProjectDetails },
+    { icon: "download-simple", label: "Export QMK JSON", hint: "", run: actions.downloadQmkJson },
+    { icon: "file-code", label: "Export support bundle", hint: "", run: actions.downloadSupportBundle },
+    { icon: "lightning", label: "Download firmware bundle", hint: "", run: actions.downloadFirmwareBundle },
+    { icon: "arrows-clockwise", label: "Read device", hint: "", run: actions.readDevice },
+  ];
+  commands.forEach((command) => {
+    const button = uiButton(
+      { className: "command-row", type: "button", attrs: { "data-command": command.label } },
+      [
+        icon(command.icon, { size: 15 }),
+        element("span", { className: "command-label", text: command.label }),
+        ...(command.hint ? [element("kbd", { text: command.hint })] : []),
+      ],
+    );
+    button.addEventListener("click", () => {
+      actions.closeCommandPalette();
+      command.run();
+    });
+    list.append(button);
   });
-  choose.addEventListener("click", actions.chooseBrowserKeyboard);
-  return element("div", { className: "action-group" }, [refresh, choose]);
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    list.querySelectorAll<HTMLElement>("[data-command]").forEach((row) => {
+      row.hidden = !row.textContent?.toLowerCase().includes(query);
+    });
+  });
+
+  const dialog = element("wa-dialog", {
+    className: "command-palette",
+    attrs: { label: "Commands", "data-command-palette": "true" },
+  }, [
+    element("div", { className: "command-search" }, [icon("magnifying-glass", { size: 16 }), input]),
+    list,
+    element("p", { className: "hint command-hint", text: "Ctrl-K opens this anywhere. Esc closes it." }),
+  ]);
+  if (state.commandPaletteOpen) {
+    dialog.hidden = false;
+    dialog.setAttribute("open", "");
+    (dialog as HTMLElement & { open: boolean }).open = true;
+    queueMicrotask(() => input.focus());
+  } else {
+    dialog.hidden = true;
+    dialog.removeAttribute("open");
+    (dialog as HTMLElement & { open: boolean }).open = false;
+  }
+  dialog.addEventListener("wa-after-hide", () => {
+    if (state.commandPaletteOpen) {
+      actions.closeCommandPalette();
+    }
+  });
+  return dialog;
+}
+
+function boardPickerDialog(state: EditorState, actions: RenderActions): HTMLElement {
+  const dialog = element("wa-dialog", {
+    className: "board-picker-dialog",
+    attrs: { label: "Choose keyboard", "data-board-picker": "true" },
+  }, [
+    element("p", {
+      className: "hint board-picker-hint",
+      text: "Switch the project to another bundled definition.",
+    }),
+    catalogPanel(state, actions),
+  ]);
+  if (state.boardPickerOpen) {
+    dialog.hidden = false;
+    dialog.setAttribute("open", "");
+    (dialog as HTMLElement & { open: boolean }).open = true;
+  } else {
+    dialog.hidden = true;
+    dialog.removeAttribute("open");
+    (dialog as HTMLElement & { open: boolean }).open = false;
+  }
+  dialog.addEventListener("wa-after-hide", () => {
+    if (state.boardPickerOpen) {
+      actions.closeBoardPicker();
+    }
+  });
+  return dialog;
 }
 
 export function viewLabel(view: AppView): string {
@@ -181,10 +312,10 @@ export function viewLabel(view: AppView): string {
       return "Keymap";
     case "device":
       return "Device";
-    case "catalog":
-      return "Catalog";
+    case "firmware":
+      return "Firmware";
     default:
-      return "System";
+      return "Keymap";
   }
 }
 
@@ -225,10 +356,7 @@ export function activePanel(
   qmkJson: unknown,
   actions: RenderActions,
 ): HTMLElement {
-  if (state.activeView === "catalog") {
-    return catalogPanel(state, actions);
-  }
-  if (state.activeView === "system") {
+  if (state.activeView === "firmware") {
     return systemPanel(state, issues, qmkJson, actions.reloadProbe, actions.downloadSupportBundle, actions);
   }
   if (state.activeView === "device") {
