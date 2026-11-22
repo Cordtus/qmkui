@@ -610,6 +610,26 @@ function deferred<Value>() {
     expect(root.querySelectorAll("[data-lighting-rule]")).toHaveLength(0);
   }, 20_000);
 
+  it("turns paint mode off when another keyboard is loaded", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>("[data-lighting-paint]")?.click();
+    await flush();
+    expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("true");
+
+    root.querySelector<HTMLElement>('[data-view="catalog"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-catalog-keyboard="example/keyboard"] [data-catalog-action="select"]')?.click();
+    await flush();
+
+    expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("false");
+  }, 20_000);
+
   it("colours every selected key and undoes the whole selection in one step", async () => {
     const root = document.createElement("div");
     createApp(root, {

@@ -2,7 +2,9 @@ import type { Layer, Project, VisualKey } from "./domain";
 import { scanLayerReference } from "./domain";
 import { kindForKeycode } from "./keycodes";
 
-export const MAX_QMK_LAYER_INDEX = 31;
+import { MAX_QMK_LAYER_INDEX } from "./domain";
+
+export { MAX_QMK_LAYER_INDEX };
 
 export type LayerReference = {
   sourceLayerIndex: number;

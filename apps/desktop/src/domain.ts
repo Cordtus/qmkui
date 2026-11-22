@@ -507,6 +507,13 @@ export function validateProject(project: Project, keyboard: KeyboardDefinition):
           title: "Lighting rule layer exceeds QMK limit",
           path: `lightingRules[${ruleIndex}].trigger.layerIndex`,
         });
+      } else if (!layerIndexes.has(index)) {
+        issues.push({
+          code: "lightingRule.layer.missing",
+          severity: "error",
+          title: "Lighting rule references a layer that does not exist",
+          path: `lightingRules[${ruleIndex}].trigger.layerIndex`,
+        });
       }
     }
     if (rule.trigger.kind === "held") {

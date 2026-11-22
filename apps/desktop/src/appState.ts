@@ -522,6 +522,12 @@ export function createActions(
             if (issues.some((issue) => issue.severity === "error")) {
               return;
             }
+            const blockers = jsonExportBlockers(state.project);
+            if (blockers.length > 0) {
+              state.projectStatus = blockers.join(" ");
+              actions.render();
+              return;
+            }
             state.downloadQmkJson(
               safeExportQmkJson(state.project, state.keyboard, issues),
               state.project,

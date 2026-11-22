@@ -321,7 +321,7 @@ export function lightingPanel(
       "aria-pressed": String(state.lightingPaint),
       "data-lighting-paint": "true",
       title: canPaint ? "Click keys to apply the current colour" : "Pick a colour first",
-      ...(canPaint ? {} : { disabled: "" }),
+      ...(canPaint || state.lightingPaint ? {} : { disabled: "" }),
     },
   });
   paint.addEventListener("click", actions.toggleLightingPaint);

@@ -31,7 +31,7 @@ export function generateLightingRulesC(
   const layout = keyboard.layouts.find(
     (candidate) => candidate.id === project.target.layoutId,
   );
-  if (!layout) {
+  if (!layout || !keyboard.matrix) {
     return null;
   }
   const keys = layout.keys;
@@ -126,7 +126,7 @@ function ruleBlock(
     // `layer_state_is(0)` is never true.
     const condition =
       trigger.layerIndex === 0
-        ? "get_highest_layer(layer_state) == 0"
+        ? "get_highest_layer(layer_state | default_layer_state) == 0"
         : `layer_state_is(${trigger.layerIndex})`;
     return [
       `    // Layer ${trigger.layerIndex} active: ${keyName(target)}`,
@@ -163,7 +163,7 @@ function keyColorCall(
 
 function inBounds(key: VisualKey, bounds: MatrixBounds): boolean {
   if (!bounds || !key.matrix) {
-    return true;
+    return false;
   }
   return key.matrix.row < bounds.rows && key.matrix.col < bounds.cols;
 }
