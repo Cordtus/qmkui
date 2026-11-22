@@ -17,6 +17,7 @@ export type BuildActions = {
   runLocalBuild: () => void;
   setFlashConfirmed: (confirmed: boolean) => void;
   runFlashDryRun: () => void;
+  downloadFirmwareBundle: () => void;
 };
 export function projectPanel(
   state: EditorState,
@@ -365,18 +366,18 @@ export function lightingPanel(
     ...(supportedSystems.some((system) => system.id === "rgbMatrix")
       ? [controlGroup("lighting-rules", "Key rules", [lightingRulesPanel(state, layout, actions)])]
       : []),
-    controlGroup("lighting-write", "Board lighting", [
+    contextDisclosure("Board lighting", "board-lighting", [
       supportedSystems.some((system) => system.id === "rgbMatrix")
         ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard), base)
         : element("p", { className: "hint", text: "No RGB-matrix controls on this keyboard." }),
-    ]),
-    controlGroup("firmware", "Firmware", [
-      firmwareButton(actions),
       element("p", {
         className: "hint",
-        text: "Buildable keymap, per-key colours and rules for QMK CLI or Toolbox.",
+        text: "Applies to the whole board over VIA; key colours above are firmware-only.",
       }),
-    ]),
+    ], {
+      open: state.boardLightingOpen,
+      onToggle: actions.setBoardLightingOpen,
+    }),
     controlGroup("lighting-options", "Capabilities", [
       contextDisclosuresRow(lightingDisclosures(context, lightingSystems)),
     ]),
@@ -538,18 +539,18 @@ function contextDisclosuresRow(
   );
 }
 
-function firmwareButton(actions: RenderActions): HTMLElement {
-  const download = uiButton({
+function firmwareButton(download: () => void): HTMLElement {
+  const button = uiButton({
     className: "secondary-action",
     type: "button",
-    text: "Download firmware",
+    text: "Download firmware bundle",
     attrs: {
       "data-firmware-bundle": "true",
       title: "Download a zip with keymap.c, the lighting overlay and build instructions",
     },
   });
-  download.addEventListener("click", actions.downloadFirmwareBundle);
-  return download;
+  button.addEventListener("click", download);
+  return button;
 }
 
 export function lightingCapabilityList(
@@ -999,6 +1000,10 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
       buildOutput,
       element("h3", { className: "build-subheading", text: "Artifacts" }),
       artifacts,
+      element("h3", { className: "build-subheading", text: "Firmware bundle" }),
+      element("div", { className: "build-actions" }, [
+        firmwareButton(actions.downloadFirmwareBundle),
+      ]),
       element("h3", { className: "build-subheading", text: "Flash preview" }),
       element("div", { className: "flash-controls" }, [flashConfirm, flashButton]),
       flashStatus,
