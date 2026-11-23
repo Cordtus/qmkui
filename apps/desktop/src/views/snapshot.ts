@@ -1,15 +1,11 @@
 import { EditorState, RenderActions, isKeychronV5MaxSnapshot, keyboardForSelection, safetyAssessment } from "../appState";
-import { hsv255ToHex } from "../color";
 import type { KeyboardDefinition } from "../domain";
 import { GenericViaStandardState } from "../devices/genericViaReader";
-import { KeychronV5MaxIdentityFacts, KeychronV5MaxLighting, KeychronV5MaxReadSnapshot } from "../devices/keychronV5MaxReader";
-import { ViaKeymap, ViaMacros, ViaMacroStep } from "../devices/viaReadProtocol";
-import { illuminationBase, type IlluminationBase } from "../illumination";
-import { dimHex, inkFor } from "../color";
-import { decodeHardwareKeycode, isSysRqKeycode } from "../keycodes";
-import { keychronV5MaxKeyboard } from "../presets";
+import { KeychronV5MaxIdentityFacts, KeychronV5MaxReadSnapshot } from "../devices/keychronV5MaxReader";
+import { ViaMacros, ViaMacroStep } from "../devices/viaReadProtocol";
+import { decodeHardwareKeycode } from "../keycodes";
 import { icon, type IconName } from "../icons";
-import { colorWheel, contextDisclosure, definitionList, element, layoutBounds, uiButton } from "./primitives";
+import { contextDisclosure, definitionList, element, uiButton } from "./primitives";
 
 export function snapshotContent(state: EditorState, actions: RenderActions): HTMLElement {
   const snapshot = state.hardwareSnapshot!;
@@ -22,16 +18,6 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
 
   return element("section", { className: "view-stack snapshot-grid", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
     deviceStatusStrip(snapshot, keyboard, state, actions),
-    snapshotKeymapField(
-      snapshot.keymap,
-      state.snapshotLayerIndex,
-      actions.selectSnapshotLayer,
-      state.snapshotSelectedKey,
-      actions.selectSnapshotKey,
-      keyboard,
-      illuminationBase(snapshot),
-    ),
-    snapshotLightingField(snapshot.lighting, actions.refreshLighting),
     safetyPanel(state, actions),
     contextDisclosure("Device facts", "device-facts", [
       element("div", { className: "snapshot-group-fields" }, [
@@ -39,52 +25,7 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
         capabilityField(snapshot),
         snapshotField("Macros", snapshot.macros, macrosSnapshotRows),
       ]),
-    ]),
-    snapshot.keymap.state === "available"
-      ? deviceWriteControls(state, actions, {
-          description: `Selected key ${state.snapshotSelectedKey} on layer ${state.snapshotLayerIndex}.`,
-      controls: (confirmed) => {
-        const keycodeInput = element("input", {
-          attrs: {
-            "aria-label": "Keycode (hex)",
-            "data-write-keycode": "true",
-            placeholder: "0046",
-          },
-        });
-        const writeKey = uiButton({
-          className: "secondary-action",
-          type: "button",
-          text: "Write key",
-          attrs: { "data-device-write-key": "true" },
-        });
-        writeKey.addEventListener("click", () => {
-          const value = Number.parseInt(keycodeInput.value.trim(), 16);
-          if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
-            actions.writeSnapshotKeycode(NaN, false);
-            return;
-          }
-          actions.writeSnapshotKeycode(value, confirmed());
-        });
-        return [keycodeInput, writeKey];
-      },
-          lightingSave: true,
-        })
-      : deviceWriteUnavailable(),
-  ]);
-}
-
-function deviceWriteUnavailable(): HTMLElement {
-  return element("section", {
-    className: "device-write-controls blocked",
-    attrs: {
-      "data-device-write-controls": "true",
-      "data-write-blocked": "true",
-    },
-  }, [
-    element("h3", { text: "Device write" }),
-    element("p", {
-      text: "Device writes are disabled until the keymap read succeeds; re-read the device to select a verified target.",
-    }),
+    ], { open: true }),
   ]);
 }
 
@@ -127,7 +68,6 @@ function deviceStatusStrip(
       }),
     ]),
     tester,
-    element("span", { className: "status-chip ready", text: "Connected" }),
   ]);
 }
 
@@ -200,9 +140,6 @@ export function safetyPanel(state: EditorState, actions: RenderActions): HTMLEle
     ]),
     element("p", { text: assessment.reason }),
     element("small", {
-      text: "Advisory: this panel does not gate device writes; the write confirmation remains the gate.",
-    }),
-    element("small", {
       text: `${ledger.events.length} local event${ledger.events.length === 1 ? "" : "s"} · ledger ${state.safetyLedgerStorage.availability()}`,
     }),
     ...(actionsRow.childElementCount > 0 ? [actionsRow] : []),
@@ -210,9 +147,9 @@ export function safetyPanel(state: EditorState, actions: RenderActions): HTMLEle
 }
 
 /**
- * The one gated device-write surface, shared by the project editor and the
- * hardware snapshot. Writes only happen after the operator ticks the
- * confirmation checkbox. Keycode writes persist to EEPROM immediately;
+ * The one gated device-write surface, attached to the Keymap board. Writes only
+ * happen after the operator ticks the confirmation checkbox. Keycode writes
+ * persist to EEPROM immediately;
  * "save lighting to EEPROM" is a separate confirmed action (channel-3 save).
  * The write allow-list in `qmkui-hid`/`viaWrite` gates every frame.
  */
@@ -222,22 +159,12 @@ export function deviceWriteControls(
   options: {
     description: string;
     controls: (confirmed: () => boolean) => HTMLElement[];
-    /** Show the channel-3 "save lighting to EEPROM" action. Default true. */
-    lightingSave?: boolean;
-    /** Short explanation shown under the write actions. */
-    note?: string;
-    /** One-row strip for the board footer. */
-    compact?: boolean;
   },
 ): HTMLElement {
   const confirmInput = element("input", {
     attrs: { "data-write-confirm": "true", type: "checkbox" },
   });
   const confirmed = () => confirmInput.checked;
-  const confirm = element("label", { className: "write-confirm" }, [
-    confirmInput,
-    element("span", { text: "I understand this writes to the connected device." }),
-  ]);
   const enable = uiButton(
     {
       className: "secondary-action",
@@ -256,76 +183,38 @@ export function deviceWriteControls(
     ],
   );
   enable.addEventListener("click", () => actions.enableDeviceWrites(confirmed()));
-  const save = options.compact
-    ? uiButton(
-        {
-          className: "icon-action",
-          type: "button",
-          attrs: {
-            "aria-label": "Persist lighting",
-            "data-device-save-lighting": "true",
-            title: "Store the current RGB state in the keyboard EEPROM so it survives power cycles",
-          },
-        },
-        [icon("floppy-disk", { size: 17 })],
-      )
-    : uiButton(
-        {
-          className: "secondary-action",
-          type: "button",
-          attrs: {
-            "data-device-save-lighting": "true",
-            title: "Store the current RGB state in the keyboard EEPROM so it survives power cycles",
-          },
-        },
-        [icon("floppy-disk", { size: 15 }), element("span", { text: "Persist lighting" })],
-      );
+  const save = uiButton(
+    {
+      className: "icon-action",
+      type: "button",
+      attrs: {
+        "aria-label": "Persist lighting",
+        "data-device-save-lighting": "true",
+        title: "Store the current RGB state in the keyboard EEPROM so it survives power cycles",
+      },
+    },
+    [icon("floppy-disk", { size: 17 })],
+  );
   save.addEventListener("click", () => actions.saveLightingToDevice(confirmed()));
 
-  if (options.compact) {
-    return element("section", {
-      className: "device-write-controls compact",
-      attrs: {
-        "data-device-write-controls": "true",
-        title: options.description,
-      },
-    }, [
-      element("div", { className: "write-bar" }, [
-        element("label", { className: "write-confirm compact" }, [
-          confirmInput,
-          element("span", { text: "Confirm writes" }),
-        ]),
-        enable,
-        element("div", { className: "write-bar-actions" }, [
-          ...options.controls(confirmed),
-          ...(options.lightingSave === false ? [] : [save]),
-        ]),
-      ]),
-      ...(state.deviceWriteStatus
-        ? [
-            element("p", {
-              className: "device-write-status",
-              text: state.deviceWriteStatus,
-              attrs: { "data-write-status": "true" },
-            }),
-          ]
-        : []),
-    ]);
-  }
-
   return element("section", {
-    className: "device-write-controls",
-    attrs: { "data-device-write-controls": "true" },
+    className: "device-write-controls compact",
+    attrs: {
+      "data-device-write-controls": "true",
+      title: options.description,
+    },
   }, [
-    element("h3", { text: "Device write" }),
-    element("p", { text: options.description }),
-    confirm,
-    element("div", { className: "device-write-actions" }, [
+    element("div", { className: "write-bar" }, [
+      element("label", { className: "write-confirm compact" }, [
+        confirmInput,
+        element("span", { text: "Confirm writes" }),
+      ]),
       enable,
-      ...options.controls(confirmed),
-      ...(options.lightingSave === false ? [] : [save]),
+      element("div", { className: "write-bar-actions" }, [
+        ...options.controls(confirmed),
+        save,
+      ]),
     ]),
-    ...(options.note ? [element("p", { className: "hint", text: options.note })] : []),
     ...(state.deviceWriteStatus
       ? [
           element("p", {
@@ -422,205 +311,6 @@ export function identitySnapshotRows(value: KeychronV5MaxIdentityFacts): Array<[
 }
 
 
-export function keymapSnapshotRows(value: ViaKeymap): Array<[string, string]> {
-  const firstKeycode = value.keycodes[0]?.[0]?.[0];
-  return [
-    ["Layers", String(value.layerCount)],
-    ...(firstKeycode === undefined ? [] : [["First", `0x${firstKeycode.toString(16).padStart(4, "0")}`] as [string, string]]),
-  ];
-}
-
-export function snapshotKeymapField(
-  field: KeychronV5MaxReadSnapshot["keymap"],
-  selectedLayerIndex: number,
-  selectLayer: (layerIndex: number) => void,
-  selectedKey: string,
-  selectKey: (matrixKey: string) => void,
-  keyboard: KeyboardDefinition = keychronV5MaxKeyboard,
-  base: IlluminationBase | null = null,
-): HTMLElement {
-  if (field.state !== "available") {
-    return snapshotField("Keymap", field, keymapSnapshotRows);
-  }
-
-  const layers = field.value.keycodes;
-  const selectedLayer = layers[selectedLayerIndex] ?? layers[0] ?? [];
-  const layout = keyboard.layouts[0];
-  const matrixKeys = layout.keys.filter((key) => key.matrix);
-  const selectedMatrix = matrixKeys.some((key) => matrixKeyId(key.matrix!) === selectedKey)
-    ? selectedKey
-    : matrixKeyId(matrixKeys[0]!.matrix!);
-  const board = element("div", {
-    className: "hardware-keymap-board",
-    attrs: { "data-hardware-keymap-board": "true" },
-  });
-  const bounds = layoutBounds(layout.keys);
-  board.style.aspectRatio = `${bounds.width} / ${bounds.height}`;
-  layout.keys.forEach((key) => {
-    if (!key.matrix) {
-      return;
-    }
-    const matrix = key.matrix;
-    const keycode = selectedLayer[matrix.row]?.[matrix.col];
-    const matrixId = matrixKeyId(matrix);
-    const hardwareKey = element("button", {
-      className: "hardware-keymap-key",
-      type: "button",
-      attrs: {
-        "data-hardware-key": matrixId,
-        "data-keycode-source": "hardware",
-        "aria-pressed": String(matrixId === selectedMatrix),
-        ...(keycode === undefined ? {} : { title: formatHardwareKeycode(keycode) }),
-      },
-      text: keycode === undefined ? "" : compactHardwareKeycode(keycode),
-    });
-    hardwareKey.addEventListener("click", () => selectKey(matrixId));
-    hardwareKey.style.left = `${(key.x / bounds.width) * 100}%`;
-    hardwareKey.style.top = `${(key.y / bounds.height) * 100}%`;
-    hardwareKey.style.width = `calc(${((key.w ?? 1) / bounds.width) * 100}% - var(--key-gap))`;
-    hardwareKey.style.height = `calc(${((key.h ?? 1) / bounds.height) * 100}% - var(--key-gap))`;
-    if (base) {
-      const lit = dimHex(base.color, base.brightness / 255);
-      hardwareKey.style.setProperty("--key-light", lit);
-      hardwareKey.style.setProperty("--key-ink", inkFor(lit));
-      hardwareKey.setAttribute("data-lighting-active", "true");
-    }
-    board.append(hardwareKey);
-  });
-
-  const layerTabs = element("div", {
-    className: "hardware-layer-tabs",
-    attrs: { "data-hardware-layer-tabs": "true" },
-  });
-  layers.forEach((_layer, layerIndex) => {
-    const tab = uiButton({
-      className: "hardware-layer-tab",
-      text: `Layer ${layerIndex}`,
-      type: "button",
-      attrs: {
-        "data-hardware-layer": String(layerIndex),
-        "aria-pressed": String(layerIndex === selectedLayerIndex),
-      },
-    });
-    tab.addEventListener("click", () => selectLayer(layerIndex));
-    layerTabs.append(tab);
-  });
-
-  return element("section", {
-    className: "snapshot-field hardware-keymap available",
-    attrs: { "data-snapshot-field": "keymap", "data-snapshot-state": "available", "data-hardware-keymap": "true" },
-  }, [
-    element("div", { className: "hardware-keymap-heading" }, [
-      element("div", {}, [
-        element("h2", { text: "Keymap" }),
-        hardwareSysRqSummary(layers),
-      ]),
-      layerTabs,
-    ]),
-    board,
-    snapshotKeyRoles(layers, selectedMatrix),
-  ]);
-}
-
-export function matrixKeyId(matrix: { row: number; col: number }): string {
-  return `${matrix.row}:${matrix.col}`;
-}
-
-export function formatHardwareKeycode(keycode: number): string {
-  return `0x${keycode.toString(16).padStart(4, "0")}`;
-}
-
-export function compactHardwareKeycode(keycode: number): string {
-  const label = decodeHardwareKeycode(keycode);
-  return label === "None" || label === "Transparent" ? "·" : label;
-}
-
-export function hardwareSysRqSummary(layers: number[][][]): HTMLElement {
-  const mapped = new Set<string>();
-  layers.forEach((layer) =>
-    layer.forEach((row, rowIndex) =>
-      row.forEach((code, columnIndex) => {
-        if (isSysRqKeycode(code)) {
-          mapped.add(`${rowIndex}:${columnIndex}`);
-        }
-      }),
-    ),
-  );
-  if (mapped.size === 0) {
-    return element("p", {
-      className: "hardware-sysrq-summary",
-      text: "No key maps to Print/SysRq on any layer.",
-    });
-  }
-  return element("p", {
-    className: "hardware-sysrq-summary sysrq-found",
-    text: `Print/SysRq is mapped on ${mapped.size} key(s); Alt + the key + a letter runs Magic SysRq.`,
-  });
-}
-
-export function snapshotKeyRoles(layers: number[][][], matrixKey: string): HTMLElement {
-  const [row, column] = matrixKey.split(":").map(Number);
-  const roleNodes = layers
-    .map((layer, layerIndex) => {
-      const code = layer[row]?.[column];
-      if (code === undefined) {
-        return null;
-      }
-      return element("li", {
-        className: `hardware-key-role${isSysRqKeycode(code) ? " sysrq" : ""}`,
-        attrs: { "data-hardware-key-role": String(layerIndex) },
-      }, [
-        element("span", { className: "hardware-key-role-layer", text: `Layer ${layerIndex}` }),
-        element("span", { className: "hardware-key-role-label", text: decodeHardwareKeycode(code) }),
-        element("span", { className: "hardware-key-role-hex", text: formatHardwareKeycode(code) }),
-        ...(isSysRqKeycode(code)
-          ? [element("span", { className: "hardware-key-role-tag", text: "SysRq" })]
-          : []),
-      ]);
-    })
-    .filter((node): node is HTMLLIElement => node !== null);
-  const sysRqHere = roleNodes.some((node) => node.classList.contains("sysrq"));
-  return element("section", {
-    className: "hardware-key-roles",
-    attrs: { "data-hardware-key-roles": matrixKey },
-  }, [
-    roleNodes.length === 0
-      ? element("p", { text: "No keycodes reported for this position." })
-      : element("ul", { className: "hardware-key-role-list" }, roleNodes),
-    element("p", {
-      className: "hardware-key-role-note",
-      text: sysRqHere
-        ? "Hold Alt + this key + a command letter for Linux Magic SysRq."
-        : "This key sends no Print/SysRq on any layer.",
-    }),
-  ]);
-}
-
-export function lightingSnapshotRows(value: KeychronV5MaxLighting): Array<[string, string]> {
-  return [
-    ["Brightness", String(value.brightness)],
-    ["Effect", String(value.effect)],
-    ["Effect speed", String(value.effectSpeed)],
-    ["Hue", String(value.hue)],
-    ["Saturation", String(value.saturation)],
-  ];
-}
-
-function readOnlyColorWheel(lighting: KeychronV5MaxLighting): HTMLElement {
-  const color = hsv255ToHex(lighting.hue, lighting.saturation, lighting.brightness);
-  return colorWheel(
-    {
-      h: (lighting.hue / 255) * 360,
-      s: lighting.saturation / 255,
-      v: lighting.brightness / 255,
-    },
-    {
-      className: "readonly",
-      attrs: { "aria-hidden": "true", "data-device-lighting-wheel": color },
-    },
-  ).wheel;
-}
-
 function capabilityField(snapshot: KeychronV5MaxReadSnapshot): HTMLElement {
   const chips: Array<[string, IconName, boolean]> = [
     ["Identity", "usb", snapshot.identity.state === "available"],
@@ -663,53 +353,6 @@ function capabilityField(snapshot: KeychronV5MaxReadSnapshot): HTMLElement {
             ("reason" in snapshot.capabilities && snapshot.capabilities.reason) ||
             "Capabilities unavailable",
         }),
-  ]);
-}
-
-/**
- * The V5 Max exposes only global VIA RGB-matrix state (channel 3), so this is a
- * read-only wheel plus values — there is no per-LED colour map.
- */
-export function snapshotLightingField(
-  field: KeychronV5MaxReadSnapshot["lighting"],
-  onResync: () => void,
-): HTMLElement {
-  if (field.state !== "available") {
-    return snapshotField("Lighting", field, lightingSnapshotRows);
-  }
-  const resync = uiButton({
-    className: "secondary-action compact",
-    type: "button",
-    text: "Resync",
-    attrs: { "data-device-lighting-refresh": "true", title: "Re-read the board's lighting state" },
-  });
-  resync.addEventListener("click", onResync);
-  const swatch = element("span", {
-    className: "lighting-swatch",
-    attrs: {
-      "data-hue": String(field.value.hue),
-      "data-saturation": String(field.value.saturation),
-      "data-value": String(field.value.brightness),
-    },
-  });
-  // Same conversion the keymap uses, so the swatch and the keys never disagree.
-  const color = hsv255ToHex(field.value.hue, field.value.saturation, field.value.brightness);
-  swatch.style.backgroundColor = color;
-  return element("section", {
-    className: "snapshot-field lighting available",
-    attrs: { "data-snapshot-field": "lighting", "data-snapshot-state": "available" },
-  }, [
-    element("div", { className: "snapshot-field-heading" }, [
-      element("h2", { text: "Lighting" }),
-      resync,
-    ]),
-    element("div", { className: "lighting-mirror" }, [
-      readOnlyColorWheel(field.value),
-      element("div", { className: "lighting-mirror-facts" }, [
-        element("div", { className: "lighting-swatches", attrs: { "data-lighting-swatches": "true" } }, [swatch]),
-        definitionList(lightingSnapshotRows(field.value)),
-      ]),
-    ]),
   ]);
 }
 

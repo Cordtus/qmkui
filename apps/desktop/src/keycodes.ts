@@ -475,14 +475,6 @@ export function decodeHardwareKeycode(code: number): string {
   return hexKeycode(code);
 }
 
-/**
- * True when a hardware keycode reaches the host as Print Screen, which is the
- * key Linux treats as SysRq (`KEY_SYSRQ`) for Alt+SysRq+command.
- */
-export function isSysRqKeycode(code: number): boolean {
-  return code === 0x0046;
-}
-
 function hexKeycode(code: number): string {
   return `0x${code.toString(16).padStart(4, "0")}`;
 }

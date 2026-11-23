@@ -47,7 +47,7 @@ export function rail(activeView: AppView, selectView: (view: AppView) => void): 
   // Choosing a keyboard is a dialog, not a place you live in.
   const views: Array<{ id: AppView; label: string; hint: string; icon: IconName }> = [
     { id: "keymap", label: "Keymap", hint: "Assign keys and set lighting", icon: "keyboard" },
-    { id: "device", label: "Device", hint: "Inspect the connected board", icon: "usb" },
+    { id: "device", label: "Device", hint: "Identity, recovery, and key tester", icon: "usb" },
     { id: "firmware", label: "Firmware", hint: "Build, flash and diagnostics", icon: "lightning" },
   ];
   const nav = element("nav", { attrs: { "aria-label": "Workbench" } });
@@ -155,7 +155,7 @@ export function topbar(
         keyboardSwitch,
         element("small", { className: "device-id", text: deviceId, attrs: { title: "Connected device id" } }),
       ]),
-      ...(state.projectStatus && !state.projectStatus.startsWith("Project is not saved")
+      ...(state.projectStatus
         ? [
             element("p", {
               className: "topbar-status",
@@ -358,7 +358,6 @@ function commandPalette(state: EditorState, actions: RenderActions): HTMLElement
     element("div", { className: "palette-search" }, [icon("magnifying-glass", { size: 16 }), input]),
     list,
     empty,
-    element("p", { className: "hint palette-hint", text: "Ctrl-K opens this anywhere. Esc closes it." }),
   );
   setActive(0);
   showNativeDialog(dialog, () => input.focus());
@@ -394,10 +393,6 @@ function boardPickerDialog(state: EditorState, actions: RenderActions): HTMLElem
   });
   cancel.addEventListener("click", actions.closeBoardPicker);
   dialog.append(
-    element("p", {
-      className: "hint board-picker-hint",
-      text: "Switch the project to another bundled definition.",
-    }),
     catalogPanel(state, actions),
     element("div", { className: "board-picker-actions" }, [cancel]),
   );
@@ -464,8 +459,8 @@ function deviceContent(state: EditorState, actions: RenderActions): HTMLElement 
   if (!state.hardwareSnapshot) {
     return connectionPanelView(state, actions);
   }
-  // The snapshot is the read-only board; the key tester lives here because both
-  // answer "what is this device actually doing right now?".
+  // Device is diagnostics: identity, facts, recovery, and the key tester.
+  // The board and lighting live only in Keymap.
   return element("div", { className: "view-stack device-view" }, [
     snapshotContent(state, actions),
     ...(isKeychronV5MaxSnapshot(state.hardwareSnapshot) ? [] : [safetyPanel(state, actions)]),

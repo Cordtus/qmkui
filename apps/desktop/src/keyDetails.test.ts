@@ -8,15 +8,16 @@ describe("selected key context", () => {
   it("resolves transparent keys through lower layers", () => {
     const context = buildSelectedKeyContext(keychronV5MaxProject, layout.keys, 3, "v5_000");
 
-    expect(context?.selectedAssignment?.qmk).toBe("KC_TRNS");
-    expect(context?.selectedAssignment?.resolved?.layer.index).toBe(2);
-    expect(context?.selectedAssignment?.resolved?.qmk).toBe("KC_ESC");
+    const selected = context?.layers.find((detail) => detail.isSelected);
+    expect(selected?.qmk).toBe("KC_TRNS");
+    expect(selected?.resolved?.layer.index).toBe(2);
+    expect(selected?.resolved?.qmk).toBe("KC_ESC");
   });
 
   it("collects layer targets and lighting conditions for a selected key", () => {
     const context = buildSelectedKeyContext(keychronV5MaxProject, layout.keys, 2, "v5_091");
 
-    expect(context?.selectedAssignment?.targetLayer).toMatchObject({
+    expect(context?.layers.find((detail) => detail.isSelected)?.targetLayer).toMatchObject({
       index: 3,
       exists: true,
     });
