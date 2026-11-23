@@ -92,7 +92,7 @@ export type EditorState = {
   hardwareSnapshot?: KeychronV5MaxReadSnapshot | GenericViaStandardState;
   snapshotReadStatus: "idle" | "reading" | "failed";
   keyTesterOpen: boolean;
-  /** Result of the last lighting-only resync, shown in the board lighting group. */
+  /** Result of the last lighting resync, shown in the board lighting group. */
   lightingStatus: string;
   deviceWriteEnabled: boolean;
   projectStatus: string;
@@ -281,7 +281,8 @@ export function createActions(
   /**
    * Resync the board's global lighting state. Keychron boards have a cheap
    * lighting-only read; generic VIA boards re-read their standard state.
-   * Reads are sequenced so a slow older response cannot replace a newer one.
+   * Lighting resyncs are sequenced so a slow older resync cannot replace a
+   * newer one.
    */
   let lightingReadEpoch = 0;
   const readLightingNow = () => {
@@ -291,14 +292,11 @@ export function createActions(
     if (!state.hardwareSnapshot) {
       return;
     }
+    const kind = lightingReadKind(state);
+    if (!kind) {
+      return;
+    }
     const session = browserReadSession(state.deviceSelection);
-    const keychron = isKeychronV5MaxSnapshot(state.hardwareSnapshot);
-    if (keychron && !("readLighting" in session && session.readLighting)) {
-      return;
-    }
-    if (!keychron && !("readStandardState" in session)) {
-      return;
-    }
     const selectionEpoch = state.deviceSelectionEpoch;
     const readEpoch = ++lightingReadEpoch;
     state.lightingStatus = "Reading lighting…";
@@ -315,7 +313,7 @@ export function createActions(
       actions.render();
     };
 
-    if (keychron && "readLighting" in session && session.readLighting) {
+    if (kind === "keychron" && "readLighting" in session && session.readLighting) {
       session.readLighting().then((lighting) => {
         if (readEpoch !== lightingReadEpoch) {
           return;
@@ -352,7 +350,14 @@ export function createActions(
         if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
           return;
         }
-        state.hardwareSnapshot = next;
+        const current = state.hardwareSnapshot;
+        if (current && !isKeychronV5MaxSnapshot(current)) {
+          state.hardwareSnapshot = {
+            ...current,
+            lighting: next.lighting,
+            readAt: next.readAt,
+          };
+        }
         state.lightingStatus = "";
         actions.render();
       }, fail);
@@ -1405,13 +1410,20 @@ export function browserReadSession(selection: Extract<BrowserKeyboardSelection, 
   return isProtocolVerifiableSelection(selection) ? selection.session : selection.viaSession;
 }
 
-/** True when the current read session can refresh lighting state. */
-export function canResyncLighting(state: EditorState): boolean {
+/** How the current session can refresh lighting state. */
+export function lightingReadKind(state: EditorState): "keychron" | "standard" | null {
   if (!isBrowserReadSelection(state.deviceSelection) || !state.hardwareSnapshot) {
-    return false;
+    return null;
   }
   const session = browserReadSession(state.deviceSelection);
-  return "readLighting" in session || "readStandardState" in session;
+  if (isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
+    return "readLighting" in session && session.readLighting ? "keychron" : null;
+  }
+  return "readStandardState" in session ? "standard" : null;
+}
+
+export function canResyncLighting(state: EditorState): boolean {
+  return lightingReadKind(state) !== null;
 }
 
 type WriteCapableSession = {

@@ -6,7 +6,7 @@ const RECOVERY_BUNDLE_VERSION = 1;
 const SAFETY_AUDIT_FORMAT = "qmkui.safety-audit";
 const SAFETY_AUDIT_VERSION = 1;
 const LOCAL_ONLY_NOTICE =
-  "Local-only recovery data; QMKUI does not transmit it.";
+  "Local-only recovery data; QMKUI does not transmit it, and browser storage is not tamper-proof.";
 
 export type SafetyEventKind = "backupConfirmed" | "backupDeclined";
 export type SafetyLedgerAvailability = "available" | "unavailable" | "corrupt";
@@ -145,7 +145,7 @@ export function createSafetyAssessment(
       projectRevision,
       deviceRevision,
       requiresRunConfirmation: true,
-      reason: "Backup recorded for this project and device state.",
+      reason: "Restore point saved for this project and device.",
     };
   }
   if (latestEvent?.kind === "backupDeclined") {
@@ -154,7 +154,7 @@ export function createSafetyAssessment(
       projectRevision,
       deviceRevision,
       requiresRunConfirmation: true,
-      reason: "Backup declined for this project and device state.",
+      reason: "You chose to skip the restore point.",
     };
   }
 

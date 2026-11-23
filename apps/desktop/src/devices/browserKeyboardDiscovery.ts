@@ -251,18 +251,20 @@ function genericViaSession(
     get capabilities() {
       return { canRead: verifiedProtocolVersion !== undefined, canWrite: false as const, canFlash: false as const };
     },
-    async verifyProtocolVersion() {
-      return withOpen(device, async () => {
-        verifiedProtocolVersion = await new ViaReadProtocol(device).getProtocolVersion();
-        return { version: verifiedProtocolVersion };
-      });
-    },
-    async readStandardState() {
-      if (verifiedProtocolVersion === undefined) {
-        throw new Error("Generic VIA protocol was not verified.");
-      }
-      return readStandardState(device, { protocolVersion: verifiedProtocolVersion });
-    },
+    verifyProtocolVersion: () =>
+      serialized(device, () =>
+        withOpen(device, async () => {
+          verifiedProtocolVersion = await new ViaReadProtocol(device).getProtocolVersion();
+          return { version: verifiedProtocolVersion };
+        }),
+      ),
+    readStandardState: () =>
+      serialized(device, () => {
+        if (verifiedProtocolVersion === undefined) {
+          throw new Error("Generic VIA protocol was not verified.");
+        }
+        return readStandardState(device, { protocolVersion: verifiedProtocolVersion });
+      }),
   };
 }
 

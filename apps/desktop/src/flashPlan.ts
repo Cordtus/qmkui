@@ -18,9 +18,7 @@ export type FlashRequest = {
   operatorConfirmed: boolean;
 };
 
-export type PolicyVerdict =
-  | { pass: true; reason?: string }
-  | { pass: false; reason: string };
+export type PolicyVerdict = { pass: boolean; reason: string };
 
 /**
  * Wrong-target blocking, mirroring `qmkui-flash::policy::assess_request`. A
@@ -55,7 +53,7 @@ export function assessFlashRequest(
       reason: `Bootloader family mismatch: expected ${request.target.bootloader}, found ${detectedBootloader}.`,
     };
   }
-  return { pass: true };
+  return { pass: true, reason: "Target, project digest, device, and bootloader match." };
 }
 
 /**

@@ -1475,7 +1475,7 @@ export function supportDetails(
         element("h3", { text: "Bundle" }),
         element("p", {
           className: "muted",
-          text: "Includes project, doctor findings, and redacted macro metadata.",
+          text: "Includes project, keymap, doctor findings, and redacted macros.",
         }),
         element("div", {}, [
           downloadBundleButton(downloadSupportBundle),
