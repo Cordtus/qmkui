@@ -195,6 +195,31 @@ describe("device-first hardware workspace", () => {
     );
   });
 
+  it("shows capability chips, a read-only lighting wheel, and a tester toggle", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+
+    expect(
+      root.querySelectorAll('[data-snapshot-field="capabilities"] .capability-chips .chip'),
+    ).toHaveLength(4);
+    expect(root.querySelector("[data-device-lighting-wheel]")).not.toBeNull();
+    expect(root.querySelector("[data-test-capture]")).toBeNull();
+
+    root.querySelector<HTMLElement>("[data-key-tester-toggle]")?.click();
+    await flush();
+    expect(root.querySelector("[data-test-capture]")).not.toBeNull();
+    expect(
+      root.querySelector("[data-key-tester-toggle]")?.getAttribute("aria-pressed"),
+    ).toBe("true");
+
+    root.querySelector<HTMLElement>("[data-key-tester-toggle]")?.click();
+    await flush();
+    expect(root.querySelector("[data-test-capture]")).toBeNull();
+  });
+
   it("opens the command palette with Ctrl-K and runs a command", async () => {
     const root = document.createElement("div");
     createApp(root, {
@@ -232,7 +257,7 @@ describe("device-first hardware workspace", () => {
     const visible = [...root.querySelectorAll<HTMLElement>("[data-command]")].filter(
       (row) => !row.hidden,
     );
-    expect(visible).toHaveLength(2);
+    expect(visible).toHaveLength(1);
     expect(visible[0]?.textContent).toContain("Go to Firmware");
 
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
@@ -1413,6 +1438,9 @@ function deferred<Value>() {
 
     expect(buildRunner).toHaveBeenCalled();
     expect(root.querySelector("[data-build-status]")?.textContent).toContain("compiled keymap");
+    expect(
+      root.querySelector('[data-context-detail="build-log"]')?.hasAttribute("open"),
+    ).toBe(true);
   });
 
   it("shows the Rust protocol gates in Firmware diagnostics", async () => {

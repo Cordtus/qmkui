@@ -1814,6 +1814,7 @@ input[type="color"] {
 .device-status-strip {
   grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s3);
   border: 1px solid var(--line);
@@ -1967,6 +1968,42 @@ input[type="color"] {
 .hardware-key-role-note {
   color: var(--text-dim);
   font-size: 0.76rem;
+}
+
+.lighting-mirror {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s3);
+}
+
+.color-wheel.readonly {
+  width: min(100%, 160px);
+  cursor: default;
+  pointer-events: none;
+}
+
+.lighting-mirror-facts {
+  display: grid;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.capability-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.capability-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.capability-bitmap {
+  color: var(--text-faint);
+  font-family: var(--mono);
 }
 
 .lighting-swatches {
@@ -2607,6 +2644,10 @@ pre {
 }
 
 @media (max-width: 640px) {
+  .lighting-mirror {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .topbar {
     align-items: stretch;
   }
@@ -2822,6 +2863,10 @@ button.control-button.palette-row.active {
 }
 
 @media (max-width: 640px) {
+  .lighting-mirror {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .topbar-actions {
     justify-content: flex-start;
   }

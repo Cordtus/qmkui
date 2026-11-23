@@ -94,6 +94,7 @@ export type EditorState = {
   snapshotLayerIndex: number;
   snapshotSelectedKey: string;
   snapshotReadStatus: "idle" | "reading" | "failed";
+  keyTesterOpen: boolean;
   /** Result of the last lighting-only resync, shown next to the readout. */
   lightingStatus: string;
   deviceWriteEnabled: boolean;
@@ -108,6 +109,7 @@ export type EditorState = {
   buildRunner: BuildRunner;
   buildStatus: "idle" | "building" | "built" | "failed";
   buildRunnerAvailable: boolean;
+  buildLogOpen: boolean;
   buildStep?: BuildStep;
   artifacts: BuildArtifact[];
   firmwareStep: "build" | "flash" | "verify";
@@ -187,6 +189,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     snapshotLayerIndex: 0,
     snapshotSelectedKey: "0:0",
     snapshotReadStatus: "idle",
+    keyTesterOpen: false,
     lightingStatus: "",
     deviceWriteEnabled: false,
     projectStatus: "Project is not saved in this preview session.",
@@ -200,6 +203,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     buildRunner: options.buildRunner ?? unsupportedBrowserRunner(),
     buildRunnerAvailable: options.buildRunner !== undefined,
     buildStatus: "idle",
+    buildLogOpen: false,
     artifacts: [],
     firmwareStep: "build",
     flashConfirmed: false,
@@ -396,6 +400,10 @@ export function createActions(
           selectFirmwareStep: (step) => {
             state.firmwareStep = step;
             actions.render();
+          },
+          setBuildLogOpen: (open) => {
+            // Native <details> owns the DOM state; the next render follows it.
+            state.buildLogOpen = open;
           },
           selectView: (view) => {
             state.activeView = view;
@@ -709,6 +717,10 @@ export function createActions(
           },
           selectSnapshotKey: (matrixKey) => {
             state.snapshotSelectedKey = matrixKey;
+            actions.render();
+          },
+          toggleKeyTester: () => {
+            state.keyTesterOpen = !state.keyTesterOpen;
             actions.render();
           },
           enableDeviceWrites: (confirmed) => {
@@ -1109,6 +1121,7 @@ export function createActions(
           runLocalBuild: () => {
             const plan = createBuildPlan(state.project, validateProject(state.project, state.keyboard), state.qmkDetected);
             state.buildStatus = "building";
+            state.buildLogOpen = true;
             actions.render();
             runLocalBuild(plan, state.buildRunner).then(
               (step) => {
@@ -1372,6 +1385,7 @@ export type RenderActions = {
   refreshLighting: () => void;
   selectSnapshotLayer: (layerIndex: number) => void;
   selectSnapshotKey: (matrixKey: string) => void;
+  toggleKeyTester: () => void;
   enableDeviceWrites: (confirmed: boolean) => void;
   writeSnapshotKeycode: (keycode: number, confirmed: boolean) => void;
   saveLightingToDevice: (confirmed: boolean) => void;
@@ -1405,6 +1419,7 @@ export type RenderActions = {
   removeMacro: (macroId: string) => void;
   reloadProbe: () => void;
   runLocalBuild: () => void;
+  setBuildLogOpen: (open: boolean) => void;
   setFlashConfirmed: (confirmed: boolean) => void;
   runFlashDryRun: () => void;
 };
@@ -1841,12 +1856,14 @@ function resetProjectSession(state: EditorState): void {
   state.boardLightingOpen = false;
   state.lightingStatus = "";
   state.keymapTab = "lighting";
+  state.keyTesterOpen = false;
   state.deviceWriteEnabled = false;
   state.deviceWriteStatus = "";
   state.flashConfirmed = false;
   state.flashVerdict = undefined;
   state.flashRun = undefined;
   state.buildStatus = "idle";
+  state.buildLogOpen = false;
   state.buildStep = undefined;
   state.artifacts = [];
   state.firmwareStep = "build";
