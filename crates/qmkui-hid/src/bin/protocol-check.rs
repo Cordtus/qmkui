@@ -238,15 +238,19 @@ fn decoded_bytes(entries: &[Value], key: &str) -> Result<Vec<u8>, Box<dyn std::e
 }
 
 fn decoded(entries: &[Value], key: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    entries
-        .iter()
-        .find_map(|entry| {
-            entry
-                .get("decoded")
-                .and_then(|decoded| decoded.get(key))
-                .cloned()
-        })
-        .ok_or_else(|| format!("no fixture decodes {key}").into())
+    let mut matches = entries.iter().filter_map(|entry| {
+        entry
+            .get("decoded")
+            .and_then(|decoded| decoded.get(key))
+            .cloned()
+    });
+    let Some(value) = matches.next() else {
+        return Err(format!("no fixture decodes {key}").into());
+    };
+    if matches.next().is_some() {
+        return Err(format!("more than one fixture decodes {key}").into());
+    }
+    Ok(value)
 }
 
 fn bytes(value: &Value, key: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -320,5 +324,24 @@ impl HidTransport for RecordingTransport {
         let frame = qmkui_hid::transport::build_report(command, payload);
         self.frames.push(frame.clone());
         Ok(frame)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn decoded_requires_exactly_one_match() {
+        let single = vec![json!({ "decoded": { "keycode": 70 } })];
+        assert_eq!(decoded(&single, "keycode").unwrap(), json!(70));
+
+        let duplicate = vec![
+            json!({ "decoded": { "keycode": 1 } }),
+            json!({ "decoded": { "keycode": 2 } }),
+        ];
+        assert!(decoded(&duplicate, "keycode").is_err());
+        assert!(decoded(&single, "missing").is_err());
     }
 }
