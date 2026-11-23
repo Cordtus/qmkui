@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { assessFlashRequest, dryRunFlash, flashTargetFromArtifact, previewFlashRequest, FlashRequest } from "./flashPlan";
-import project from "../../../fixtures/projects/example-60.json";
-import { Project } from "./domain";
-
-const fixtureProject = project as Project;
-
 function request(confirmed: boolean): FlashRequest {
   return {
     target: {

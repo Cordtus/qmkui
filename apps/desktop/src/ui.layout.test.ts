@@ -217,6 +217,130 @@ describe("device-first connection layout", () => {
     }
   }, 30_000);
 
+  it("runs the new Device controls and disclosures from the keyboard", async () => {
+    const page = await openReadResultPage({ width: 1440, height: 900 });
+
+    await page.locator("[data-command-palette-open]").focus();
+    await page.keyboard.press("Control+k");
+    const search = page.locator("[data-focus-id=command-search]");
+    await search.waitFor();
+    let focusStayedInDialog = false;
+    for (let index = 0; index < 12; index += 1) {
+      await page.keyboard.press("Tab");
+      const where = await page.evaluate(() => {
+        const dialog = document.querySelector<HTMLDialogElement>("[data-command-palette]");
+        const active = document.activeElement;
+        return {
+          inside: Boolean(dialog && active && dialog.contains(active)),
+          isBody: active === document.body,
+        };
+      });
+      // Chromium's modal dialog cycles through <body> between its first and
+      // last control; it must never land on a page control outside the dialog.
+      expect(where.inside || where.isBody).toBe(true);
+      focusStayedInDialog ||= where.inside;
+    }
+    expect(focusStayedInDialog).toBe(true);
+    await search.fill("device");
+    await page.keyboard.press("Enter");
+    expect(await page.locator('[data-view="device"]').getAttribute("aria-current")).toBe("page");
+
+    const tester = page.locator("[data-key-tester-toggle]");
+    await tester.focus();
+    await page.keyboard.press("Enter");
+    await page.locator("[data-test-capture]").waitFor();
+    expect(await tester.getAttribute("aria-pressed")).toBe("true");
+
+    await page.keyboard.press("Enter");
+    expect(await page.locator("[data-test-capture]").count()).toBe(0);
+    expect(
+      await page.evaluate(() => document.activeElement?.getAttribute("data-focus-id")),
+    ).toBe("key-tester-toggle");
+
+    await page.locator("[data-command-palette-open]").focus();
+    await page.keyboard.press("Control+k");
+    await page.locator("[data-focus-id=command-search]").waitFor();
+    await page.locator("[data-focus-id=command-search]").fill("firmware");
+    await page.keyboard.press("Enter");
+    expect(await page.locator('[data-view="firmware"]').getAttribute("aria-current")).toBe("page");
+
+    const log = page.locator('[data-context-detail="build-log"]');
+    await log.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => log.getAttribute("open")).not.toBeNull();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => log.getAttribute("open")).toBeNull();
+    await page.close();
+  }, 30_000);
+
+  it("gives every visible control an accessible name across screens and dialogs", async () => {
+    const connection = await openPage({ width: 1440, height: 900 });
+    expect(await unnamedVisibleControls(connection), "connection").toEqual([]);
+    await connection.close();
+
+    const page = await openReadResultPage({ width: 1440, height: 900 });
+    for (const view of ["keymap", "device", "firmware"] as const) {
+      await page.locator(`[data-view="${view}"]`).click();
+      expect(await unnamedVisibleControls(page), view).toEqual([]);
+    }
+
+    await page.locator("[data-command-palette-open]").click();
+    await page.locator("[data-focus-id=command-search]").waitFor();
+    expect(await unnamedVisibleControls(page), "palette").toEqual([]);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("data-focus-id") === "command-palette-trigger",
+      undefined,
+      { timeout: 5_000 },
+    );
+
+    await page.locator("[data-board-picker-open]").click();
+    await page.locator("[data-focus-id=catalog-search]").waitFor();
+    expect(await unnamedVisibleControls(page), "board picker").toEqual([]);
+    await page.keyboard.press("Escape");
+    await page.close();
+  }, 40_000);
+
+  it("keeps reduced-motion screenshots identical to the normal rendering", async () => {
+    // The transition test above proves the media query disables motion. This
+    // guards the other half of the acceptance: reduced motion changes no layout.
+    const connection = await openPage({ width: 1440, height: 900 });
+    expect(
+      await connection.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+    ).toBe(false);
+    const normalConnection = await connection.screenshot();
+    await connection.close();
+
+    const reducedConnection = await browser.newPage({
+      viewport: { width: 1440, height: 900 },
+      reducedMotion: "reduce",
+    });
+    await reducedConnection.goto(origin, { waitUntil: "networkidle" });
+    await reducedConnection.locator("[data-connection-screen]").waitFor();
+    expect(
+      await reducedConnection.evaluate(() =>
+        matchMedia("(prefers-reduced-motion: reduce)").matches,
+      ),
+    ).toBe(true);
+    expect((await reducedConnection.screenshot()).equals(normalConnection)).toBe(true);
+    await reducedConnection.close();
+
+    const keymap = await openReadResultPage({ width: 1440, height: 900 });
+    await keymap.locator('[data-view="keymap"]').click();
+    await keymap.locator("[data-keyboard-workspace]").waitFor();
+    const normalKeymap = await keymap.screenshot();
+    await keymap.close();
+
+    const reducedKeymap = await openReadResultPage(
+      { width: 1440, height: 900 },
+      { reducedMotion: "reduce" },
+    );
+    await reducedKeymap.locator('[data-view="keymap"]').click();
+    await reducedKeymap.locator("[data-keyboard-workspace]").waitFor();
+    expect((await reducedKeymap.screenshot()).equals(normalKeymap)).toBe(true);
+    await reducedKeymap.close();
+  }, 30_000);
+
   it("stays contained at 320 px and at an effective 200% zoom", async () => {
     for (const viewport of [{ width: 320, height: 720 }, { width: 720, height: 450 }]) {
       const page = await openReadResultPage(viewport);
@@ -379,6 +503,60 @@ async function openReadResultPage(
   ]);
   await page.locator("[data-hardware-snapshot]").waitFor();
   return page;
+}
+
+async function unnamedVisibleControls(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const selector = [
+      "button",
+      "input",
+      "select",
+      "textarea",
+      "summary",
+      "a[href]",
+      "[role=slider]",
+      "[role=option]",
+      "[role=checkbox]",
+      "[role=switch]",
+      "[role=button]",
+      "[role=link]",
+      "[tabindex='0']",
+    ].join(",");
+    const textWithoutHidden = (element: HTMLElement) => {
+      const clone = element.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('[aria-hidden="true"]').forEach((node) => node.remove());
+      return clone.textContent?.trim() ?? "";
+    };
+    const labelledByText = (element: HTMLElement) => {
+      const id = element.getAttribute("aria-labelledby");
+      return id ? document.getElementById(id)?.textContent?.trim() ?? "" : "";
+    };
+    return [...document.querySelectorAll<HTMLElement>(selector)]
+      .filter(
+        (element) =>
+          element.getClientRects().length > 0 &&
+          !element.closest('[aria-hidden="true"]'),
+      )
+      .filter((element) => {
+        if (
+          element.getAttribute("aria-label")?.trim() ||
+          labelledByText(element) ||
+          element.getAttribute("title")?.trim()
+        ) {
+          return false;
+        }
+        if (
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLSelectElement ||
+          element instanceof HTMLTextAreaElement
+        ) {
+          const labels = element.labels;
+          return !(labels && [...labels].some((label) => textWithoutHidden(label)));
+        }
+        return !textWithoutHidden(element);
+      })
+      .map((element) => `${element.tagName.toLowerCase()}.${element.className}`);
+  });
 }
 
 function isContained(

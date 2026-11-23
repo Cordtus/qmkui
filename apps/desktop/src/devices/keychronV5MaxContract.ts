@@ -1,8 +1,4 @@
-import {
-  type ViaKeyboardModel,
-  findViaModel,
-  isKeychronVendor,
-} from "./keychronModels";
+import { type ViaKeyboardModel, findViaModel } from "./keychronModels";
 
 export type HidCollectionMetadata = {
   usagePage: number;
@@ -70,9 +66,6 @@ export function classifyViaIdentity(
   };
 }
 
-export function isKeychron(identity: HidIdentityMetadata): boolean {
-  return isKeychronVendor(identity.vendorId);
-}
 
 function isViaCollection(collection: HidCollectionMetadata): boolean {
   return (

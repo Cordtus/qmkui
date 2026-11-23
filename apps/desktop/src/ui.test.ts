@@ -205,7 +205,16 @@ describe("device-first hardware workspace", () => {
     expect(
       root.querySelectorAll('[data-snapshot-field="capabilities"] .capability-chips .chip'),
     ).toHaveLength(4);
-    expect(root.querySelector("[data-device-lighting-wheel]")).not.toBeNull();
+    const wheel = root.querySelector<HTMLElement>("[data-device-lighting-wheel]");
+    expect(wheel).not.toBeNull();
+    // The mirror maps 0-255 hue/saturation to the wheel's 0-360/0-1 space and
+    // fades the shade with brightness.
+    expect(wheel?.querySelector<HTMLElement>(".color-wheel-cursor")?.style.left).toBe(
+      `${50 + (34 / 255) * 50 * Math.sin((12 / 255) * Math.PI * 2)}%`,
+    );
+    expect(wheel?.querySelector<HTMLElement>(".color-wheel-shade")?.style.opacity).toBe(
+      String(1 - 56 / 255),
+    );
     expect(root.querySelector("[data-test-capture]")).toBeNull();
 
     root.querySelector<HTMLElement>("[data-key-tester-toggle]")?.click();

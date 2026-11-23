@@ -15,9 +15,6 @@ export type ViaKeyboardModel = {
   matrix?: { rows: number; cols: number };
 };
 
-/** Every Keychron board shares this USB vendor id. */
-export const KEYCHRON_VENDOR_ID = 0x3434;
-
 /**
  * The V5 Maximatrix lives in its VIA definition rather than the catalog
  * keyboard, so it is pinned here as the authoritative matrix source.
@@ -62,10 +59,6 @@ export function findViaModel(
   return models.find((model) => model.vendorId === vid && model.productId === pid);
 }
 
-/** True for any USB device claiming Keychron's vendor id. */
-export function isKeychronVendor(vendorId: number): boolean {
-  return vendorId === KEYCHRON_VENDOR_ID;
-}
 
 function normalizeUsbId(value: string): string {
   const parsed = Number.parseInt(value.replace(/^0x/i, ""), 16);

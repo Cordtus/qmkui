@@ -72,32 +72,48 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
         vectors += 1;
     }
 
+    let via_fixtures = read_vectors(dir, "via-commands.json")?;
+    let identity_fixtures = read_vectors(dir, "v5-identity.json")?;
+    let keymap_fixtures = read_vectors(dir, "v5-keymap.json")?;
+    let lighting_fixtures = read_vectors(dir, "v5-lighting.json")?;
+
     let mut via = ViaReadProtocol::new(VectorTransport::from_dir(dir, "via-commands.json")?);
-    if via.get_protocol_version()? != 12 || via.get_layer_count()? != 4 {
+    if u64::from(via.get_protocol_version()?) != decoded_u64(&via_fixtures, "protocolVersion")?
+        || u64::from(via.get_layer_count()?) != decoded_u64(&via_fixtures, "layerCount")?
+    {
         return Err("via-commands.json: protocol/layer decode mismatch".into());
     }
-    if via.get_keycode(0, 0, 0)? != 0x1234 {
+    if u64::from(via.get_keycode(0, 0, 0)?) != decoded_u64(&via_fixtures, "keycode")? {
         return Err("via-commands.json: keycode decode mismatch".into());
     }
 
     let mut reader = KeychronV5Reader::new(VectorTransport::from_dir(dir, "v5-identity.json")?);
     let identity = reader.read_identity()?;
-    if identity.protocol_version != [2, 0, 2] || identity.firmware_version != "v1.0.0" {
+    if identity.protocol_version != decoded_bytes(&identity_fixtures, "protocolVersion")?[..]
+        || identity.firmware_version != decoded_str(&identity_fixtures, "firmwareVersion")?
+    {
         return Err("v5-identity.json: identity decode mismatch".into());
     }
     let mut reader = KeychronV5Reader::new(VectorTransport::from_dir(dir, "v5-identity.json")?);
-    if reader.read_capabilities()?.feature_bitmap != [0x00, 0x81] {
+    if reader.read_capabilities()?.feature_bitmap
+        != decoded_bytes(&identity_fixtures, "featureBitmap")?[..]
+    {
         return Err("v5-identity.json: capabilities decode mismatch".into());
     }
 
     let mut via = ViaReadProtocol::new(VectorTransport::from_dir(dir, "v5-keymap.json")?);
-    if via.get_keycode(2, 0, 15)? != 0x0046 {
+    if u64::from(via.get_keycode(2, 0, 15)?) != decoded_u64(&keymap_fixtures, "keycode")? {
         return Err("v5-keymap.json: keycode decode mismatch".into());
     }
 
     let mut via = ViaReadProtocol::new(VectorTransport::from_dir(dir, "v5-lighting.json")?);
     let lighting = via.read_rgb_matrix_state()?;
-    if lighting.brightness != 255 || lighting.hue != 113 || lighting.saturation != 221 {
+    if u64::from(lighting.brightness) != decoded_u64(&lighting_fixtures, "brightness")?
+        || u64::from(lighting.effect) != decoded_u64(&lighting_fixtures, "effect")?
+        || u64::from(lighting.effect_speed) != decoded_u64(&lighting_fixtures, "effectSpeed")?
+        || u64::from(lighting.hue) != decoded_u64(&lighting_fixtures, "hue")?
+        || u64::from(lighting.saturation) != decoded_u64(&lighting_fixtures, "saturation")?
+    {
         return Err("v5-lighting.json: RGB state decode mismatch".into());
     }
     let mut keymap = ViaReadProtocol::new(SequentialTransport { next: 1 });
@@ -194,6 +210,49 @@ fn commands(value: &Value, key: &str) -> Result<Vec<u8>, Box<dyn std::error::Err
     Ok(commands)
 }
 
+fn decoded_u64(entries: &[Value], key: &str) -> Result<u64, Box<dyn std::error::Error>> {
+    decoded(entries, key)?
+        .as_u64()
+        .ok_or_else(|| format!("decoded.{key} is not an integer").into())
+}
+
+fn decoded_str(entries: &[Value], key: &str) -> Result<String, Box<dyn std::error::Error>> {
+    decoded(entries, key)?
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| format!("decoded.{key} is not a string").into())
+}
+
+fn decoded_bytes(entries: &[Value], key: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    decoded(entries, key)?
+        .as_array()
+        .ok_or_else(|| format!("decoded.{key} is not an array"))?
+        .iter()
+        .map(|byte| {
+            byte.as_u64()
+                .filter(|byte| *byte <= 0xff)
+                .map(|byte| byte as u8)
+                .ok_or_else(|| format!("decoded.{key} byte is out of range").into())
+        })
+        .collect()
+}
+
+fn decoded(entries: &[Value], key: &str) -> Result<Value, Box<dyn std::error::Error>> {
+    let mut matches = entries.iter().filter_map(|entry| {
+        entry
+            .get("decoded")
+            .and_then(|decoded| decoded.get(key))
+            .cloned()
+    });
+    let Some(value) = matches.next() else {
+        return Err(format!("no fixture decodes {key}").into());
+    };
+    if matches.next().is_some() {
+        return Err(format!("more than one fixture decodes {key}").into());
+    }
+    Ok(value)
+}
+
 fn bytes(value: &Value, key: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     value[key]
         .as_array()
@@ -265,5 +324,24 @@ impl HidTransport for RecordingTransport {
         let frame = qmkui_hid::transport::build_report(command, payload);
         self.frames.push(frame.clone());
         Ok(frame)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn decoded_requires_exactly_one_match() {
+        let single = vec![json!({ "decoded": { "keycode": 70 } })];
+        assert_eq!(decoded(&single, "keycode").unwrap(), json!(70));
+
+        let duplicate = vec![
+            json!({ "decoded": { "keycode": 1 } }),
+            json!({ "decoded": { "keycode": 2 } }),
+        ];
+        assert!(decoded(&duplicate, "keycode").is_err());
+        assert!(decoded(&single, "missing").is_err());
     }
 }

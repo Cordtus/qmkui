@@ -25,7 +25,9 @@ Three surfaces, one workbench:
 
 Generate local design captures at 1440/1024/768 with
 `npm --prefix apps/desktop run ui:screens` (output is gitignored under
-`apps/desktop/.local/ui-screens`).
+`apps/desktop/.local/ui-screens`). Captures are deliberately not committed:
+they are binary churn and drift from the code. Regenerate them when reviewing a
+UI change.
 
 ## Status
 
