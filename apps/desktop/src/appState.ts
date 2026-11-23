@@ -680,6 +680,9 @@ export function createActions(
             state.hardwareSnapshot = undefined;
             state.snapshotReadStatus = "idle";
             state.lightingStatus = "";
+            state.deviceWriteEnabled = false;
+            state.deviceWriteConfirmed = false;
+            state.deviceWriteStatus = "";
             actions.render();
             state.chooseBrowserKeyboard().then(
               (selection) => {

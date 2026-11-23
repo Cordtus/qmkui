@@ -975,6 +975,12 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>("[data-lighting-paint]")?.click();
     await flush();
     expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("true");
+    const confirm = root.querySelector<HTMLInputElement>("[data-write-confirm]")!;
+    confirm.checked = true;
+    confirm.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    expect(root.textContent).toContain("Writes on");
 
     root.querySelector<HTMLElement>("[data-board-picker-open]")?.click();
     await flush();
@@ -982,6 +988,8 @@ function deferred<Value>() {
     await flush();
 
     expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("false");
+    expect(root.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked).toBe(false);
+    expect(root.querySelector("[data-device-write-enable]")?.textContent).toContain("Enable writes");
   }, 20_000);
 
   it("colours every selected key and undoes the whole selection in one step", async () => {
