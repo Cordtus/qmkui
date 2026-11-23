@@ -299,7 +299,11 @@ export function showNativeDialog(dialog: HTMLDialogElement, focus: () => void): 
     } else {
       dialog.setAttribute("open", "");
     }
-    focus();
+    // Re-renders rebuild the dialog and restore the focused field first; only
+    // focus the first control on the closed → open transition.
+    if (!dialog.contains(document.activeElement)) {
+      focus();
+    }
   });
 }
 

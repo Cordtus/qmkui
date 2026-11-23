@@ -148,14 +148,17 @@ export function safetyPanel(state: EditorState, actions: RenderActions): HTMLEle
       attrs: { "data-recovery-download": "true" },
     });
     download.addEventListener("click", actions.downloadRecoveryBundle);
-    const decline = uiButton({
-      className: "secondary-action",
-      type: "button",
-      text: "Decline backup",
-      attrs: { "data-recovery-decline": "true" },
-    });
-    decline.addEventListener("click", actions.declineRecovery);
-    actionsRow.append(download, decline);
+    actionsRow.append(download);
+    if (assessment.state === "backupRequired") {
+      const decline = uiButton({
+        className: "secondary-action",
+        type: "button",
+        text: "Decline backup",
+        attrs: { "data-recovery-decline": "true" },
+      });
+      decline.addEventListener("click", actions.declineRecovery);
+      actionsRow.append(decline);
+    }
   }
   if (latest) {
     const audit = uiButton({

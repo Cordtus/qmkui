@@ -1201,8 +1201,9 @@ export function createActions(
             actions.render();
           },
           updateProjectJsonDraft: (json) => {
+            // The textarea already owns the draft; re-rendering on each
+            // keystroke would rebuild the drawer and move focus.
             state.projectJsonDraft = json;
-            actions.render();
           },
           importProjectDraft: () => {
             try {
