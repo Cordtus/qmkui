@@ -75,7 +75,7 @@ export function previewFlashRequest(
   }
   return {
     pass: true,
-    reason: "Preview: confirmation and artifact match; qmkui-flash checks the bootloader device at flash time.",
+    reason: "Confirmation and artifact match; qmkui-flash checks the bootloader at flash time.",
   };
 }
 

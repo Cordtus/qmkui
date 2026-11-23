@@ -51,7 +51,7 @@ describe("browser flash preview", () => {
   it("checks confirmation and freshness without claiming bootloader detection", () => {
     const ready = previewFlashRequest(request(true), "digest-a");
     expect(ready.pass).toBe(true);
-    expect(ready.pass && ready.reason).toContain("bootloader device");
+    expect(ready.pass && ready.reason).toContain("bootloader");
 
     const unconfirmed = previewFlashRequest(request(false), "digest-a");
     expect(unconfirmed.pass).toBe(false);

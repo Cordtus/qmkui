@@ -1,4 +1,4 @@
-import { EditorState, RenderActions, activeLightingProfile, bundledKeyboards, currentLayer, isKeychronV5MaxSnapshot, selectedLayout } from "../appState";
+import { EditorState, RenderActions, activeLightingProfile, bundledKeyboards, canResyncLighting, currentLayer, selectedLayout } from "../appState";
 import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
 import { firmwareBundleFileName } from "../firmwareBundle";
@@ -399,10 +399,7 @@ export function lightingPanel(
                 ? `Board lighting read: ${base.source}${currentEffect ? ` · ${currentEffect}` : ""}`
                 : "No board lighting read; using profile/default values.",
             }),
-            resyncLightingButton(
-              actions,
-              Boolean(base) && isKeychronV5MaxSnapshot(state.hardwareSnapshot),
-            ),
+            resyncLightingButton(actions, canResyncLighting(state)),
           ]),
           ...(state.lightingStatus
             ? [element("small", { className: "board-light-status", text: state.lightingStatus })]
@@ -669,7 +666,7 @@ function resyncLightingButton(actions: RenderActions, enabled: boolean): HTMLEle
       "data-lighting-refresh": "true",
       title: enabled
         ? "Re-read the board's lighting state"
-        : "No V5 Max lighting read to resync",
+        : "No lighting read to resync",
       ...(enabled ? {} : { disabled: "" }),
     },
   });
@@ -740,9 +737,9 @@ export function testPanel(
 function postFlashSmokeChecklist(): HTMLElement {
   const items = [
     "Keyboard types the expected characters on the base layer.",
-    "Fn-layer keys and media keys respond.",
-    "Every layer switch reports the expected behavior.",
-    "No unexpected key repeat or chatter is observed.",
+    "Fn-layer and media keys respond.",
+    "Every layer switch behaves as expected.",
+    "No key repeat or chatter.",
   ];
   return element("ul", { className: "smoke-checklist", attrs: { "data-smoke-checklist": "true" } }, [
     ...items.map((item) => element("li", { text: item })),
@@ -1168,10 +1165,7 @@ function flashStepPanel(
         ? [
             element("p", {
               className: state.flashVerdict.pass ? "flash-pass" : "flash-block",
-              text: state.flashVerdict.pass
-                ? state.flashVerdict.reason ??
-                  "Preview: confirmation and artifact match; bootloader is checked at flash time."
-                : `Preview: ${state.flashVerdict.reason}`,
+              text: state.flashVerdict.reason,
             }),
           ]
         : []),
@@ -1481,7 +1475,7 @@ export function supportDetails(
         element("h3", { text: "Bundle" }),
         element("p", {
           className: "muted",
-          text: "Downloads project identity, doctor findings, and macro metadata (actions redacted) for sharing.",
+          text: "Includes project, doctor findings, and redacted macro metadata.",
         }),
         element("div", {}, [
           downloadBundleButton(downloadSupportBundle),

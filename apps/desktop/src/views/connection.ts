@@ -98,7 +98,7 @@ export function connectionError(
   }
   if ("contract" in selection) {
     if (selection.contract.state === "unsupported") {
-      return "Unsupported keyboard.";
+      return "This device does not expose a VIA HID interface.";
     }
     if (selection.contract.state === "unverified-via") {
       if (protocolVerification.state === "failed") {

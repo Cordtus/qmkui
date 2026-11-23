@@ -279,30 +279,44 @@ export function createActions(
   requestDoctorReport: () => void,
 ) {
   /**
-   * Resync the board's global RGB-matrix state without re-reading the keymap.
-   * VIA exposes no per-LED colour read, so this is the whole readable
-   * backlight state; the key map re-derives each key's colour from it.
-   * Skipped until a snapshot exists and while a full read is in flight.
+   * Resync the board's global lighting state. Keychron boards have a cheap
+   * lighting-only read; generic VIA boards re-read their standard state.
+   * Reads are sequenced so a slow older response cannot replace a newer one.
    */
   let lightingReadEpoch = 0;
   const readLightingNow = () => {
     if (!isBrowserReadSelection(state.deviceSelection)) {
       return;
     }
-    if (!isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
+    if (!state.hardwareSnapshot) {
       return;
     }
     const session = browserReadSession(state.deviceSelection);
-    if (!("readLighting" in session) || !session.readLighting) {
+    const keychron = isKeychronV5MaxSnapshot(state.hardwareSnapshot);
+    if (keychron && !("readLighting" in session && session.readLighting)) {
       return;
     }
-    const readLighting = session.readLighting;
+    if (!keychron && !("readStandardState" in session)) {
+      return;
+    }
     const selectionEpoch = state.deviceSelectionEpoch;
     const readEpoch = ++lightingReadEpoch;
     state.lightingStatus = "Reading lighting…";
     actions.render();
-    readLighting().then(
-      (lighting) => {
+
+    const fail = () => {
+      if (readEpoch !== lightingReadEpoch) {
+        return;
+      }
+      if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+        return;
+      }
+      state.lightingStatus = "Lighting read failed.";
+      actions.render();
+    };
+
+    if (keychron && "readLighting" in session && session.readLighting) {
+      session.readLighting().then((lighting) => {
         if (readEpoch !== lightingReadEpoch) {
           return;
         }
@@ -326,18 +340,23 @@ export function createActions(
         };
         state.lightingStatus = "";
         actions.render();
-      },
-      () => {
+      }, fail);
+      return;
+    }
+
+    if ("readStandardState" in session) {
+      session.readStandardState().then((next) => {
         if (readEpoch !== lightingReadEpoch) {
           return;
         }
         if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
           return;
         }
-        state.lightingStatus = "Lighting read failed.";
+        state.hardwareSnapshot = next;
+        state.lightingStatus = "";
         actions.render();
-      },
-    );
+      }, fail);
+    }
   };
 
   const closeOverlays = () => {
@@ -703,7 +722,7 @@ export function createActions(
               return;
             }
             state.deviceWriteEnabled = true;
-            noteWriteStatus(state, "Device writes enabled; use caution.");
+            noteWriteStatus(state, "Device writes enabled.");
             actions.render();
           },
           writeLightingToDevice: (confirmed) => {
@@ -1383,6 +1402,15 @@ export function isBrowserReadSelection(
 
 export function browserReadSession(selection: Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "via" | "unverified-via" } }>) {
   return isProtocolVerifiableSelection(selection) ? selection.session : selection.viaSession;
+}
+
+/** True when the current read session can refresh lighting state. */
+export function canResyncLighting(state: EditorState): boolean {
+  if (!isBrowserReadSelection(state.deviceSelection) || !state.hardwareSnapshot) {
+    return false;
+  }
+  const session = browserReadSession(state.deviceSelection);
+  return "readLighting" in session || "readStandardState" in session;
 }
 
 type WriteCapableSession = {

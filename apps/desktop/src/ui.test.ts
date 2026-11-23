@@ -293,7 +293,7 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector("[data-connection-screen] h1")?.textContent).toBe(
       "Keyboard selected",
     );
-    expect(root.textContent).toContain("Unsupported keyboard.");
+    expect(root.textContent).toContain("This device does not expose a VIA HID interface.");
   });
 
   it("auto-reads a snapshot on selection and renders the device facts", async () => {
@@ -441,7 +441,16 @@ describe("device-first hardware workspace", () => {
     snapshot.lighting.rgbMatrixHue = { state: "available", value: 44 };
     snapshot.lighting.rgbMatrixSaturation = { state: "available", value: 200 };
 
-    createApp(root, { discoverBrowserKeyboard: async () => genericViaSelection(async () => snapshot) });
+    const readStandardState = vi.fn(async () => ({
+      ...snapshot,
+      lighting: {
+        ...snapshot.lighting,
+        rgbMatrixBrightness: { state: "available" as const, value: 200 },
+      },
+    }));
+    createApp(root, {
+      discoverBrowserKeyboard: async () => genericViaSelection(readStandardState),
+    });
     await flush();
     root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
     await flush();
@@ -455,9 +464,16 @@ describe("device-first hardware workspace", () => {
 
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
+    const resync = root.querySelector<HTMLButtonElement>("[data-lighting-refresh]")!;
+    expect(resync.disabled).toBe(false);
+    const readsBefore = readStandardState.mock.calls.length;
+    resync.click();
+    await flush();
+
+    expect(readStandardState).toHaveBeenCalledTimes(readsBefore + 1);
     expect(
-      root.querySelector<HTMLButtonElement>("[data-lighting-refresh]")?.disabled,
-    ).toBe(true);
+      root.querySelector<HTMLElement>("[data-key]")?.getAttribute("data-lighting-brightness"),
+    ).toBe("200");
   });
 });
 
