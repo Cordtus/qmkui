@@ -49,7 +49,7 @@ export function unsupportedBrowserRunner(): BuildRunner {
   return async () => ({
     ok: false,
     stdout: "",
-    stderr: "In-app builds are not available in the browser; run the generated `qmk compile` command locally (QMK CLI).",
+    stderr: "The browser cannot run builds; run the generated `qmk compile` command locally.",
     durationMs: 0,
   });
 }

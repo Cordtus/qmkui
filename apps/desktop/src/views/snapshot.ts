@@ -87,9 +87,9 @@ export function safetyPanel(state: EditorState, actions: RenderActions): HTMLEle
     );
   const label = {
     blocked: "Blocked",
-    backupRequired: "Backup required",
-    backupRecorded: "Backup recorded",
-    declined: "Backup declined",
+    backupRequired: "Required",
+    backupRecorded: "Recorded",
+    declined: "Declined",
   }[assessment.state];
   const actionsRow = element("div", { className: "safety-actions" });
   if (assessment.state === "backupRequired" || assessment.state === "backupRecorded") {
@@ -98,7 +98,7 @@ export function safetyPanel(state: EditorState, actions: RenderActions): HTMLEle
       type: "button",
       text:
         assessment.state === "backupRecorded"
-          ? "Download recovery bundle again"
+          ? "Download bundle again"
           : "Download recovery bundle",
       attrs: { "data-recovery-download": "true" },
     });

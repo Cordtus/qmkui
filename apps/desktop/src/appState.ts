@@ -92,7 +92,7 @@ export type EditorState = {
   hardwareSnapshot?: KeychronV5MaxReadSnapshot | GenericViaStandardState;
   snapshotReadStatus: "idle" | "reading" | "failed";
   keyTesterOpen: boolean;
-  /** Result of the last lighting-only resync, shown in the board lighting group. */
+  /** Result of the last lighting resync, shown in the board lighting group. */
   lightingStatus: string;
   deviceWriteEnabled: boolean;
   projectStatus: string;
@@ -279,30 +279,42 @@ export function createActions(
   requestDoctorReport: () => void,
 ) {
   /**
-   * Resync the board's global RGB-matrix state without re-reading the keymap.
-   * VIA exposes no per-LED colour read, so this is the whole readable
-   * backlight state; the key map re-derives each key's colour from it.
-   * Skipped until a snapshot exists and while a full read is in flight.
+   * Resync the board's global lighting state. Keychron boards have a cheap
+   * lighting-only read; generic VIA boards re-read their standard state.
+   * Lighting resyncs are sequenced so a slow older resync cannot replace a
+   * newer one.
    */
   let lightingReadEpoch = 0;
   const readLightingNow = () => {
     if (!isBrowserReadSelection(state.deviceSelection)) {
       return;
     }
-    if (!isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
+    if (!state.hardwareSnapshot) {
+      return;
+    }
+    const kind = lightingReadKind(state);
+    if (!kind) {
       return;
     }
     const session = browserReadSession(state.deviceSelection);
-    if (!("readLighting" in session) || !session.readLighting) {
-      return;
-    }
-    const readLighting = session.readLighting;
     const selectionEpoch = state.deviceSelectionEpoch;
     const readEpoch = ++lightingReadEpoch;
     state.lightingStatus = "Reading lighting…";
     actions.render();
-    readLighting().then(
-      (lighting) => {
+
+    const fail = () => {
+      if (readEpoch !== lightingReadEpoch) {
+        return;
+      }
+      if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
+        return;
+      }
+      state.lightingStatus = "Lighting read failed.";
+      actions.render();
+    };
+
+    if (kind === "keychron" && "readLighting" in session && session.readLighting) {
+      session.readLighting().then((lighting) => {
         if (readEpoch !== lightingReadEpoch) {
           return;
         }
@@ -326,18 +338,30 @@ export function createActions(
         };
         state.lightingStatus = "";
         actions.render();
-      },
-      () => {
+      }, fail);
+      return;
+    }
+
+    if ("readStandardState" in session) {
+      session.readStandardState().then((next) => {
         if (readEpoch !== lightingReadEpoch) {
           return;
         }
         if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
           return;
         }
-        state.lightingStatus = "Lighting read failed.";
+        const current = state.hardwareSnapshot;
+        if (current && !isKeychronV5MaxSnapshot(current)) {
+          state.hardwareSnapshot = {
+            ...current,
+            lighting: next.lighting,
+            readAt: next.readAt,
+          };
+        }
+        state.lightingStatus = "";
         actions.render();
-      },
-    );
+      }, fail);
+    }
   };
 
   const closeOverlays = () => {
@@ -405,8 +429,9 @@ export function createActions(
           selectView: (view) => {
             state.activeView = view;
             actions.render();
-            // The key map mirrors live board lighting, so resync on entry.
-            if (view === "keymap") {
+            // Keychron has a cheap lighting-only read, so refresh on entry.
+            // Generic VIA boards use the explicit Resync button instead.
+            if (view === "keymap" && isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
               readLightingNow();
             }
           },
@@ -703,7 +728,7 @@ export function createActions(
               return;
             }
             state.deviceWriteEnabled = true;
-            noteWriteStatus(state, "Device writes enabled; use caution.");
+            noteWriteStatus(state, "Device writes enabled.");
             actions.render();
           },
           writeLightingToDevice: (confirmed) => {
@@ -1383,6 +1408,22 @@ export function isBrowserReadSelection(
 
 export function browserReadSession(selection: Extract<BrowserKeyboardSelection, { state: "selected"; contract: { state: "via" | "unverified-via" } }>) {
   return isProtocolVerifiableSelection(selection) ? selection.session : selection.viaSession;
+}
+
+/** How the current session can refresh lighting state. */
+export function lightingReadKind(state: EditorState): "keychron" | "standard" | null {
+  if (!isBrowserReadSelection(state.deviceSelection) || !state.hardwareSnapshot) {
+    return null;
+  }
+  const session = browserReadSession(state.deviceSelection);
+  if (isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
+    return "readLighting" in session && session.readLighting ? "keychron" : null;
+  }
+  return "readStandardState" in session ? "standard" : null;
+}
+
+export function canResyncLighting(state: EditorState): boolean {
+  return lightingReadKind(state) !== null;
 }
 
 type WriteCapableSession = {
