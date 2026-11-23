@@ -273,40 +273,41 @@ describe("device-first connection layout", () => {
     await page.close();
   }, 30_000);
 
-  it("gives every visible interactive control an accessible name", async () => {
+  it("gives every visible control an accessible name across screens and dialogs", async () => {
+    const connection = await openPage({ width: 1440, height: 900 });
+    expect(await unnamedVisibleControls(connection), "connection").toEqual([]);
+    await connection.close();
+
     const page = await openReadResultPage({ width: 1440, height: 900 });
     for (const view of ["keymap", "device", "firmware"] as const) {
       await page.locator(`[data-view="${view}"]`).click();
-      const unnamed = await page.evaluate(() =>
-        [
-          ...document.querySelectorAll<HTMLElement>(
-            "button, input, select, textarea, a[href], [role=slider], [tabindex='0']",
-          ),
-        ]
-          .filter((element) => element.getClientRects().length > 0)
-          .filter((element) => {
-            const labelledBy = element.getAttribute("aria-labelledby");
-            if (labelledBy && document.getElementById(labelledBy)?.textContent?.trim()) {
-              return false;
-            }
-            const label =
-              element.getAttribute("aria-label") ||
-              element.getAttribute("title") ||
-              element.textContent?.trim() ||
-              (element instanceof HTMLInputElement
-                ? [...(element.labels ?? [])].map((item) => item.textContent?.trim()).join(" ")
-                : "");
-            return !label;
-          })
-          .map((element) => `${element.tagName.toLowerCase()}.${element.className}`),
-      );
-      expect(unnamed, view).toEqual([]);
+      expect(await unnamedVisibleControls(page), view).toEqual([]);
     }
-    await page.close();
-  }, 30_000);
 
-  it("renders identical connection and Keymap screenshots with reduced motion", async () => {
+    await page.locator("[data-command-palette-open]").click();
+    await page.locator("[data-focus-id=command-search]").waitFor();
+    expect(await unnamedVisibleControls(page), "palette").toEqual([]);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("data-focus-id") === "command-palette-trigger",
+      undefined,
+      { timeout: 5_000 },
+    );
+
+    await page.locator("[data-board-picker-open]").click();
+    await page.locator("[data-focus-id=catalog-search]").waitFor();
+    expect(await unnamedVisibleControls(page), "board picker").toEqual([]);
+    await page.keyboard.press("Escape");
+    await page.close();
+  }, 40_000);
+
+  it("keeps reduced-motion screenshots identical to the normal rendering", async () => {
+    // The transition test above proves the media query disables motion. This
+    // guards the other half of the acceptance: reduced motion changes no layout.
     const connection = await openPage({ width: 1440, height: 900 });
+    expect(
+      await connection.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+    ).toBe(false);
     const normalConnection = await connection.screenshot();
     await connection.close();
 
@@ -316,6 +317,11 @@ describe("device-first connection layout", () => {
     });
     await reducedConnection.goto(origin, { waitUntil: "networkidle" });
     await reducedConnection.locator("[data-connection-screen]").waitFor();
+    expect(
+      await reducedConnection.evaluate(() =>
+        matchMedia("(prefers-reduced-motion: reduce)").matches,
+      ),
+    ).toBe(true);
     expect((await reducedConnection.screenshot()).equals(normalConnection)).toBe(true);
     await reducedConnection.close();
 
@@ -497,6 +503,60 @@ async function openReadResultPage(
   ]);
   await page.locator("[data-hardware-snapshot]").waitFor();
   return page;
+}
+
+async function unnamedVisibleControls(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const selector = [
+      "button",
+      "input",
+      "select",
+      "textarea",
+      "summary",
+      "a[href]",
+      "[role=slider]",
+      "[role=option]",
+      "[role=checkbox]",
+      "[role=switch]",
+      "[role=button]",
+      "[role=link]",
+      "[tabindex='0']",
+    ].join(",");
+    const textWithoutHidden = (element: HTMLElement) => {
+      const clone = element.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('[aria-hidden="true"]').forEach((node) => node.remove());
+      return clone.textContent?.trim() ?? "";
+    };
+    const labelledByText = (element: HTMLElement) => {
+      const id = element.getAttribute("aria-labelledby");
+      return id ? document.getElementById(id)?.textContent?.trim() ?? "" : "";
+    };
+    return [...document.querySelectorAll<HTMLElement>(selector)]
+      .filter(
+        (element) =>
+          element.getClientRects().length > 0 &&
+          !element.closest('[aria-hidden="true"]'),
+      )
+      .filter((element) => {
+        if (
+          element.getAttribute("aria-label")?.trim() ||
+          labelledByText(element) ||
+          element.getAttribute("title")?.trim()
+        ) {
+          return false;
+        }
+        if (
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLSelectElement ||
+          element instanceof HTMLTextAreaElement
+        ) {
+          const labels = element.labels;
+          return !(labels && [...labels].some((label) => textWithoutHidden(label)));
+        }
+        return !textWithoutHidden(element);
+      })
+      .map((element) => `${element.tagName.toLowerCase()}.${element.className}`);
+  });
 }
 
 function isContained(

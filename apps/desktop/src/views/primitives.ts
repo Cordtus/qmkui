@@ -1,4 +1,4 @@
-import { hexToHsv, hsvToHex, normalizeHex } from "../color";
+import { hexToHsv, hsvToHex, normalizeHex, type Hsv } from "../color";
 import { Assignment, VisualKey } from "../domain";
 import { formatKeycap } from "../keycodes";
 export const KEY_LABEL_UNIT = 58;
@@ -102,16 +102,14 @@ export type ColorPickerOptions = {
   onCommit: (hex: string) => void;
 };
 
-export type ColorWheelState = { h: number; s: number; v: number };
-
 /** Shared wheel markup and cursor geometry for the picker and read-only mirror. */
 export function colorWheel(
-  state: ColorWheelState,
+  state: Hsv,
   options: {
     className?: string;
     attrs?: Record<string, string>;
   } = {},
-): { wheel: HTMLElement; update: (next: ColorWheelState) => void } {
+): { wheel: HTMLElement; update: (next: Hsv) => void } {
   const wheel = element("div", {
     className: `color-wheel ${options.className ?? ""}`.trim(),
     attrs: options.attrs ?? {},
@@ -126,7 +124,7 @@ export function colorWheel(
     shade,
     cursor,
   );
-  const update = (next: ColorWheelState) => {
+  const update = (next: Hsv) => {
     const radians = (next.h * Math.PI) / 180;
     const radius = next.s * 50;
     cursor.style.left = `${50 + radius * Math.sin(radians)}%`;

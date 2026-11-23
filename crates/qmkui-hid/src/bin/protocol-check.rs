@@ -109,6 +109,8 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
     let mut via = ViaReadProtocol::new(VectorTransport::from_dir(dir, "v5-lighting.json")?);
     let lighting = via.read_rgb_matrix_state()?;
     if u64::from(lighting.brightness) != decoded_u64(&lighting_fixtures, "brightness")?
+        || u64::from(lighting.effect) != decoded_u64(&lighting_fixtures, "effect")?
+        || u64::from(lighting.effect_speed) != decoded_u64(&lighting_fixtures, "effectSpeed")?
         || u64::from(lighting.hue) != decoded_u64(&lighting_fixtures, "hue")?
         || u64::from(lighting.saturation) != decoded_u64(&lighting_fixtures, "saturation")?
     {
