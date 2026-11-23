@@ -7,10 +7,10 @@ export type BuildStep =
   | { status: "succeeded"; command: string; output: string; durationMs: number }
   | { status: "failed"; command: string; output: string; durationMs: number };
 
-/** Stable sha256 hex digest over the serialized project, mirroring the Rust
- * `qmkui-build::plan::project_digest` used to detect artifact staleness. Falls
- * back to a deterministic FNV-1a hex when the platform has no `crypto.subtle`
- * (e.g. some test/jsdom environments). */
+/** Session-local digest over the serialized project, used only for artifact
+ * staleness in this tab. It is not byte-compatible with Rust
+ * `qmkui-build::plan::project_digest` (different serialization), and the
+ * FNV-1a fallback used by jsdom is not cryptographic. */
 export async function projectDigest(project: Project): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(project));
   if (typeof crypto !== "undefined" && crypto.subtle) {

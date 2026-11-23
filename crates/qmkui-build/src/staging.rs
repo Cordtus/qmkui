@@ -12,6 +12,29 @@ pub fn stage_json_project(
     export: &QmkKeymapJson,
 ) -> Result<PathBuf, BuildError> {
     if staging_dir.exists() {
+        // Only replace a directory this tool created. A typo like `--out .`
+        // must not delete an unrelated tree.
+        let unrelated = fs::read_dir(staging_dir)?.any(|entry| {
+            entry
+                .map(|entry| {
+                    entry.file_name() != "keymap.json"
+                        || !entry
+                            .file_type()
+                            .map(|kind| kind.is_file())
+                            .unwrap_or(false)
+                })
+                .unwrap_or(true)
+        });
+        if unrelated {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "refusing to replace {}: it is not a QMKUI staging directory",
+                    staging_dir.display()
+                ),
+            )
+            .into());
+        }
         fs::remove_dir_all(staging_dir)?;
     }
     fs::create_dir_all(staging_dir)?;

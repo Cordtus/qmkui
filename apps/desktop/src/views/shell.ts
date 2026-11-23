@@ -3,8 +3,8 @@ import { KeyboardDefinition, UiIssue, jsonExportBlockers } from "../domain";
 import { icon, type IconName } from "../icons";
 import { connectionContent, connectionScreen } from "./connection";
 import { catalogPanel, detectedKeyboard, projectDetailsDrawer, systemPanel, testPanel } from "./panels";
-import { element, uiButton } from "./primitives";
-import { snapshotContent } from "./snapshot";
+import { element, showNativeDialog, uiButton } from "./primitives";
+import { safetyPanel, snapshotContent } from "./snapshot";
 import { historyControls, keyboardWorkspace } from "./workspace";
 
 export function mainShell(
@@ -121,7 +121,7 @@ export function topbar(
   const project = iconAction(
     "file-code",
     "Project details",
-    { "data-project-details-action": "open" },
+    { "data-project-details-action": "open", "data-focus-id": "project-details-trigger" },
     actions.openProjectDetails,
   );
   const read = state.hardwareSnapshot
@@ -138,7 +138,6 @@ export function topbar(
       )
     : undefined;
 
-  const support = menuAction("file-code", "Support bundle", "data-support-bundle", actions.downloadSupportBundle);
   const exportJson = exportJsonMenuItem(state, issues, actions);
   const choose = menuAction("plug", "Change connected keyboard", "data-device-switch", actions.chooseBrowserKeyboard);
 
@@ -183,7 +182,7 @@ export function topbar(
       save,
       project,
       ...(read ? [read] : []),
-      overflowMenu([exportJson, support, choose]),
+      overflowMenu([exportJson, choose]),
     ]),
   ]);
 }
@@ -197,7 +196,7 @@ function overflowMenu(items: HTMLElement[]): HTMLElement {
     element("div", { className: "overflow-list" }, items),
   ]);
   menu.addEventListener("click", (event) => {
-    if ((event.target as HTMLElement).closest("wa-button")) {
+    if ((event.target as HTMLElement).closest("button")) {
       menu.removeAttribute("open");
     }
   });
@@ -241,9 +240,9 @@ function menuAction(
 }
 
 function commandPalette(state: EditorState, actions: RenderActions): HTMLElement {
-  const dialog = element("wa-dialog", {
+  const dialog = element("dialog", {
     className: "command-palette",
-    attrs: { label: "Commands", "data-command-palette": "true" },
+    attrs: { "aria-label": "Commands", "data-command-palette": "true" },
   });
   if (!state.commandPaletteOpen) {
     dialog.hidden = true;
@@ -252,8 +251,6 @@ function commandPalette(state: EditorState, actions: RenderActions): HTMLElement
     return dialog;
   }
   dialog.hidden = false;
-  dialog.setAttribute("open", "");
-  (dialog as HTMLElement & { open: boolean }).open = true;
 
   const input = element("input", {
     attrs: {
@@ -284,7 +281,6 @@ function commandPalette(state: EditorState, actions: RenderActions): HTMLElement
     { icon: "plug", label: "Change connected keyboard", run: actions.chooseBrowserKeyboard },
     { icon: "file-code", label: "Project details", run: actions.openProjectDetails },
     { icon: "download-simple", label: "Export QMK JSON", run: actions.downloadQmkJson },
-    { icon: "file-code", label: "Export support bundle", run: actions.downloadSupportBundle },
     { icon: "lightning", label: "Download firmware bundle", run: actions.downloadFirmwareBundle },
     { icon: "arrows-clockwise", label: "Read device", run: actions.readDevice },
   ];
@@ -326,8 +322,7 @@ function commandPalette(state: EditorState, actions: RenderActions): HTMLElement
     rows.push(button);
     list.append(button);
   });
-  // Delegated: Web Awesome buttons live in shadow DOM, so read the command
-  // from the composed target's closest row.
+  // Delegated so filtered rows and icon children share one handler.
   list.addEventListener("click", (event) => {
     const row = (event.target as HTMLElement).closest<HTMLElement>("[data-command]");
     const command = commands.find((candidate) => candidate.label === row?.dataset.command);
@@ -367,19 +362,23 @@ function commandPalette(state: EditorState, actions: RenderActions): HTMLElement
     element("p", { className: "hint palette-hint", text: "Ctrl-K opens this anywhere. Esc closes it." }),
   );
   setActive(0);
-  dialog.addEventListener("wa-after-show", () => input.focus());
-  dialog.addEventListener("wa-after-hide", () => {
+  showNativeDialog(dialog, () => input.focus());
+  dialog.addEventListener("close", () => {
     if (state.commandPaletteOpen) {
       actions.closeCommandPalette();
     }
+  });
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    actions.closeCommandPalette();
   });
   return dialog;
 }
 
 function boardPickerDialog(state: EditorState, actions: RenderActions): HTMLElement {
-  const dialog = element("wa-dialog", {
+  const dialog = element("dialog", {
     className: "board-picker-dialog",
-    attrs: { label: "Choose keyboard", "data-board-picker": "true" },
+    attrs: { "aria-label": "Choose keyboard", "data-board-picker": "true" },
   });
   if (!state.boardPickerOpen) {
     dialog.hidden = true;
@@ -388,22 +387,32 @@ function boardPickerDialog(state: EditorState, actions: RenderActions): HTMLElem
     return dialog;
   }
   dialog.hidden = false;
-  dialog.setAttribute("open", "");
-  (dialog as HTMLElement & { open: boolean }).open = true;
+  const cancel = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: "Cancel",
+    attrs: { "data-board-picker-cancel": "true" },
+  });
+  cancel.addEventListener("click", actions.closeBoardPicker);
   dialog.append(
     element("p", {
       className: "hint board-picker-hint",
       text: "Switch the project to another bundled definition.",
     }),
     catalogPanel(state, actions),
+    element("div", { className: "board-picker-actions" }, [cancel]),
   );
-  dialog.addEventListener("wa-after-show", () => {
-    dialog.querySelector<HTMLInputElement>("input")?.focus();
-  });
-  dialog.addEventListener("wa-after-hide", () => {
+  dialog.addEventListener("close", () => {
     if (state.boardPickerOpen) {
       actions.closeBoardPicker();
     }
+  });
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    actions.closeBoardPicker();
+  });
+  showNativeDialog(dialog, () => {
+    dialog.querySelector<HTMLInputElement>("input")?.focus();
   });
   return dialog;
 }
@@ -460,6 +469,7 @@ function deviceContent(state: EditorState, actions: RenderActions): HTMLElement 
   // answer "what is this device actually doing right now?".
   return element("div", { className: "view-stack device-view" }, [
     snapshotContent(state, actions),
+    ...(isKeychronV5MaxSnapshot(state.hardwareSnapshot) ? [] : [safetyPanel(state, actions)]),
     element("section", { className: "device-tester" }, [
       testPanel(state, actions),
     ]),

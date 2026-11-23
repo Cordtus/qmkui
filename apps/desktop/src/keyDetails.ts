@@ -425,15 +425,19 @@ function modifierLabel(modifier: string): string {
   return modifierLabels[normalized] ?? normalized;
 }
 
-function activeLightingProfile(project: Project): LightingProfile {
-  return (
-    project.lightingProfiles?.[0] ?? {
-      id: "profile_default",
-      name: "Default",
-      mode: "static",
-      perKey: {},
-    }
-  );
+/** The one place a missing profile is created; mutation is intentional. */
+export function activeLightingProfile(project: Project): LightingProfile {
+  if (!project.lightingProfiles?.length) {
+    project.lightingProfiles = [
+      {
+        id: "profile_default",
+        name: "Default",
+        mode: "static",
+        perKey: {},
+      },
+    ];
+  }
+  return project.lightingProfiles[0]!;
 }
 
 function summarizeLayer(layer: Layer): LayerSummary {

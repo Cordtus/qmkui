@@ -117,6 +117,7 @@ dependencies = [
 name = "qmkui-doctor"
 version = "0.1.0"
 dependencies = [
+ "qmkui-hid",
  "serde",
  "serde_json",
 ]

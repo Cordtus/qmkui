@@ -57,7 +57,7 @@ describe("device-first connection layout", () => {
 
     expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
     expect(layout.pageHeight).toBeLessThanOrEqual(layout.viewportHeight);
-    expect(layout.actionRadius).toBe("0px");
+    expect(layout.actionRadius).toBe("4px");
     expect(isContained(layout.action, layout.panel)).toBe(true);
   }, 30_000);
 
@@ -109,8 +109,10 @@ describe("device-first connection layout", () => {
       layout.keymap.right - layout.keymap.left,
     );
     expect(layout.menuBorders).toEqual(["1px", "1px", "1px"]);
-    expect(layout.menuLeftEdges[0]).toBe(layout.menuLeftEdges[2]);
+    // Identity and capabilities share the Device facts disclosure; lighting is
+    // the always-visible card above it.
     expect(layout.menuLeftEdges[1]).toBeGreaterThan(layout.menuLeftEdges[0]);
+    expect(layout.menuLeftEdges[2]).toBeLessThan(layout.menuLeftEdges[0]);
   }, 20_000);
 
   it("keeps the keymap canvas scrollable and page-contained at phone width", async () => {
@@ -220,9 +222,8 @@ describe("device-first connection layout", () => {
     await page.locator('[data-view="keymap"]').click();
     const disclosure = page.locator('[data-context-detail="board-lighting"]');
     await disclosure.click({ position: { x: 24, y: 12 } });
-    expect(await disclosure.getAttribute("open")).not.toBeNull();
-    // Let the wa-after-show handler commit the controlled open state.
-    await page.waitForTimeout(100);
+    // The controlled state commits from the native toggle event.
+    await expect.poll(() => disclosure.getAttribute("open")).not.toBeNull();
 
     await page.locator('[data-lighting-control="brightness"]').evaluate((input) => {
       (input as HTMLInputElement).value = "120";

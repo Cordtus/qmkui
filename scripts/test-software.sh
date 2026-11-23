@@ -10,6 +10,7 @@ export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$root_dir/.cache/ms
 cargo fmt --all -- --check
 cargo test --workspace
 cargo build --workspace
+scripts/refresh-catalog.sh --check
 
 npm --prefix apps/desktop ci
 npm --prefix apps/desktop exec playwright install chromium

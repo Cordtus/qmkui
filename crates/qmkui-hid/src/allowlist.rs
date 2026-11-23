@@ -48,6 +48,24 @@ fn command_set(object: &Value) -> BTreeSet<u8> {
         .unwrap_or_default()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllowlistSnapshot {
+    pub via_read_commands: Vec<u8>,
+    pub keychron_read_commands: Vec<u8>,
+    pub via_write_commands: Vec<u8>,
+}
+
+/// The embedded allow-lists, for diagnostics that must not fork the source of
+/// truth. Sorted and deduplicated by `BTreeSet`.
+pub fn allowlist_snapshot() -> AllowlistSnapshot {
+    let list = allow_list();
+    AllowlistSnapshot {
+        via_read_commands: list.via_read_commands.iter().copied().collect(),
+        keychron_read_commands: list.keychron_read_commands.iter().copied().collect(),
+        via_write_commands: list.via_write_commands.iter().copied().collect(),
+    }
+}
+
 pub fn is_read_only_via_command(command: u8) -> bool {
     allow_list().via_read_commands.contains(&command)
 }
@@ -79,6 +97,14 @@ mod tests {
                 "Keychron read {command:#x}"
             );
         }
+    }
+
+    #[test]
+    fn snapshot_exposes_the_embedded_gates() {
+        let snapshot = allowlist_snapshot();
+        assert!(snapshot.via_read_commands.contains(&0x08));
+        assert!(snapshot.keychron_read_commands.contains(&0xa0));
+        assert!(snapshot.via_write_commands.contains(&0x09));
     }
 
     #[test]

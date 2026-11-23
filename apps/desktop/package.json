@@ -16,7 +16,6 @@
     "ui:screens": "node scripts/ui-screenshots.mjs"
   },
   "dependencies": {
-    "@awesome.me/webawesome": "^3.9.0",
     "@phosphor-icons/core": "^2.1.1"
   },
   "devDependencies": {

@@ -1,16 +1,13 @@
 // @vitest-environment jsdom
 import { expect, it, vi } from "vitest";
 
-vi.mock("./ui", () => ({
-  createApp: vi.fn(),
-}));
+const createApp = vi.fn();
+vi.mock("./ui", () => ({ createApp }));
 
-it("registers the WebAwesome custom elements required by the UI", async () => {
+it("boots the app into the root element", async () => {
   document.body.innerHTML = '<div id="app"></div>';
 
   await import("./main");
 
-  for (const tagName of ["wa-button", "wa-details", "wa-drawer", "wa-dialog"]) {
-    expect(customElements.get(tagName), `${tagName} should be registered`).toBeDefined();
-  }
+  expect(createApp).toHaveBeenCalledOnce();
 });

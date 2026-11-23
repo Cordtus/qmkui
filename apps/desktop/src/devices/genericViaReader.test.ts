@@ -2,6 +2,23 @@ import { describe, expect, it, vi } from "vitest";
 import { readGenericViaStandardState, type GenericViaReaderDevice } from "./genericViaReader";
 
 describe("generic VIA standard reader", () => {
+  it("maps channel 3 value 4 to the RGB matrix hue/saturation pair", async () => {
+    const device = createDevice((request) => {
+      if (request[0] === 0x08 && request[1] === 3 && request[2] === 4) {
+        return report([0x08, 3, 4, 128, 64]);
+      }
+      return undefined;
+    });
+
+    const snapshot = await readGenericViaStandardState(device, {
+      protocolVersion: 0x000c,
+      timeoutMs: 1,
+    });
+
+    expect(snapshot.lighting.rgbMatrixHue).toEqual({ state: "available", value: 128 });
+    expect(snapshot.lighting.rgbMatrixSaturation).toEqual({ state: "available", value: 64 });
+  });
+
   it("keeps unsupported standard reads unavailable instead of substituting configuration defaults", async () => {
     const device = createDevice((request) => {
       if (request[0] === 0x02 && request[1] === 0x01) {

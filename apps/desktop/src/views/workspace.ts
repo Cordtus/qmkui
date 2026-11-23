@@ -1,6 +1,6 @@
 import { AdvancedAssignment, LayerAssignmentAction, layerAssignmentActions, layerKeycode, layerTapKeycode, modTapKeycode, modTapModifiers, parseAdvancedAssignment, suggestedLayerTarget } from "../advancedAssignments";
 import { EditorState, RenderActions, activeLightingProfile, currentLayer } from "../appState";
-import { Assignment, KeyboardDefinition, VisualKey } from "../domain";
+import { Assignment, KeyboardDefinition, LightingRule, VisualKey } from "../domain";
 import { MacroRecord } from "../macros";
 import { illuminationBase } from "../illumination";
 import { dimHex, inkFor } from "../color";
@@ -8,6 +8,7 @@ import { KeyLayerDetail, KeyLightingDetail, KeyRelation, SelectedKeyContext, bui
 import { icon, type IconName } from "../icons";
 import { KeycodeEntry, formatKeycap, keycodeCategories } from "../keycodes";
 import { rgbMatrixEffectsFor } from "../viaDefinition";
+import { lightingRuleTriggerLabel } from "../lightingRules";
 import { layerTabs, layerTools, lightingPanel } from "./panels";
 import { deviceWriteControls } from "./snapshot";
 import { KEY_LABEL_INSET, KEY_LABEL_UNIT, colorSwatch, contextDisclosure, controlGroup, definitionRow, element, fieldControl, keycapLabel, layoutBounds, optionSelect, parameterBlock, settingsGroup, textInput, uiButton } from "./primitives";
@@ -314,6 +315,10 @@ export function board(
       assignment,
       key,
       lighting: lightingForKey(profile, key.id, base),
+      rules: (state.project.lightingRules ?? []).filter(
+        (rule) => rule.targetKeyId === key.id && rule.enabled !== false,
+      ),
+      layoutKeys: layout.keys,
       selected,
       selectedLayer,
       bounds,
@@ -823,6 +828,8 @@ export function keyboardKey({
   assignment,
   key,
   lighting,
+  rules = [],
+  layoutKeys,
   selected,
   selectedLayer,
   bounds,
@@ -830,23 +837,30 @@ export function keyboardKey({
   assignment: Assignment | undefined;
   key: VisualKey;
   lighting: KeyLightingDetail;
+  rules?: LightingRule[];
+  layoutKeys: readonly VisualKey[];
   selected: boolean;
   selectedLayer: ReturnType<typeof currentLayer>;
   bounds: ReturnType<typeof layoutBounds>;
 }): HTMLElement {
   const effectNames = lighting.conditions.map((condition) => condition.name);
   const effectSummary = effectNames.join(", ");
+  const ruleSummary = rules
+    .map((rule) => lightingRuleTriggerLabel(rule.trigger, layoutKeys))
+    .join(", ");
   const lightingSummary = [
     `Configured color ${lighting.color}`,
     lighting.mode === "off" ? "lighting off" : `${lighting.mode} lighting active`,
     effectSummary ? `effects: ${effectSummary}` : "no effects",
-  ].join("; ");
+    ruleSummary ? `rules: ${ruleSummary}` : "",
+  ].filter(Boolean).join("; ");
   // Mirror the profile's actual lighting state: the key tint carries the
   // configured color scaled by RGB Matrix brightness, and a key only reads as
   // lit when the mode is on and brightness is above zero.
   const lit = lighting.mode !== "off" && lighting.brightness > 0;
-  const keyButton = element("qmk-key", {
+  const keyButton = element("button", {
     className: `key ${selected ? "selected" : ""}`,
+    type: "button",
     attrs: {
       "aria-label": `${keyAriaLabel(selectedLayer, key, assignment)}. ${lightingSummary}.`,
       "aria-pressed": String(selected),
@@ -857,8 +871,6 @@ export function keyboardKey({
       "data-lighting-effects": effectSummary,
       "data-lighting-mode": lighting.mode,
       "data-lighting-source": lighting.source,
-      role: "button",
-      tabindex: "0",
       title: lightingSummary,
     },
   });
@@ -895,13 +907,35 @@ export function keyboardKey({
       }),
     );
   }
-  keyButton.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
+  if (rules.length > 0) {
+    const badges = element("span", {
+      className: "key-rule-badges",
+      attrs: { "aria-hidden": "true" },
+    });
+    rules.slice(0, 3).forEach((rule) => {
+      const badge = element("span", {
+        className: "key-rule-badge",
+        attrs: {
+          "data-key-rule-badge": rule.id,
+          title: lightingRuleTriggerLabel(rule.trigger, layoutKeys),
+        },
+      });
+      badge.style.background = rule.color;
+      badge.style.color = inkFor(rule.color);
+      badge.append(icon(ruleGlyph(rule), { size: 7 }));
+      badges.append(badge);
+    });
+    if (rules.length > 3) {
+      badges.append(
+        element("span", {
+          className: "key-rule-badge key-rule-more",
+          text: `+${rules.length - 3}`,
+          attrs: { title: `${rules.length} rules` },
+        }),
+      );
     }
-    event.preventDefault();
-    keyButton.click();
-  });
+    keyButton.append(badges);
+  }
   return keyButton;
 }
 
@@ -923,6 +957,13 @@ export function previewLightingColor(color: string): void {
   document.querySelectorAll<HTMLElement>("[data-lighting-color-readout]").forEach((node) => {
     node.textContent = color;
   });
+}
+
+function ruleGlyph(rule: LightingRule): IconName {
+  if (rule.trigger.kind === "lock") {
+    return "lock";
+  }
+  return rule.trigger.kind === "layer" ? "stack" : "cursor-click";
 }
 
 export function keyLabelSize(label: string, key: VisualKey): string {

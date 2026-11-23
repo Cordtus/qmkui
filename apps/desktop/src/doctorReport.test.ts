@@ -46,6 +46,17 @@ describe("local Doctor report loading", () => {
       { findings: [], snapshot: { commands: [], hardwareProbe: null } },
     ],
     [
+      "an invalid protocol section",
+      {
+        findings: [],
+        snapshot: {
+          commands: [],
+          protocol: { viaReadCommands: "not-an-array" },
+          hardwareProbe: { status: "skipped", reason: "test" },
+        },
+      },
+    ],
+    [
       "an invalid finding",
       {
         findings: [null],

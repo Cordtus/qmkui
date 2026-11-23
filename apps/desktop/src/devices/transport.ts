@@ -26,48 +26,6 @@ export type DeviceTransport = {
   ) => void;
 };
 
-export type WebHidDevice = {
-  readonly opened: boolean;
-  open(): Promise<void>;
-  close(): Promise<void>;
-  sendReport(reportId: number, data: BufferSource): Promise<void>;
-  addEventListener(
-    type: "inputreport",
-    listener: (event: {
-      reportId: number;
-      data: DataView;
-    }) => void,
-  ): void;
-  removeEventListener(
-    type: "inputreport",
-    listener: (event: {
-      reportId: number;
-      data: DataView;
-    }) => void,
-  ): void;
-  readonly vendorId: number;
-  readonly productId: number;
-  readonly productName?: string;
-  readonly collections: readonly { usagePage: number; usage: number }[];
-};
-
-export function createWebHidTransport(device: WebHidDevice): DeviceTransport {
-  return {
-    get opened() {
-      return device.opened;
-    },
-    open: () => device.open(),
-    close: () => device.close(),
-    sendReport: (reportId, data) => device.sendReport(reportId, data),
-    addEventListener: (type, listener) => {
-      device.addEventListener(type, listener);
-    },
-    removeEventListener: (type, listener) => {
-      device.removeEventListener(type, listener);
-    },
-  };
-}
-
 /** Opens a device only if QMKUI is the one opening it, then always closes it. */
 export async function withOpen<Value>(
   device: Pick<DeviceTransport, "opened" | "open" | "close">,

@@ -163,7 +163,7 @@ export function createSafetyAssessment(
     projectRevision,
     deviceRevision,
     requiresRunConfirmation: false,
-    reason: "Create a recovery bundle before any future write operation.",
+    reason: "Create a recovery bundle to record a restore point for this project and device.",
   };
 }
 
@@ -227,7 +227,7 @@ export function importSafetyAuditReceiptJson(json: string): SafetyAuditReceipt {
     throw new Error("Safety audit metadata is invalid");
   }
   const device = parseRecoveryDevice(parsed.device);
-  if (!isSafetyEvent(parsed.event) || parsed.event.kind !== "backupDeclined") {
+  if (!isSafetyEvent(parsed.event)) {
     throw new Error("Safety audit event is invalid");
   }
   if (parsed.createdAt !== parsed.event.occurredAt) {

@@ -10,6 +10,15 @@ pub struct DoctorSnapshot {
     pub package_manager: Option<String>,
     pub commands: Vec<CommandStatus>,
     pub hardware_probe: HardwareProbeStatus,
+    pub protocol: ProtocolStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProtocolStatus {
+    pub via_read_commands: Vec<u8>,
+    pub keychron_read_commands: Vec<u8>,
+    pub via_write_commands: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -222,6 +231,16 @@ fn snapshot_base() -> DoctorSnapshot {
             devices: Vec::new(),
             detected_keyboards: Vec::new(),
         },
+        protocol: protocol_status(),
+    }
+}
+
+fn protocol_status() -> ProtocolStatus {
+    let allowlist = qmkui_hid::allowlist_snapshot();
+    ProtocolStatus {
+        via_read_commands: allowlist.via_read_commands,
+        keychron_read_commands: allowlist.keychron_read_commands,
+        via_write_commands: allowlist.via_write_commands,
     }
 }
 
@@ -521,6 +540,7 @@ mod tests {
                 devices: Vec::new(),
                 detected_keyboards: Vec::new(),
             },
+            protocol: protocol_status(),
         };
 
         let findings = evaluate(&snapshot);
@@ -542,6 +562,9 @@ mod tests {
             .hardware_probe
             .reason
             .contains("explicit no-probe mode"));
+        assert!(snapshot.protocol.via_read_commands.contains(&0x08));
+        assert!(snapshot.protocol.via_write_commands.contains(&0x07));
+        assert!(!snapshot.protocol.via_write_commands.contains(&0x01));
     }
 
     #[test]
