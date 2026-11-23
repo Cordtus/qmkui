@@ -424,8 +424,9 @@ export function createActions(
           selectView: (view) => {
             state.activeView = view;
             actions.render();
-            // The key map mirrors live board lighting, so resync on entry.
-            if (view === "keymap") {
+            // Keychron has a cheap lighting-only read, so refresh on entry.
+            // Generic VIA boards use the explicit Resync button instead.
+            if (view === "keymap" && isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
               readLightingNow();
             }
           },
