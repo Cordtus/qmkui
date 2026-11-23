@@ -456,6 +456,8 @@ describe("device-first hardware workspace", () => {
       root.querySelector<HTMLElement>("[data-key]")?.getAttribute("data-lighting-brightness"),
     ).toBe("120");
 
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
+    await flush();
     root.querySelector<HTMLElement>("[data-lighting-refresh]")?.click();
     await flush();
     await flush();
@@ -464,6 +466,62 @@ describe("device-first hardware workspace", () => {
     expect(
       root.querySelector<HTMLElement>("[data-key]")?.getAttribute("data-lighting-brightness"),
     ).toBe("120");
+  });
+
+  it("keeps good generic lighting fields when a resync is partial", async () => {
+    const root = document.createElement("div");
+    const snapshot = genericViaSnapshot();
+    snapshot.uptime = { state: "available", value: 42 };
+    snapshot.lighting.rgbMatrixBrightness = { state: "available", value: 120 };
+    snapshot.lighting.rgbMatrixHue = { state: "available", value: 44 };
+    snapshot.lighting.rgbMatrixSaturation = { state: "available", value: 200 };
+    const partial = {
+      ...snapshot,
+      uptime: { state: "available" as const, value: 99 },
+      lighting: {
+        ...snapshot.lighting,
+        rgbMatrixBrightness: { state: "unavailable" as const, reason: "timeout" },
+        rgbMatrixHue: { state: "available" as const, value: 45 },
+        rgbMatrixSaturation: { state: "available" as const, value: 201 },
+      },
+    };
+    const readStandardState = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValueOnce(partial);
+
+    createApp(root, {
+      discoverBrowserKeyboard: async () => genericViaSelection(readStandardState),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="verify-protocol"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>("[data-lighting-refresh]")?.click();
+    await flush();
+    await flush();
+
+    expect(root.textContent).toContain("could not be re-read");
+    expect(
+      root.querySelector<HTMLElement>("[data-key]")?.getAttribute("data-lighting-brightness"),
+    ).toBe("120");
+
+    root.querySelector<HTMLElement>('[data-view="device"]')?.click();
+    await flush();
+    expect(
+      root.querySelector<HTMLElement>('[data-snapshot-field="rgb-matrix-brightness"]')?.getAttribute(
+        "data-snapshot-state",
+      ),
+    ).toBe("available");
+    expect(root.querySelector('[data-snapshot-field="rgb-matrix-brightness"]')?.textContent).toContain("120");
+    expect(root.querySelector('[data-snapshot-field="rgb-matrix-hue"]')?.textContent).toContain("45");
+    // A lighting resync must not replace unrelated fields from the full read.
+    expect(root.querySelector('[data-snapshot-field="uptime"]')?.textContent).toContain("42");
   });
 
   it("renders each generic standard field when neighboring keyboard or lighting reads are unavailable", async () => {
@@ -505,6 +563,8 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector('[data-snapshot-field="rgb-matrix-hue"]')?.textContent).toContain("44");
 
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
     await flush();
     const resync = root.querySelector<HTMLButtonElement>("[data-lighting-refresh]")!;
     expect(resync.disabled).toBe(false);
@@ -789,6 +849,8 @@ function deferred<Value>() {
     expect(key.getAttribute("data-lighting-source")).toBe("device");
     expect(key.getAttribute("data-lighting-color")).toBe("#0000ff");
 
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
+    await flush();
     root.querySelector<HTMLElement>("[data-lighting-refresh]")?.click();
     await flush();
     expect(reads).toBe(2);
@@ -822,11 +884,18 @@ function deferred<Value>() {
     await flush();
 
     expect(root.querySelectorAll('[data-settings-group="lighting"]')).toHaveLength(1);
-    expect(root.querySelectorAll('[data-context-detail="board-lighting"]')).toHaveLength(0);
-    expect(root.querySelectorAll('[data-control-group="board-lighting"]')).toHaveLength(1);
-    expect(root.querySelectorAll("[data-lighting-refresh]")).toHaveLength(1);
     expect(root.querySelectorAll("[data-color-hex]")).toHaveLength(1);
     expect(root.querySelectorAll("[data-key-info-panel]")).toHaveLength(0);
+
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-lighting-refresh]")).toHaveLength(1);
+    expect(root.querySelectorAll("[data-lighting-board-color]")).toHaveLength(1);
+    expect(root.querySelectorAll("[data-color-hex]")).toHaveLength(0);
+
+    root.querySelector<HTMLElement>('[data-lighting-target="keys"]')?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-color-hex]")).toHaveLength(1);
 
     root.querySelector<HTMLElement>('[data-keymap-tab="key"]')?.click();
     await flush();
@@ -908,6 +977,12 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>("[data-lighting-paint]")?.click();
     await flush();
     expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("true");
+    const confirm = root.querySelector<HTMLInputElement>("[data-write-confirm]")!;
+    confirm.checked = true;
+    confirm.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    expect(root.textContent).toContain("Writes on");
 
     root.querySelector<HTMLElement>("[data-board-picker-open]")?.click();
     await flush();
@@ -915,7 +990,29 @@ function deferred<Value>() {
     await flush();
 
     expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("false");
+    expect(root.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked).toBe(false);
+    expect(root.querySelector("[data-device-write-enable]")?.textContent).toContain("Enable writes");
   }, 20_000);
+
+  it("turns paint mode off when switching to the board lighting target", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>("[data-lighting-paint]")?.click();
+    await flush();
+    expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("true");
+
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-lighting-target="keys"]')?.click();
+    await flush();
+
+    expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("false");
+  });
 
   it("colours every selected key and undoes the whole selection in one step", async () => {
     const root = document.createElement("div");
@@ -1017,6 +1114,8 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
 
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
+    await flush();
     const boardColor = root.querySelector<HTMLInputElement>("[data-lighting-board-color]")!;
     boardColor.value = "#ff8800";
     boardColor.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1067,6 +1166,27 @@ function deferred<Value>() {
     );
   });
 
+  it("keeps the write confirmation checked after enabling writes", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    const confirm = root.querySelector<HTMLInputElement>("[data-write-confirm]")!;
+    confirm.checked = true;
+    confirm.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+
+    expect(root.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked).toBe(true);
+  });
+
   it("shows a refused write next to the board write controls", async () => {
     const root = document.createElement("div");
     createApp(root, {
@@ -1084,6 +1204,37 @@ function deferred<Value>() {
     expect(root.querySelector("[data-write-status]")?.textContent).toContain(
       "Confirm the keymap write and enable device writes first.",
     );
+  });
+
+  it("clears write arming when the device picker is reopened", async () => {
+    const root = document.createElement("div");
+    const chooseBrowserKeyboard = vi.fn(async () =>
+      recognizedSelection(async () => availableSnapshot()),
+    );
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+      chooseBrowserKeyboard,
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    const confirm = root.querySelector<HTMLInputElement>("[data-write-confirm]")!;
+    confirm.checked = true;
+    confirm.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    expect(root.textContent).toContain("Writes on");
+
+    root.querySelector<HTMLElement>("[data-device-switch]")?.click();
+    await flush();
+    await flush();
+
+    expect(chooseBrowserKeyboard).toHaveBeenCalled();
+    expect(root.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked).toBe(false);
+    expect(root.querySelector("[data-device-write-enable]")?.textContent).toContain("Enable writes");
   });
 
   it("writes the whole project keymap to the device from the editor", async () => {
@@ -1183,6 +1334,7 @@ function deferred<Value>() {
     expect(readLighting).toHaveBeenCalledTimes(2);
     expect(root.querySelector<HTMLElement>("[data-key]")?.getAttribute("data-lighting-brightness")).toBe("200");
     expect(root.textContent).toContain("Wrote RGB-matrix lighting");
+    expect(root.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked).toBe(false);
   });
 
   it("maps the profile's effect name to the board's firmware mode id", async () => {
@@ -1210,6 +1362,8 @@ function deferred<Value>() {
 
     // Switch the RGB-matrix effect to "Breathing" (firmware mode 2), rendered
     // from the board's VIA definition.
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
+    await flush();
     const effectSelect = root.querySelector<HTMLSelectElement>("[data-lighting-control='effect']")!;
     effectSelect.value = "2";
     effectSelect.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1240,6 +1394,8 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
 
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
+    await flush();
     const options = [...root.querySelectorAll<HTMLOptionElement>(
       "[data-lighting-control='effect'] option",
     )];
@@ -1274,6 +1430,8 @@ function deferred<Value>() {
     await flush();
 
     // Force a value the board does not declare as a mode.
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
+    await flush();
     const effectSelect = root.querySelector<HTMLSelectElement>("[data-lighting-control='effect']")!;
     const unknown = document.createElement("option");
     unknown.value = "999";

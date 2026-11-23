@@ -1093,6 +1093,10 @@ button.control-button.rail-tab.active {
   min-width: 0;
 }
 
+.lighting-target-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .lighting-panel,
 .inspector,
 .test-panel {

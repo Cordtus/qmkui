@@ -75,6 +75,8 @@ export type EditorState = {
   selectedKeyIds: string[];
   /** Click-to-paint mode: a click applies the current colour to that key. */
   lightingPaint: boolean;
+  /** Which lighting target the editor shows. */
+  lightingTarget: "keys" | "board";
   /** Which keymap rail tab is open. */
   keymapTab: "lighting" | "key" | "layer";
   commandHistory: CommandHistory;
@@ -95,6 +97,7 @@ export type EditorState = {
   /** Result of the last lighting resync, shown in the board lighting group. */
   lightingStatus: string;
   deviceWriteEnabled: boolean;
+  deviceWriteConfirmed: boolean;
   projectStatus: string;
   /** Write-gate/result message, surfaced next to the write controls. */
   deviceWriteStatus: string;
@@ -169,6 +172,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     selectedKeyId: layout.keys[0]?.id ?? "",
     selectedKeyIds: layout.keys[0] ? [layout.keys[0].id] : [],
     lightingPaint: false,
+    lightingTarget: "keys",
     keymapTab: "lighting",
     commandHistory: createCommandHistory(),
     keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
@@ -186,6 +190,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     keyTesterOpen: false,
     lightingStatus: "",
     deviceWriteEnabled: false,
+    deviceWriteConfirmed: false,
     projectStatus: "",
     deviceWriteStatus: "",
     projectJsonDraft: JSON.stringify(currentProject, null, 2),
@@ -273,6 +278,22 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
   requestBrowserKeyboardDiscovery();
 }
 
+function mergeAvailableFields<T extends Record<string, { state: string }>>(
+  current: T,
+  next: T,
+): { merged: T; preserved: number } {
+  const merged = { ...current };
+  let preserved = 0;
+  for (const key of Object.keys(next) as Array<keyof T>) {
+    if (next[key].state !== "available" && current[key].state === "available") {
+      preserved += 1;
+      continue;
+    }
+    merged[key] = next[key];
+  }
+  return { merged, preserved };
+}
+
 export function createActions(
   root: HTMLElement,
   state: EditorState,
@@ -352,13 +373,19 @@ export function createActions(
         }
         const current = state.hardwareSnapshot;
         if (current && !isKeychronV5MaxSnapshot(current)) {
+          const merged = mergeAvailableFields(current.lighting, next.lighting);
           state.hardwareSnapshot = {
             ...current,
-            lighting: next.lighting,
+            lighting: merged.merged,
             readAt: next.readAt,
           };
+          state.lightingStatus =
+            merged.preserved === 0
+              ? ""
+              : `${merged.preserved} lighting field${merged.preserved === 1 ? "" : "s"} could not be re-read; showing the last good value${merged.preserved === 1 ? "" : "s"}.`;
+        } else {
+          state.lightingStatus = "";
         }
-        state.lightingStatus = "";
         actions.render();
       }, fail);
     }
@@ -416,6 +443,13 @@ export function createActions(
           },
           selectKeymapTab: (tab) => {
             state.keymapTab = tab;
+            actions.render();
+          },
+          selectLightingTarget: (target) => {
+            state.lightingTarget = target;
+            if (target === "board") {
+              state.lightingPaint = false;
+            }
             actions.render();
           },
           selectFirmwareStep: (step) => {
@@ -658,6 +692,9 @@ export function createActions(
             state.hardwareSnapshot = undefined;
             state.snapshotReadStatus = "idle";
             state.lightingStatus = "";
+            state.deviceWriteEnabled = false;
+            state.deviceWriteConfirmed = false;
+            state.deviceWriteStatus = "";
             actions.render();
             state.chooseBrowserKeyboard().then(
               (selection) => {
@@ -721,6 +758,9 @@ export function createActions(
             state.keyTesterOpen = !state.keyTesterOpen;
             actions.render();
           },
+          setDeviceWriteConfirmed: (confirmed) => {
+            state.deviceWriteConfirmed = confirmed;
+          },
           enableDeviceWrites: (confirmed) => {
             if (!confirmed) {
               noteWriteStatus(state, "Confirm the checkbox, then enable device writes.");
@@ -774,6 +814,7 @@ export function createActions(
               profile.global?.effect ?? base?.effect,
               rgbMatrixEffectsFor(state.keyboard.qmkKeyboard),
             );
+            state.deviceWriteConfirmed = false;
             const payload = {
               brightness: clampByte(profile.global?.brightness ?? base?.brightness ?? 180),
               effectSpeed: clampByte(profile.global?.speed ?? base?.effectSpeed ?? 128),
@@ -790,8 +831,11 @@ export function createActions(
                 // readout beside the new write result.
                 readLightingNow();
               })
-              .catch(() => {
-                noteWriteStatus(state, "Lighting write failed.");
+              .catch((error) => {
+                noteWriteStatus(
+                  state,
+                  `Lighting write failed: ${error instanceof Error ? error.message : "unknown error"}.`,
+                );
                 actions.render();
               });
           },
@@ -812,14 +856,18 @@ export function createActions(
               actions.render();
               return;
             }
+            state.deviceWriteConfirmed = false;
             session
               .saveLighting()
               .then(() => {
                 noteWriteStatus(state, "RGB-matrix lighting saved to device EEPROM.");
                 actions.render();
               })
-              .catch(() => {
-                noteWriteStatus(state, "Lighting save failed.");
+              .catch((error) => {
+                noteWriteStatus(
+                  state,
+                  `Lighting save failed: ${error instanceof Error ? error.message : "unknown error"}.`,
+                );
                 actions.render();
               });
           },
@@ -841,6 +889,7 @@ export function createActions(
               actions.render();
               return;
             }
+            state.deviceWriteConfirmed = false;
             let index = 0;
             const runNext = (): Promise<void> => {
               if (index >= writes.entries.length) {
@@ -860,8 +909,11 @@ export function createActions(
                 );
                 actions.render();
               })
-              .catch(() => {
-                noteWriteStatus(state, `Keymap write failed at entry ${index} of ${writes.entries.length}.`);
+              .catch((error) => {
+                noteWriteStatus(
+                  state,
+                  `Keymap write failed at entry ${index} of ${writes.entries.length}: ${error instanceof Error ? error.message : "unknown error"}.`,
+                );
                 actions.render();
               });
           },
@@ -1316,6 +1368,7 @@ export type RenderActions = {
   selectView: (view: AppView) => void;
   selectFirmwareStep: (step: EditorState["firmwareStep"]) => void;
   selectKeymapTab: (tab: EditorState["keymapTab"]) => void;
+  selectLightingTarget: (target: EditorState["lightingTarget"]) => void;
   openCommandPalette: () => void;
   closeCommandPalette: () => void;
   openBoardPicker: () => void;
@@ -1340,6 +1393,7 @@ export type RenderActions = {
   readDevice: () => void;
   refreshLighting: () => void;
   toggleKeyTester: () => void;
+  setDeviceWriteConfirmed: (confirmed: boolean) => void;
   enableDeviceWrites: (confirmed: boolean) => void;
   saveLightingToDevice: (confirmed: boolean) => void;
   writeKeymapToDevice: (confirmed: boolean) => void;
@@ -1816,10 +1870,12 @@ function slugify(value: string): string {
 
 function resetProjectSession(state: EditorState): void {
   state.lightingPaint = false;
+  state.lightingTarget = "keys";
   state.lightingStatus = "";
   state.keymapTab = "lighting";
   state.keyTesterOpen = false;
   state.deviceWriteEnabled = false;
+  state.deviceWriteConfirmed = false;
   state.deviceWriteStatus = "";
   state.flashConfirmed = false;
   state.flashVerdict = undefined;

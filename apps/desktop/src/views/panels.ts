@@ -292,10 +292,6 @@ export function lightingPanel(
   const showBoardLighting = rgbSystem?.capability.support !== "unsupported";
   const effects = rgbMatrixEffectsFor(state.keyboard.qmkKeyboard);
   const base = illuminationBase(state.hardwareSnapshot);
-  const currentEffect =
-    base?.effect === undefined
-      ? undefined
-      : (effects.find((effect) => effect.id === base.effect)?.name ?? `Effect ${base.effect}`);
   const context = buildSelectedKeyContext(
     state.project,
     layout.keys,
@@ -368,47 +364,72 @@ export function lightingPanel(
   clear.addEventListener("click", actions.clearSelectedLighting);
 
   const swatches = swatchRow(profile, actions);
+  const activeTarget =
+    state.lightingTarget === "board" && showBoardLighting ? "board" : "keys";
+  const targetRow = element("div", {
+    className: "segmented lighting-target-row",
+    attrs: { "aria-label": "Lighting target", role: "group" },
+  });
+  const targets: Array<"keys" | "board"> = showBoardLighting ? ["keys", "board"] : ["keys"];
+  targets.forEach((target) => {
+    const selected = activeTarget === target;
+    const button = uiButton({
+      className: `segment ${selected ? "active" : ""}`,
+      text: target === "keys" ? "Keys" : "Board",
+      type: "button",
+      attrs: {
+        "aria-pressed": String(selected),
+        "data-lighting-target": target,
+      },
+    });
+    button.addEventListener("click", () => actions.selectLightingTarget(target));
+    targetRow.append(button);
+  });
+
+  const keyEditor = [
+    picker,
+    element("div", { className: "selection-row" }, [
+      element("span", {
+        className: "selection-count",
+        text: `${selectedCount} of ${layout.keys.length} keys`,
+        attrs: { "data-lighting-selection-count": "true" },
+      }),
+      element("div", { className: "selection-actions" }, [paint, selectAll, clear]),
+    ]),
+    swatches,
+    element("div", { className: "assignment-field lighting-mode-row" }, [
+      element("span", { text: "Mode" }),
+      modeButtons,
+    ]),
+    ...(rgbMatrix
+      ? [controlGroup("lighting-rules", "Key rules", [lightingRulesPanel(state, layout, actions)])]
+      : []),
+  ];
+
+  const boardEditor = [
+    element("div", { className: "board-light-head" }, [
+      element("span", {
+        className: "hint",
+        text: base
+          ? `Board lighting read: ${base.source}`
+          : "No board lighting read; using profile/default values.",
+      }),
+      resyncLightingButton(actions, canResyncLighting(state)),
+    ]),
+    ...(state.lightingStatus
+      ? [element("small", { className: "board-light-status", text: state.lightingStatus })]
+      : []),
+    ...(rgbMatrix
+      ? [rgbMatrixControls(profile, actions, effects, base)]
+      : [element("p", { className: "hint", text: "No RGB-matrix controls are declared for this keyboard." })]),
+  ];
 
   return element("section", {
     className: "lighting-panel",
     attrs: { "data-context-section": "lighting" },
   }, [
-    controlGroup("selected-key-lighting", "Key colour", [
-      picker,
-      element("div", { className: "selection-row" }, [
-        element("span", {
-          className: "selection-count",
-          text: `${selectedCount} of ${layout.keys.length} keys`,
-          attrs: { "data-lighting-selection-count": "true" },
-        }),
-        element("div", { className: "selection-actions" }, [paint, selectAll, clear]),
-      ]),
-      swatches,
-      element("div", { className: "assignment-field lighting-mode-row" }, [
-        element("span", { text: "Mode" }),
-        modeButtons,
-      ]),
-    ]),
-    ...(rgbMatrix ? [controlGroup("lighting-rules", "Key rules", [lightingRulesPanel(state, layout, actions)])] : []),
-    ...(showBoardLighting
-      ? [controlGroup("board-lighting", "Board lighting", [
-          element("div", { className: "board-light-head" }, [
-            element("span", {
-              className: "hint",
-              text: base
-                ? `Board lighting read: ${base.source}${currentEffect ? ` · ${currentEffect}` : ""}`
-                : "No board lighting read; using profile/default values.",
-            }),
-            resyncLightingButton(actions, canResyncLighting(state)),
-          ]),
-          ...(state.lightingStatus
-            ? [element("small", { className: "board-light-status", text: state.lightingStatus })]
-            : []),
-          ...(rgbMatrix
-            ? [rgbMatrixControls(profile, actions, effects, base)]
-            : [element("p", { className: "hint", text: "No RGB-matrix controls are declared for this keyboard." })]),
-        ])]
-      : []),
+    targetRow,
+    ...(activeTarget === "board" ? boardEditor : keyEditor),
   ]);
 }
 
