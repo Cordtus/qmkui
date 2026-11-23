@@ -117,7 +117,7 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
     })?;
     writer.save_rgb_matrix_eeprom()?;
     for frame in &writes.frames {
-        if !is_read_only_via_command(frame[0]) && !expected.via_write_commands.contains(&frame[0]) {
+        if !expected.via_write_commands.contains(&frame[0]) {
             return Err(format!("write frame {:#04x} is not allowed", frame[0]).into());
         }
     }
