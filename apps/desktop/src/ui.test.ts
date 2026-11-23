@@ -275,6 +275,27 @@ describe("device-first hardware workspace", () => {
     expect(chooseBrowserKeyboard).toHaveBeenCalled();
   });
 
+  it("does not claim no keyboard when a selected device is unsupported", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => ({
+        state: "selected",
+        identity: {
+          vendorId: 0x1234,
+          productId: 0x5678,
+          collections: [{ usagePage: 0x0001, usage: 0x0006 }],
+        },
+        contract: { state: "unsupported" },
+      }),
+    });
+    await flush();
+
+    expect(root.querySelector("[data-connection-screen] h1")?.textContent).toBe(
+      "Keyboard selected",
+    );
+    expect(root.textContent).toContain("Unsupported keyboard.");
+  });
+
   it("auto-reads a snapshot on selection and renders the device facts", async () => {
     const root = document.createElement("div");
     const readSnapshot = vi.fn(async () => availableSnapshot());
@@ -429,6 +450,12 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector('[data-snapshot-field="firmware-version"]')?.textContent).toContain("9");
     expect(root.querySelector('[data-snapshot-field="rgb-matrix-effect"]')?.textContent).toContain("RGB matrix effect read failed: timeout.");
     expect(root.querySelector('[data-snapshot-field="rgb-matrix-hue"]')?.textContent).toContain("44");
+
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-lighting-refresh]")?.disabled,
+    ).toBe(true);
   });
 });
 

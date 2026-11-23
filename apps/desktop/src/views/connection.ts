@@ -25,7 +25,7 @@ export function connectionPanel(state: EditorState, actions: RenderActions): HTM
   const heading =
     state.snapshotReadStatus === "failed"
       ? "Could not read keyboard"
-      : recognized
+      : state.deviceSelection.state === "selected"
         ? "Keyboard selected"
         : "No keyboard connected";
   const connect = uiButton({

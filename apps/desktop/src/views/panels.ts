@@ -1,4 +1,4 @@
-import { EditorState, RenderActions, activeLightingProfile, bundledKeyboards, currentLayer, selectedLayout } from "../appState";
+import { EditorState, RenderActions, activeLightingProfile, bundledKeyboards, currentLayer, isKeychronV5MaxSnapshot, selectedLayout } from "../appState";
 import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
 import { firmwareBundleFileName } from "../firmwareBundle";
@@ -399,7 +399,10 @@ export function lightingPanel(
                 ? `Board lighting read: ${base.source}${currentEffect ? ` · ${currentEffect}` : ""}`
                 : "No board lighting read; using profile/default values.",
             }),
-            resyncLightingButton(actions, Boolean(base)),
+            resyncLightingButton(
+              actions,
+              Boolean(base) && isKeychronV5MaxSnapshot(state.hardwareSnapshot),
+            ),
           ]),
           ...(state.lightingStatus
             ? [element("small", { className: "board-light-status", text: state.lightingStatus })]
@@ -664,7 +667,9 @@ function resyncLightingButton(actions: RenderActions, enabled: boolean): HTMLEle
     text: "Resync",
     attrs: {
       "data-lighting-refresh": "true",
-      title: enabled ? "Re-read the board's lighting state" : "No board lighting read to resync",
+      title: enabled
+        ? "Re-read the board's lighting state"
+        : "No V5 Max lighting read to resync",
       ...(enabled ? {} : { disabled: "" }),
     },
   });
