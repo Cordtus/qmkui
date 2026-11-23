@@ -1969,6 +1969,42 @@ input[type="color"] {
   font-size: 0.76rem;
 }
 
+.lighting-mirror {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s3);
+}
+
+.color-wheel.readonly {
+  width: min(100%, 160px);
+  cursor: default;
+  pointer-events: none;
+}
+
+.lighting-mirror-facts {
+  display: grid;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.capability-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.capability-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.capability-bitmap {
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+
 .lighting-swatches {
   display: flex;
   flex-wrap: wrap;

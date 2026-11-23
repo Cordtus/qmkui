@@ -12,6 +12,21 @@ then offers the actions that device supports. Unavailable or unverified values
 are shown with the firmware's reason; nothing is filled in from a bundled
 default.
 
+## Interface
+
+Three surfaces, one workbench:
+
+- **Keymap** — board-first editing, one inspector (Lighting / Key / Layer), and
+  a write strip that stays attached to the board.
+- **Device** — read-only keymap mirror, capability chips, global lighting wheel,
+  recovery panel, and an opt-in key tester.
+- **Firmware** — Build → Flash → Verify step rail, the exact `qmkui-flash`
+  command, diagnostics, and support export.
+
+Generate local design captures at 1440/1024/768 with
+`npm --prefix apps/desktop run ui:screens` (output is gitignored under
+`apps/desktop/.local/ui-screens`).
+
 ## Status
 
 | Capability | State |
@@ -192,6 +207,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p qmkui-doctor -- --no-hardware-probe
 cargo run -p qmkui-build -- --project fixtures/projects/example-60.json --check  # exits 3 when blocked
 scripts/refresh-catalog.sh --check              # validates ingest + checked-in catalog
+cargo run -p qmkui-hid --bin protocol-check      # replays shared VIA/Keychron vectors
 ```
 
 Run `cargo fmt --check`, `cargo test`, the frontend tests and

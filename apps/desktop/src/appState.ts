@@ -94,6 +94,7 @@ export type EditorState = {
   snapshotLayerIndex: number;
   snapshotSelectedKey: string;
   snapshotReadStatus: "idle" | "reading" | "failed";
+  keyTesterOpen: boolean;
   /** Result of the last lighting-only resync, shown next to the readout. */
   lightingStatus: string;
   deviceWriteEnabled: boolean;
@@ -187,6 +188,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     snapshotLayerIndex: 0,
     snapshotSelectedKey: "0:0",
     snapshotReadStatus: "idle",
+    keyTesterOpen: false,
     lightingStatus: "",
     deviceWriteEnabled: false,
     projectStatus: "Project is not saved in this preview session.",
@@ -709,6 +711,10 @@ export function createActions(
           },
           selectSnapshotKey: (matrixKey) => {
             state.snapshotSelectedKey = matrixKey;
+            actions.render();
+          },
+          toggleKeyTester: () => {
+            state.keyTesterOpen = !state.keyTesterOpen;
             actions.render();
           },
           enableDeviceWrites: (confirmed) => {
@@ -1372,6 +1378,7 @@ export type RenderActions = {
   refreshLighting: () => void;
   selectSnapshotLayer: (layerIndex: number) => void;
   selectSnapshotKey: (matrixKey: string) => void;
+  toggleKeyTester: () => void;
   enableDeviceWrites: (confirmed: boolean) => void;
   writeSnapshotKeycode: (keycode: number, confirmed: boolean) => void;
   saveLightingToDevice: (confirmed: boolean) => void;
@@ -1841,6 +1848,7 @@ function resetProjectSession(state: EditorState): void {
   state.boardLightingOpen = false;
   state.lightingStatus = "";
   state.keymapTab = "lighting";
+  state.keyTesterOpen = false;
   state.deviceWriteEnabled = false;
   state.deviceWriteStatus = "";
   state.flashConfirmed = false;

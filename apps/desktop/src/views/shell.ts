@@ -281,7 +281,6 @@ function commandPalette(state: EditorState, actions: RenderActions): HTMLElement
     { icon: "plug", label: "Change connected keyboard", run: actions.chooseBrowserKeyboard },
     { icon: "file-code", label: "Project details", run: actions.openProjectDetails },
     { icon: "download-simple", label: "Export QMK JSON", run: actions.downloadQmkJson },
-    { icon: "lightning", label: "Download firmware bundle", run: actions.downloadFirmwareBundle },
     { icon: "arrows-clockwise", label: "Read device", run: actions.readDevice },
   ];
 
@@ -470,9 +469,9 @@ function deviceContent(state: EditorState, actions: RenderActions): HTMLElement 
   return element("div", { className: "view-stack device-view" }, [
     snapshotContent(state, actions),
     ...(isKeychronV5MaxSnapshot(state.hardwareSnapshot) ? [] : [safetyPanel(state, actions)]),
-    element("section", { className: "device-tester" }, [
-      testPanel(state, actions),
-    ]),
+    ...(state.keyTesterOpen
+      ? [element("section", { className: "device-tester" }, [testPanel(state, actions)])]
+      : []),
   ]);
 }
 

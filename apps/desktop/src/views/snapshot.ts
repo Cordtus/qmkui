@@ -2,13 +2,13 @@ import { EditorState, RenderActions, isKeychronV5MaxSnapshot, keyboardForSelecti
 import { hsv255ToHex } from "../color";
 import type { KeyboardDefinition } from "../domain";
 import { GenericViaStandardState } from "../devices/genericViaReader";
-import { KeychronV5MaxCapabilities, KeychronV5MaxIdentityFacts, KeychronV5MaxLighting, KeychronV5MaxReadSnapshot } from "../devices/keychronV5MaxReader";
+import { KeychronV5MaxIdentityFacts, KeychronV5MaxLighting, KeychronV5MaxReadSnapshot } from "../devices/keychronV5MaxReader";
 import { ViaKeymap, ViaMacros, ViaMacroStep } from "../devices/viaReadProtocol";
 import { illuminationBase, type IlluminationBase } from "../illumination";
 import { dimHex, inkFor } from "../color";
 import { decodeHardwareKeycode, isSysRqKeycode } from "../keycodes";
 import { keychronV5MaxKeyboard } from "../presets";
-import { icon } from "../icons";
+import { icon, type IconName } from "../icons";
 import { contextDisclosure, definitionList, element, layoutBounds, uiButton } from "./primitives";
 
 export function snapshotContent(state: EditorState, actions: RenderActions): HTMLElement {
@@ -21,7 +21,7 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
   const keyboard = keyboardForSelection(state.deviceSelection) ?? state.keyboard;
 
   return element("section", { className: "view-stack snapshot-grid", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
-    deviceStatusStrip(snapshot, keyboard),
+    deviceStatusStrip(snapshot, keyboard, state, actions),
     snapshotKeymapField(
       snapshot.keymap,
       state.snapshotLayerIndex,
@@ -36,7 +36,7 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
     contextDisclosure("Device facts", "device-facts", [
       element("div", { className: "snapshot-group-fields" }, [
         snapshotField("Identity", snapshot.identity, identitySnapshotRows),
-        snapshotField("Capabilities", snapshot.capabilities, capabilitySnapshotRows),
+        capabilityField(snapshot),
         snapshotField("Macros", snapshot.macros, macrosSnapshotRows),
       ]),
     ]),
@@ -92,9 +92,22 @@ function deviceWriteUnavailable(): HTMLElement {
 function deviceStatusStrip(
   snapshot: KeychronV5MaxReadSnapshot,
   keyboard: KeyboardDefinition,
+  state: EditorState,
+  actions: RenderActions,
 ): HTMLElement {
   const identity = snapshot.identity.state === "available" ? snapshot.identity.value : undefined;
   const usb = keyboard.usb;
+  const tester = uiButton({
+    className: "secondary-action compact",
+    type: "button",
+    text: state.keyTesterOpen ? "Hide key test" : "Test keys",
+    attrs: {
+      "aria-pressed": String(state.keyTesterOpen),
+      "data-key-tester-toggle": "true",
+      title: "Press keys on the board and see what the host receives",
+    },
+  });
+  tester.addEventListener("click", actions.toggleKeyTester);
   return element("section", {
     className: "device-status-strip",
     attrs: { "data-device-status": "true" },
@@ -112,6 +125,7 @@ function deviceStatusStrip(
         ].join(" · "),
       }),
     ]),
+    tester,
     element("span", { className: "status-chip ready", text: "Connected" }),
   ]);
 }
@@ -406,9 +420,6 @@ export function identitySnapshotRows(value: KeychronV5MaxIdentityFacts): Array<[
   ];
 }
 
-export function capabilitySnapshotRows(value: KeychronV5MaxCapabilities): Array<[string, string]> {
-  return [["Feature bitmap", value.featureBitmap.map((part) => `0x${part.toString(16).padStart(2, "0")}`).join(" ")]];
-}
 
 export function keymapSnapshotRows(value: ViaKeymap): Array<[string, string]> {
   const firstKeycode = value.keycodes[0]?.[0]?.[0];
@@ -594,9 +605,78 @@ export function lightingSnapshotRows(value: KeychronV5MaxLighting): Array<[strin
   ];
 }
 
+function readOnlyColorWheel(lighting: KeychronV5MaxLighting): HTMLElement {
+  const wheel = element("div", {
+    className: "color-wheel readonly",
+    attrs: {
+      "aria-hidden": "true",
+      "data-device-lighting-wheel": hsv255ToHex(
+        lighting.hue,
+        lighting.saturation,
+        lighting.brightness,
+      ),
+    },
+  });
+  const cursor = element("span", { className: "color-wheel-cursor" });
+  const radians = (lighting.hue / 255) * Math.PI * 2;
+  const radius = (lighting.saturation / 255) * 50;
+  cursor.style.left = `${50 + radius * Math.sin(radians)}%`;
+  cursor.style.top = `${50 - radius * Math.cos(radians)}%`;
+  wheel.append(
+    element("span", { className: "color-wheel-disc", attrs: { "aria-hidden": "true" } }),
+    cursor,
+  );
+  return wheel;
+}
+
+function capabilityField(snapshot: KeychronV5MaxReadSnapshot): HTMLElement {
+  const chips: Array<[string, IconName, boolean]> = [
+    ["Identity", "usb", snapshot.identity.state === "available"],
+    ["Keymap", "keyboard", snapshot.keymap.state === "available"],
+    ["Lighting", "lightbulb", snapshot.lighting.state === "available"],
+    ["Macros", "file-code", snapshot.macros.state === "available"],
+  ];
+  const bitmap =
+    snapshot.capabilities.state === "available"
+      ? snapshot.capabilities.value.featureBitmap
+          .map((part) => `0x${part.toString(16).padStart(2, "0")}`)
+          .join(" ")
+      : undefined;
+  return element("section", {
+    className: `snapshot-field capabilities ${snapshot.capabilities.state}`,
+    attrs: {
+      "data-snapshot-field": "capabilities",
+      "data-snapshot-state": snapshot.capabilities.state,
+    },
+  }, [
+    element("h2", { text: "Capabilities" }),
+    element("div", { className: "capability-chips" }, [
+      ...chips.map(([label, glyph, available]) =>
+        element("span", {
+          className: `chip ${available ? "ready" : "blocked"}`,
+          attrs: {
+            title: available ? `${label} is available` : `${label} is unavailable`,
+          },
+        }, [icon(glyph, { size: 13 }), element("span", { text: label })]),
+      ),
+    ]),
+    bitmap
+      ? element("small", {
+          className: "capability-bitmap",
+          text: `Feature bitmap ${bitmap}`,
+        })
+      : element("p", {
+          className: "snapshot-reason",
+          text:
+            ("reason" in snapshot.capabilities && snapshot.capabilities.reason) ||
+            "Capabilities unavailable",
+        }),
+  ]);
+}
+
 /**
  * The V5 Max exposes only global VIA RGB-matrix state (channel 3), so this is a
- * value list — there is no per-LED colour map to render as swatches.
+ * read-only wheel plus values — there is no per-LED colour map.
  */
 export function snapshotLightingField(
   field: KeychronV5MaxReadSnapshot["lighting"],
@@ -621,7 +701,8 @@ export function snapshotLightingField(
     },
   });
   // Same conversion the keymap uses, so the swatch and the keys never disagree.
-  swatch.style.backgroundColor = hsv255ToHex(field.value.hue, field.value.saturation, field.value.brightness);
+  const color = hsv255ToHex(field.value.hue, field.value.saturation, field.value.brightness);
+  swatch.style.backgroundColor = color;
   return element("section", {
     className: "snapshot-field lighting available",
     attrs: { "data-snapshot-field": "lighting", "data-snapshot-state": "available" },
@@ -630,8 +711,13 @@ export function snapshotLightingField(
       element("h2", { text: "Lighting" }),
       resync,
     ]),
-    element("div", { className: "lighting-swatches", attrs: { "data-lighting-swatches": "true" } }, [swatch]),
-    definitionList(lightingSnapshotRows(field.value)),
+    element("div", { className: "lighting-mirror" }, [
+      readOnlyColorWheel(field.value),
+      element("div", { className: "lighting-mirror-facts" }, [
+        element("div", { className: "lighting-swatches", attrs: { "data-lighting-swatches": "true" } }, [swatch]),
+        definitionList(lightingSnapshotRows(field.value)),
+      ]),
+    ]),
   ]);
 }
 

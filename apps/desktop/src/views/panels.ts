@@ -1114,7 +1114,7 @@ function buildStepPanel(
     }),
     blockers,
     element("div", { className: "build-actions" }, [buildButton, firmwareButton(actions.downloadFirmwareBundle)]),
-    buildOutput,
+    contextDisclosure("Build log", "build-log", [buildOutput]),
     element("h3", { className: "build-subheading", text: "Artifacts" }),
     artifacts,
   ]);

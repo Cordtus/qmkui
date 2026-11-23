@@ -11,6 +11,7 @@ cargo fmt --all -- --check
 cargo test --workspace
 cargo build --workspace
 scripts/refresh-catalog.sh --check
+cargo run -p qmkui-hid --bin protocol-check
 
 npm --prefix apps/desktop ci
 npm --prefix apps/desktop exec playwright install chromium

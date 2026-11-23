@@ -154,7 +154,7 @@ describe("device-first connection layout", () => {
       { timeout: 5_000 },
     );
     await input.fill("firmware");
-    expect(await page.locator("[data-command]:visible").count()).toBe(2);
+    expect(await page.locator("[data-command]:visible").count()).toBe(1);
     const hiddenRow = page.locator('[data-command="Go to Keymap"]');
     expect(await hiddenRow.evaluate((row) => getComputedStyle(row).display)).toBe("none");
 
@@ -216,6 +216,46 @@ describe("device-first connection layout", () => {
       expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
     }
   }, 30_000);
+
+  it("stays contained at 320 px and at an effective 200% zoom", async () => {
+    for (const viewport of [{ width: 320, height: 720 }, { width: 720, height: 450 }]) {
+      const page = await openReadResultPage(viewport);
+      await page.locator('[data-view="keymap"]').click();
+      const layout = await page.evaluate(() => ({
+        pageWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        board: document.querySelector<HTMLElement>("[data-keyboard-canvas]")?.getBoundingClientRect(),
+      }));
+      expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
+      expect(layout.board?.width ?? 0).toBeGreaterThan(0);
+      await page.close();
+    }
+  }, 30_000);
+
+  it("honours reduced motion", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 900 },
+      reducedMotion: "reduce",
+    });
+    await page.addInitScript(() => {
+      const listeners = new Set<(event: { reportId: number; data: Uint8Array }) => void>();
+      (navigator as unknown as { hid: unknown }).hid = {
+        getDevices: async () => [],
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        requestDevice: async () => {
+          throw new Error("not used");
+        },
+      };
+      void listeners;
+    });
+    await page.goto(origin, { waitUntil: "networkidle" });
+    const duration = await page.locator("[data-device-action=connect]").evaluate(
+      (element) => getComputedStyle(element).transitionDuration,
+    );
+    expect(["0.01ms", "0.00001s", "1e-05s", "0s"]).toContain(duration);
+    await page.close();
+  });
 
   it("keeps the board-lighting disclosure open while adjusting it", async () => {
     const page = await openReadResultPage({ width: 1440, height: 900 });
