@@ -284,6 +284,25 @@ export function contextDisclosure(
   return details;
 }
 
+/** Modal when the DOM supports it; jsdom falls back to the open attribute. */
+export function showNativeDialog(dialog: HTMLDialogElement, focus: () => void): void {
+  queueMicrotask(() => {
+    if (!dialog.isConnected) {
+      return;
+    }
+    if (typeof dialog.showModal === "function" && !dialog.open) {
+      try {
+        dialog.showModal();
+      } catch {
+        dialog.setAttribute("open", "");
+      }
+    } else {
+      dialog.setAttribute("open", "");
+    }
+    focus();
+  });
+}
+
 export function definitionList(rows: Array<[string, string]>): HTMLElement {
   const list = element("dl");
   rows.forEach(([term, description]) => {

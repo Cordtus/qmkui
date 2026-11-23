@@ -32,6 +32,7 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
       illuminationBase(snapshot),
     ),
     snapshotLightingField(snapshot.lighting, actions.refreshLighting),
+    safetyPanel(state, actions),
     contextDisclosure("Device facts", "device-facts", [
       element("div", { className: "snapshot-group-fields" }, [
         snapshotField("Identity", snapshot.identity, identitySnapshotRows),
@@ -39,8 +40,9 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
         snapshotField("Macros", snapshot.macros, macrosSnapshotRows),
       ]),
     ]),
-    deviceWriteControls(state, actions, {
-      description: `Selected key ${state.snapshotSelectedKey} on layer ${state.snapshotLayerIndex}.`,
+    snapshot.keymap.state === "available"
+      ? deviceWriteControls(state, actions, {
+          description: `Selected key ${state.snapshotSelectedKey} on layer ${state.snapshotLayerIndex}.`,
       controls: (confirmed) => {
         const keycodeInput = element("input", {
           attrs: {
@@ -65,7 +67,23 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
         });
         return [keycodeInput, writeKey];
       },
-      lightingSave: true,
+          lightingSave: true,
+        })
+      : deviceWriteUnavailable(),
+  ]);
+}
+
+function deviceWriteUnavailable(): HTMLElement {
+  return element("section", {
+    className: "device-write-controls blocked",
+    attrs: {
+      "data-device-write-controls": "true",
+      "data-write-blocked": "true",
+    },
+  }, [
+    element("h3", { text: "Device write" }),
+    element("p", {
+      text: "Device writes are disabled until the keymap read succeeds; re-read the device to select a verified target.",
     }),
   ]);
 }
@@ -119,11 +137,14 @@ export function safetyPanel(state: EditorState, actions: RenderActions): HTMLEle
     declined: "Backup declined",
   }[assessment.state];
   const actionsRow = element("div", { className: "safety-actions" });
-  if (assessment.state === "backupRequired") {
+  if (assessment.state === "backupRequired" || assessment.state === "backupRecorded") {
     const download = uiButton({
       className: "secondary-action",
       type: "button",
-      text: "Download recovery bundle",
+      text:
+        assessment.state === "backupRecorded"
+          ? "Download recovery bundle again"
+          : "Download recovery bundle",
       attrs: { "data-recovery-download": "true" },
     });
     download.addEventListener("click", actions.downloadRecoveryBundle);
@@ -160,6 +181,9 @@ export function safetyPanel(state: EditorState, actions: RenderActions): HTMLEle
       element("span", { className: "status-chip", text: label }),
     ]),
     element("p", { text: assessment.reason }),
+    element("small", {
+      text: "Advisory: this panel does not gate device writes; the write confirmation remains the gate.",
+    }),
     element("small", {
       text: `${ledger.events.length} local event${ledger.events.length === 1 ? "" : "s"} · ledger ${state.safetyLedgerStorage.availability()}`,
     }),
@@ -343,10 +367,10 @@ export function genericValueField(
   return snapshotField(label, field, (value) => [["", format(value)]]);
 }
 
-export function snapshotField(
+export function snapshotField<Value>(
   label: string,
-  field: { state: "available" | "unavailable" | "unverified"; value?: unknown; reason?: string },
-  rows: (value: any) => Array<[string, string]>,
+  field: { state: "available" | "unavailable" | "unverified"; value?: Value; reason?: string },
+  rows: (value: Value) => Array<[string, string]>,
 ): HTMLElement {
   const available = field.state === "available";
   return element("section", {
@@ -355,7 +379,7 @@ export function snapshotField(
   }, [
     element("h2", { text: label }),
     available
-      ? definitionList(rows(field.value))
+      ? definitionList(rows(field.value as Value))
       : element("p", { className: "snapshot-reason", text: field.reason ?? "Unavailable" }),
   ]);
 }

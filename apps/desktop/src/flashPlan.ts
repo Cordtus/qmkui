@@ -19,7 +19,7 @@ export type FlashRequest = {
 };
 
 export type PolicyVerdict =
-  | { pass: true }
+  | { pass: true; reason?: string }
   | { pass: false; reason: string };
 
 /**
@@ -56,6 +56,27 @@ export function assessFlashRequest(
     };
   }
   return { pass: true };
+}
+
+/**
+ * Browser preview policy: the browser can verify operator confirmation and
+ * artifact freshness, but cannot see bootloader mode. It never claims the
+ * device-side policy passed.
+ */
+export function previewFlashRequest(
+  request: FlashRequest,
+  currentProjectDigest: string,
+): PolicyVerdict {
+  if (!request.operatorConfirmed) {
+    return { pass: false, reason: "Operator has not confirmed the flash target." };
+  }
+  if (request.target.projectDigest !== currentProjectDigest) {
+    return { pass: false, reason: "Artifact is stale relative to the current project." };
+  }
+  return {
+    pass: true,
+    reason: "Preview: confirmation and artifact match; qmkui-flash checks the bootloader device at flash time.",
+  };
 }
 
 export type FlashRun = {

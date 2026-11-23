@@ -45,7 +45,10 @@ fn main() -> Result<(), String> {
     let mut boards: Vec<(String, String)> = Vec::new();
     collect_info_json(&keyboards_dir, &keyboards_dir, &mut boards)?;
     if boards.is_empty() {
-        return Err("no keyboards/**/info.json files found under {keyboards_dir}".to_owned());
+        return Err(format!(
+            "no keyboards/**/info.json files found under {}",
+            keyboards_dir.display()
+        ));
     }
 
     let pairs: Vec<(String, &str)> = boards

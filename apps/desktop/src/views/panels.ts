@@ -10,7 +10,7 @@ import { canDeleteLayer, scanLayerReferences } from "../layerActions";
 import { lightingSystemsForKeyboard, supportedLightingSystems } from "../lightingCapabilities";
 import { ProjectSummary } from "../projectStorage";
 import { icon, type IconName } from "../icons";
-import { colorPicker, contextDisclosure, controlGroup, definitionList, element, fieldControl, optionSelect, rangeInput, uiButton } from "./primitives";
+import { colorPicker, contextDisclosure, controlGroup, definitionList, element, fieldControl, optionSelect, rangeInput, showNativeDialog, uiButton } from "./primitives";
 import { keyLightingDetails, macroEditor, previewLightingColor } from "./workspace";
 import { resolveRgbMatrixEffect, rgbMatrixEffectsFor, viaDefinitionFor, type ViaRgbMatrixEffect } from "../viaDefinition";
 import { lightingRuleTriggerLabel } from "../lightingRules";
@@ -238,19 +238,15 @@ export function projectDetailsDrawer(
       "data-project-details-drawer": "true",
     },
   });
-  if (state.projectDetailsOpen) {
-    drawer.hidden = false;
-    queueMicrotask(() => {
-      if (drawer.isConnected && typeof drawer.showModal === "function" && !drawer.open) {
-        drawer.showModal();
-      } else {
-        drawer.setAttribute("open", "");
-      }
-    });
-  } else {
+  if (!state.projectDetailsOpen) {
     drawer.hidden = true;
     drawer.removeAttribute("open");
+    return drawer;
   }
+  drawer.hidden = false;
+  showNativeDialog(drawer, () => {
+    drawer.querySelector<HTMLElement>("input, textarea, button")?.focus();
+  });
   drawer.addEventListener("close", () => {
     if (state.projectDetailsOpen) {
       actions.closeProjectDetails();
@@ -1039,7 +1035,15 @@ function buildStepPanel(
     className: "secondary-action",
     type: "button",
     text: state.buildStatus === "building" ? "Building..." : "Build locally",
-    attrs: { "data-build-run": "true", ...(state.buildStatus === "building" ? { disabled: "" } : {}) },
+    attrs: {
+      "data-build-run": "true",
+      title: state.buildRunnerAvailable
+        ? "Run the command through the injected local runner"
+        : "The browser cannot run builds; use the command above",
+      ...(state.buildStatus === "building" || !state.buildRunnerAvailable
+        ? { disabled: "" }
+        : {}),
+    },
   });
   buildButton.addEventListener("click", actions.runLocalBuild);
 
@@ -1184,7 +1188,8 @@ function flashStepPanel(
             element("p", {
               className: state.flashVerdict.pass ? "flash-pass" : "flash-block",
               text: state.flashVerdict.pass
-                ? "Preview: target matches; bootloader is checked at flash time."
+                ? state.flashVerdict.reason ??
+                  "Preview: confirmation and artifact match; bootloader is checked at flash time."
                 : `Preview: ${state.flashVerdict.reason}`,
             }),
           ]
@@ -1482,7 +1487,7 @@ export function supportDetails(
         element("h3", { text: "Bundle" }),
         element("p", {
           className: "muted",
-          text: "Downloads project identity, doctor findings, and macro actions for sharing.",
+          text: "Downloads project identity, doctor findings, and macro metadata (actions redacted) for sharing.",
         }),
         element("div", {}, [
           downloadBundleButton(downloadSupportBundle),

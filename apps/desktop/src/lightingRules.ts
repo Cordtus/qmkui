@@ -50,7 +50,8 @@ export function generateLightingRulesC(
     '#include "quantum.h"',
     "",
     "#ifdef RGB_MATRIX_ENABLE",
-    "static void qmkui_set_key_color(uint8_t row, uint8_t col,",
+    "static void qmkui_set_key_color(uint8_t led_min, uint8_t led_max,",
+    "                                 uint8_t row, uint8_t col,",
     "                                 uint8_t r, uint8_t g, uint8_t b) {",
     "    uint8_t led = g_led_config.matrix_co[row][col];",
     "    if (led != NO_LED) {",
@@ -167,7 +168,7 @@ function keyColorCall(
   }
   const { r, g, b } = hexToRgb(color);
   const comment = withComment ? ` // ${keyName(key)}` : "";
-  return `qmkui_set_key_color(${key.matrix.row}, ${key.matrix.col}, ${r}, ${g}, ${b});${comment}`;
+  return `qmkui_set_key_color(led_min, led_max, ${key.matrix.row}, ${key.matrix.col}, ${r}, ${g}, ${b});${comment}`;
 }
 
 function derivedBounds(keys: VisualKey[]): MatrixBounds {

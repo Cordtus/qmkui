@@ -191,6 +191,25 @@ describe("safety foundation", () => {
     expect(safetyAuditMatchesCurrent(restored, editedProject, keychronV5MaxKeyboard)).toBe(false);
   });
 
+  it("round-trips a backup-confirmation audit", () => {
+    const ledger = appendSafetyEvent(
+      createEmptySafetyLedger(),
+      "backupConfirmed",
+      keychronV5MaxProject,
+      keychronV5MaxKeyboard,
+      "2026-07-17T20:00:00.000Z",
+    );
+    const receipt = createSafetyAuditReceipt({
+      project: keychronV5MaxProject,
+      keyboard: keychronV5MaxKeyboard,
+      event: ledger.events[0],
+    });
+    const restored = importSafetyAuditReceiptJson(serializeSafetyAuditReceipt(receipt));
+
+    expect(restored.event).toEqual(ledger.events[0]);
+    expect(safetyAuditMatchesCurrent(restored, keychronV5MaxProject, keychronV5MaxKeyboard)).toBe(true);
+  });
+
   it("merges imported safety history without reusing conflicting sequence numbers", () => {
     const localLedger = appendSafetyEvent(
       createEmptySafetyLedger(),

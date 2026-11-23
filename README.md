@@ -190,7 +190,7 @@ cargo fmt --all -- --check
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p qmkui-doctor -- --no-hardware-probe
-cargo run -p qmkui-build -- --project fixtures/projects/example-60.json --out target/qmkui-build
+cargo run -p qmkui-build -- --project fixtures/projects/example-60.json --check
 scripts/refresh-catalog.sh --check              # validates ingest + checked-in catalog
 ```
 

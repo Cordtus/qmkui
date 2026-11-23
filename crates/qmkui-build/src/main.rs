@@ -6,6 +6,7 @@
 //! `--check` exits 3 when the project is not ready to build. The plan is
 //! printed as JSON; `--out` also writes a deterministic `keymap.json`.
 
+use qmkui_build::artifact::{ArtifactInput, ArtifactStore};
 use qmkui_build::plan::{plan_build, Readiness};
 use qmkui_build::staging::export_and_stage;
 use qmkui_core::model::LayoutContract;
@@ -18,6 +19,8 @@ use std::path::{Path, PathBuf};
 struct Args {
     project: PathBuf,
     out: Option<PathBuf>,
+    firmware: Option<PathBuf>,
+    store: Option<PathBuf>,
     check: bool,
 }
 
@@ -41,12 +44,41 @@ fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Er
     let plan = plan_build(&project, &report, qmk_available())?;
     println!("{}", serde_json::to_string_pretty(&plan)?);
 
-    if args.check && plan.readiness == Readiness::Blocked {
-        return Ok(3);
+    if plan.readiness == Readiness::Blocked {
+        if args.check {
+            return Ok(3);
+        }
+        if args.out.is_some() {
+            return Err("project is blocked; refusing to stage an invalid keymap".into());
+        }
+        return Ok(0);
     }
     if let Some(out) = &args.out {
         let keymap = export_and_stage(out, &project, &layout)?;
         eprintln!("staged {}", keymap.display());
+        if let Some(store) = &args.store {
+            let firmware = args
+                .firmware
+                .as_ref()
+                .ok_or("--store requires --firmware <file>")?;
+            let artifact = ArtifactStore::new(store.clone()).store(ArtifactInput {
+                firmware: fs::read(firmware)?,
+                keymap_json: fs::read(&keymap)?,
+                log: plan.commands.join("\n"),
+                project_digest: plan.project_digest.clone(),
+                qmk_keyboard: plan.qmk_keyboard.clone(),
+                qmk_version: None,
+                catalog_version: None,
+                created_at: format!(
+                    "unix:{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|duration| duration.as_secs())
+                        .unwrap_or_default()
+                ),
+            })?;
+            eprintln!("stored artifact {}", artifact.id);
+        }
     }
     Ok(0)
 }
@@ -99,18 +131,23 @@ fn is_executable(path: &Path) -> bool {
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut project = None;
     let mut out = None;
+    let mut firmware = None;
+    let mut store = None;
     let mut check = false;
     let mut args = args.peekable();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--project" => project = args.next().map(PathBuf::from),
             "--out" => out = args.next().map(PathBuf::from),
+            "--firmware" => firmware = args.next().map(PathBuf::from),
+            "--store" => store = args.next().map(PathBuf::from),
             "--check" => check = true,
             "-h" | "--help" => {
                 println!(
                     "qmkui-build --project <json> [--out <dir>] [--check]\n\
                      \n\
-                     Prints a build plan; --out stages keymap.json; --check exits 3 when blocked."
+                     Prints a build plan; --out stages keymap.json; --check exits 3 when blocked.\n\
+                     --store <dir> --firmware <bin> records an artifact after staging."
                 );
                 std::process::exit(0);
             }
@@ -120,6 +157,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     Ok(Args {
         project: project.ok_or("missing --project <json>")?,
         out,
+        firmware,
+        store,
         check,
     })
 }

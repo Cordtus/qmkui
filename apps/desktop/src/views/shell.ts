@@ -3,7 +3,7 @@ import { KeyboardDefinition, UiIssue, jsonExportBlockers } from "../domain";
 import { icon, type IconName } from "../icons";
 import { connectionContent, connectionScreen } from "./connection";
 import { catalogPanel, detectedKeyboard, projectDetailsDrawer, systemPanel, testPanel } from "./panels";
-import { element, uiButton } from "./primitives";
+import { element, showNativeDialog, uiButton } from "./primitives";
 import { safetyPanel, snapshotContent } from "./snapshot";
 import { historyControls, keyboardWorkspace } from "./workspace";
 
@@ -121,7 +121,7 @@ export function topbar(
   const project = iconAction(
     "file-code",
     "Project details",
-    { "data-project-details-action": "open" },
+    { "data-project-details-action": "open", "data-focus-id": "project-details-trigger" },
     actions.openProjectDetails,
   );
   const read = state.hardwareSnapshot
@@ -237,25 +237,6 @@ function menuAction(
   );
   button.addEventListener("click", onClick);
   return button;
-}
-
-/** Modal when the DOM supports it; jsdom falls back to the open attribute. */
-function showNativeDialog(dialog: HTMLDialogElement, focus: () => void): void {
-  queueMicrotask(() => {
-    if (!dialog.isConnected) {
-      return;
-    }
-    if (typeof dialog.showModal === "function" && !dialog.open) {
-      try {
-        dialog.showModal();
-      } catch {
-        dialog.setAttribute("open", "");
-      }
-    } else {
-      dialog.setAttribute("open", "");
-    }
-    focus();
-  });
 }
 
 function commandPalette(state: EditorState, actions: RenderActions): HTMLElement {
@@ -406,12 +387,20 @@ function boardPickerDialog(state: EditorState, actions: RenderActions): HTMLElem
     return dialog;
   }
   dialog.hidden = false;
+  const cancel = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: "Cancel",
+    attrs: { "data-board-picker-cancel": "true" },
+  });
+  cancel.addEventListener("click", actions.closeBoardPicker);
   dialog.append(
     element("p", {
       className: "hint board-picker-hint",
       text: "Switch the project to another bundled definition.",
     }),
     catalogPanel(state, actions),
+    element("div", { className: "board-picker-actions" }, [cancel]),
   );
   dialog.addEventListener("close", () => {
     if (state.boardPickerOpen) {
@@ -480,7 +469,7 @@ function deviceContent(state: EditorState, actions: RenderActions): HTMLElement 
   // answer "what is this device actually doing right now?".
   return element("div", { className: "view-stack device-view" }, [
     snapshotContent(state, actions),
-    safetyPanel(state, actions),
+    ...(isKeychronV5MaxSnapshot(state.hardwareSnapshot) ? [] : [safetyPanel(state, actions)]),
     element("section", { className: "device-tester" }, [
       testPanel(state, actions),
     ]),

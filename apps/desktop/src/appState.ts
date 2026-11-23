@@ -3,7 +3,7 @@ import project from "../../../fixtures/projects/example-60.json";
 import { createBuildPlan } from "./buildPlan";
 import { BuildArtifact, BuildRunner, BuildStep, projectDigest, runLocalBuild, unsupportedBrowserRunner } from "./buildService";
 import { importConfiguratorKeymap } from "./configuratorImport";
-import { FlashRun, PolicyVerdict, assessFlashRequest, dryRunFlash, flashTargetFromArtifact } from "./flashPlan";
+import { FlashRun, PolicyVerdict, dryRunFlash, flashTargetFromArtifact, previewFlashRequest } from "./flashPlan";
 import { createMacroRecord } from "./macros";
 import { hexToHsv } from "./color";
 import { illuminationBase } from "./illumination";
@@ -107,6 +107,7 @@ export type EditorState = {
   doctorStatus: "loading" | "ready" | "missing";
   buildRunner: BuildRunner;
   buildStatus: "idle" | "building" | "built" | "failed";
+  buildRunnerAvailable: boolean;
   buildStep?: BuildStep;
   artifacts: BuildArtifact[];
   firmwareStep: "build" | "flash" | "verify";
@@ -197,6 +198,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     // No process access in the browser; in-app builds are unavailable. Builds
     // run through the QMK CLI (`qmk compile`) locally.
     buildRunner: options.buildRunner ?? unsupportedBrowserRunner(),
+    buildRunnerAvailable: options.buildRunner !== undefined,
     buildStatus: "idle",
     artifacts: [],
     firmwareStep: "build",
@@ -372,6 +374,7 @@ export function createActions(
     closeProjectDetails: () => {
       state.projectDetailsOpen = false;
       actions.render();
+      queueMicrotask(() => focusControl(root, '[data-focus-id="project-details-trigger"]'));
     },
     render: () => {
       const focusedInput = captureFocusedInput(root);
@@ -453,11 +456,10 @@ export function createActions(
             actions.render();
           },
           setBoardLightingOpen: (open) => {
-            if (state.boardLightingOpen === open) {
-              return;
-            }
+            // Native <details> already reflects the change; re-rendering here
+            // would destroy the focused summary. The next render uses the
+            // stored state.
             state.boardLightingOpen = open;
-            actions.render();
           },
           toggleLightingPaint: () => {
             state.lightingPaint = !state.lightingPaint;
@@ -725,6 +727,11 @@ export function createActions(
               actions.render();
               return;
             }
+            if (!Number.isInteger(keycode) || keycode < 0 || keycode > 0xffff) {
+              noteWriteStatus(state, "Enter a hex keycode between 0000 and FFFF.");
+              actions.render();
+              return;
+            }
             if (!isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
               noteWriteStatus(state, "No device keymap snapshot to write to.");
               actions.render();
@@ -907,23 +914,14 @@ export function createActions(
             state.selectedKeyId = selectedLayout(state.keyboard, state.project).keys[0]?.id ?? "";
             state.selectedKeyIds = state.selectedKeyId ? [state.selectedKeyId] : [];
             state.commandHistory.clear();
-            state.lightingPaint = false;
-            state.keymapTab = "lighting";
+            resetProjectSession(state);
             state.projectJsonDraft = JSON.stringify(state.project, null, 2);
             state.projectStatus = `Created ${state.project.name} from catalog.`;
             state.boardPickerOpen = false;
             state.commandPaletteOpen = false;
-            state.deviceWriteEnabled = false;
-            state.deviceWriteStatus = "";
-            state.flashConfirmed = false;
-            state.flashVerdict = undefined;
-            state.flashRun = undefined;
-            state.buildStatus = "idle";
-            state.buildStep = undefined;
-            state.artifacts = [];
             state.activeView = "keymap";
-            state.firmwareStep = "build";
             actions.render();
+            queueMicrotask(() => focusControl(root, '[data-focus-id="board-picker-trigger"]'));
           },
           saveProject: () => {
             state.projectStorage.save(state.project);
@@ -984,19 +982,21 @@ export function createActions(
           },
           downloadRecoveryBundle: () => {
             const assessment = safetyAssessment(state);
-            if (assessment.state === "blocked") {
+            if (assessment.state === "blocked" || assessment.state === "declined") {
               state.projectStatus = assessment.reason;
               actions.render();
               return;
             }
             try {
               const occurredAt = new Date().toISOString();
-              state.safetyLedgerStorage.append(
-                "backupConfirmed",
-                state.project,
-                state.keyboard,
-                occurredAt,
-              );
+              if (assessment.state === "backupRequired") {
+                state.safetyLedgerStorage.append(
+                  "backupConfirmed",
+                  state.project,
+                  state.keyboard,
+                  occurredAt,
+                );
+              }
               const bundle = createRecoveryBundle({
                 project: state.project,
                 keyboard: state.keyboard,
@@ -1008,9 +1008,12 @@ export function createActions(
                 `qmkui-recovery-${slugify(state.project.name)}.json`,
                 "application/json",
               );
-              state.projectStatus = "Recovery bundle downloaded; backup recorded for this project and device.";
+              state.projectStatus =
+                assessment.state === "backupRequired"
+                  ? "Recovery bundle downloaded; backup recorded for this project and device."
+                  : "Recovery bundle downloaded again.";
             } catch {
-              state.projectStatus = "Recovery bundle could not be recorded; private storage is unavailable.";
+              state.projectStatus = "Recovery bundle could not be downloaded; private storage is unavailable.";
             }
             actions.render();
           },
@@ -1119,7 +1122,7 @@ export function createActions(
                       {
                         id: `artifact-${digest.slice(0, 12)}`,
                         projectDigest: digest,
-                        firmwareSha256: `sha256-${digest.slice(0, 24)}`,
+                        firmwareSha256: digest,
                         qmkKeyboard: plan.keyboardTarget,
                         createdAt: new Date().toISOString(),
                       },
@@ -1142,8 +1145,6 @@ export function createActions(
           runFlashDryRun: () => {
             // Mirrors views/panels.detectedKeyboard; the state layer must not
             // import the view layer, so the accessor is duplicated here.
-            const detected = state.doctorReport?.snapshot.hardwareProbe.detectedKeyboards?.[0];
-            const device = detected ? { vendorId: detected.device.vid, productId: detected.device.pid } : null;
             const bootloader = state.keyboard.bootloader ?? null;
             const usb = state.keyboard.usb;
             const latest = state.artifacts.at(-1);
@@ -1166,14 +1167,15 @@ export function createActions(
               return;
             }
             // Preview only: a browser cannot observe bootloader mode. The
-            // native qmkui-flash CLI detects the bootloader identity for real.
+            // native qmkui-flash CLI detects the bootloader identity for real,
+            // so never label the declared family as detected here.
             const request = {
               target: flashTargetFromArtifact(latest, bootloader),
               expectedDevice: { vendorId: usb.vid, productId: usb.pid },
               operatorConfirmed: state.flashConfirmed,
             };
             projectDigest(state.project).then((digest) => {
-              state.flashVerdict = assessFlashRequest(request, digest, device, bootloader);
+              state.flashVerdict = previewFlashRequest(request, digest);
               state.flashRun = state.flashVerdict.pass ? dryRunFlash(request) : undefined;
               actions.render();
             });
@@ -1219,7 +1221,10 @@ export function createActions(
                       events: [imported.safetyAudit.event],
                     }),
                   );
-                  state.projectStatus = "Restored the saved backup-decline audit for the current project and device state.";
+                  state.projectStatus =
+                    imported.safetyAudit.event.kind === "backupConfirmed"
+                      ? "Restored the saved backup-confirmation audit for the current project and device state."
+                      : "Restored the saved backup-decline audit for the current project and device state.";
                 }
                 actions.render();
                 return;
@@ -1562,7 +1567,11 @@ export function readDeviceSnapshot(state: EditorState, render: () => void): void
       }
       state.hardwareSnapshot = snapshot;
       state.snapshotLayerIndex = 0;
-      state.snapshotSelectedKey = "0:0";
+      const keyboard = keyboardForSelection(state.deviceSelection) ?? state.keyboard;
+      const firstMatrixKey = keyboard.layouts[0]?.keys.find((key) => key.matrix)?.matrix;
+      state.snapshotSelectedKey = firstMatrixKey
+        ? `${firstMatrixKey.row}:${firstMatrixKey.col}`
+        : "0:0";
       state.snapshotReadStatus = "idle";
       render();
     },
@@ -1826,6 +1835,22 @@ function slugify(value: string): string {
   return value.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+function resetProjectSession(state: EditorState): void {
+  state.lightingPaint = false;
+  state.boardLightingOpen = false;
+  state.lightingStatus = "";
+  state.keymapTab = "lighting";
+  state.deviceWriteEnabled = false;
+  state.deviceWriteStatus = "";
+  state.flashConfirmed = false;
+  state.flashVerdict = undefined;
+  state.flashRun = undefined;
+  state.buildStatus = "idle";
+  state.buildStep = undefined;
+  state.artifacts = [];
+  state.firmwareStep = "build";
+}
+
 export function openProject(
   state: EditorState,
   project: Project,
@@ -1836,6 +1861,7 @@ export function openProject(
   state.project = structuredClone(project);
   state.selectedLayerIndex = defaultSelectedLayerIndex(state.project);
   state.commandHistory.clear();
+  resetProjectSession(state);
   state.selectedKeyId = selectedLayout(state.keyboard, state.project).keys[0]?.id ?? "";
   state.selectedKeyIds = state.selectedKeyId ? [state.selectedKeyId] : [];
   state.projectJsonDraft = JSON.stringify(state.project, null, 2);

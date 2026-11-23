@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessFlashRequest, dryRunFlash, flashTargetFromArtifact, FlashRequest } from "./flashPlan";
+import { assessFlashRequest, dryRunFlash, flashTargetFromArtifact, previewFlashRequest, FlashRequest } from "./flashPlan";
 import project from "../../../fixtures/projects/example-60.json";
 import { Project } from "./domain";
 
@@ -49,6 +49,21 @@ describe("flash policy", () => {
     const noDevice = assessFlashRequest(request(true), "digest-a", null, "atmel-dfu");
     expect(noDevice.pass).toBe(false);
     if (!noDevice.pass) expect(noDevice.reason).toContain("No bootloader device");
+  });
+});
+
+describe("browser flash preview", () => {
+  it("checks confirmation and freshness without claiming bootloader detection", () => {
+    const ready = previewFlashRequest(request(true), "digest-a");
+    expect(ready.pass).toBe(true);
+    expect(ready.pass && ready.reason).toContain("bootloader device");
+
+    const unconfirmed = previewFlashRequest(request(false), "digest-a");
+    expect(unconfirmed.pass).toBe(false);
+    if (!unconfirmed.pass) expect(unconfirmed.reason).toContain("confirm");
+
+    const stale = previewFlashRequest(request(true), "digest-changed");
+    expect(stale.pass).toBe(false);
   });
 });
 

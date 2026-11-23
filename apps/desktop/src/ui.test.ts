@@ -75,10 +75,16 @@ describe("device-first hardware workspace", () => {
     const bundle = createUrl.mock.calls[0]?.[0] as Blob;
     expect(JSON.parse(await bundle.text()).format).toBe("qmkui.recovery-bundle");
 
-    root.querySelector<HTMLElement>("[data-safety-audit]")?.click();
+    // A recorded bundle can be downloaded again without duplicating the event.
+    root.querySelector<HTMLElement>("[data-recovery-download]")?.click();
     await flush();
     expect(createUrl).toHaveBeenCalledTimes(2);
-    const audit = createUrl.mock.calls[1]?.[0] as Blob;
+    expect(root.textContent).toContain("downloaded again");
+
+    root.querySelector<HTMLElement>("[data-safety-audit]")?.click();
+    await flush();
+    expect(createUrl).toHaveBeenCalledTimes(3);
+    const audit = createUrl.mock.calls[2]?.[0] as Blob;
     expect(JSON.parse(await audit.text()).format).toBe("qmkui.safety-audit");
 
     click.mockRestore();
@@ -132,6 +138,46 @@ describe("device-first hardware workspace", () => {
     await flush();
     expect(root.querySelector("[data-board-picker]")?.hasAttribute("hidden")).toBe(true);
     expect(root.textContent).toContain("Example 60% Test Board");
+  });
+
+  it("cancels the keyboard picker and returns focus to its trigger", async () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-board-picker-open]")?.click();
+    await flush();
+    root.querySelector<HTMLElement>("[data-board-picker-cancel]")?.click();
+    await flush();
+
+    expect(root.querySelector("[data-board-picker]")?.hasAttribute("hidden")).toBe(true);
+    expect(document.activeElement).toBe(
+      root.querySelector('[data-focus-id="board-picker-trigger"]'),
+    );
+  });
+
+  it("opens the project drawer, focuses it, and restores the trigger", async () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+
+    root.querySelector<HTMLElement>('[data-project-details-action="open"]')?.click();
+    await flush();
+    expect(root.querySelector("[data-project-details-drawer]")?.hasAttribute("hidden")).toBe(
+      false,
+    );
+
+    root.querySelector<HTMLElement>('[data-project-details-action="close"]')?.click();
+    await flush();
+    expect(document.activeElement).toBe(
+      root.querySelector('[data-focus-id="project-details-trigger"]'),
+    );
   });
 
   it("opens the command palette with Ctrl-K and runs a command", async () => {
@@ -358,6 +404,8 @@ describe("device-first hardware workspace", () => {
     expect(root.textContent).toContain("RGB state could not be verified.");
     expect(root.querySelector("[data-hardware-snapshot]")?.textContent).not.toContain("Win Base");
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
+    expect(root.querySelector("[data-write-blocked]")).not.toBeNull();
+    expect(root.querySelector("[data-device-write-enable]")).toBeNull();
   });
 
   it("leaves the connection screen visible when the explicit read fails", async () => {
@@ -586,6 +634,8 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
     await flush();
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-project-details-action="open"]')?.click();
     await flush();
 
     const nameInput = root.querySelector<HTMLInputElement>('[data-focus-id="macro-name"]');
@@ -1310,6 +1360,19 @@ function deferred<Value>() {
     click.mockRestore();
     createUrl.mockRestore();
     revoke.mockRestore();
+  });
+
+  it("disables the browser build button when no local runner is injected", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="firmware"]')?.click();
+    await flush();
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-build-run]")?.disabled,
+    ).toBe(true);
   });
 
   it("runs a local build through the injected runner and shows the outcome", async () => {

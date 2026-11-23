@@ -33,6 +33,7 @@ function isDoctorReport(value: unknown): value is DoctorReport {
     isOptionalArray(snapshot.commands, isCommandStatus) &&
     isOptionalString(snapshot.distroId) &&
     isOptionalString(snapshot.packageManager) &&
+    isOptionalProtocol(snapshot.protocol) &&
     isHardwareProbe(snapshot.hardwareProbe)
   );
 }
@@ -55,6 +56,25 @@ function isCommandStatus(value: unknown): boolean {
     (value.requiredFor === "localBuild" ||
       value.requiredFor === "flashing" ||
       value.requiredFor === "catalogSync")
+  );
+}
+
+function isOptionalProtocol(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      isByteArray(value.viaReadCommands) &&
+      isByteArray(value.keychronReadCommands) &&
+      isByteArray(value.viaWriteCommands))
+  );
+}
+
+function isByteArray(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (command) => Number.isInteger(command) && command >= 0 && command <= 255,
+    )
   );
 }
 

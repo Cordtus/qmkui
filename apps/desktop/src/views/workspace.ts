@@ -858,8 +858,9 @@ export function keyboardKey({
   // configured color scaled by RGB Matrix brightness, and a key only reads as
   // lit when the mode is on and brightness is above zero.
   const lit = lighting.mode !== "off" && lighting.brightness > 0;
-  const keyButton = element("qmk-key", {
+  const keyButton = element("button", {
     className: `key ${selected ? "selected" : ""}`,
+    type: "button",
     attrs: {
       "aria-label": `${keyAriaLabel(selectedLayer, key, assignment)}. ${lightingSummary}.`,
       "aria-pressed": String(selected),
@@ -870,8 +871,6 @@ export function keyboardKey({
       "data-lighting-effects": effectSummary,
       "data-lighting-mode": lighting.mode,
       "data-lighting-source": lighting.source,
-      role: "button",
-      tabindex: "0",
       title: lightingSummary,
     },
   });
@@ -937,13 +936,6 @@ export function keyboardKey({
     }
     keyButton.append(badges);
   }
-  keyButton.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-    event.preventDefault();
-    keyButton.click();
-  });
   return keyButton;
 }
 
