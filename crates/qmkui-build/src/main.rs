@@ -37,6 +37,9 @@ fn main() {
 
 fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Error>> {
     let args = parse_args(args)?;
+    if args.store.is_some() && args.out.is_none() {
+        return Err("--store requires --out <dir> so keymap.json can be recorded".into());
+    }
     let json = fs::read_to_string(&args.project)?;
     let project: KeyboardProject = serde_json::from_str(&json)?;
     let layout = layout_contract(&project);

@@ -16,7 +16,13 @@ pub fn stage_json_project(
         // must not delete an unrelated tree.
         let unrelated = fs::read_dir(staging_dir)?.any(|entry| {
             entry
-                .map(|entry| entry.file_name() != "keymap.json")
+                .map(|entry| {
+                    entry.file_name() != "keymap.json"
+                        || !entry
+                            .file_type()
+                            .map(|kind| kind.is_file())
+                            .unwrap_or(false)
+                })
                 .unwrap_or(true)
         });
         if unrelated {
