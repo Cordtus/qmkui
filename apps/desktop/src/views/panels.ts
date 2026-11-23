@@ -1188,6 +1188,9 @@ function verifyStepPanel(actions: BuildActions): HTMLElement {
 
 function blockerLabel(code: string, doctorStatus: EditorState["doctorStatus"]): string {
   if (code === "command.qmk.missing") {
+    if (doctorStatus === "loading") {
+      return "Checking local build status…";
+    }
     return doctorStatus === "missing"
       ? "Local build status is unknown; no doctor report is loaded."
       : "The local doctor report did not find the qmk CLI.";
@@ -1237,11 +1240,13 @@ export function systemRows(state: EditorState): Array<[string, string]> {
     ["Device", detected ? `${detected.device.vid}:${detected.device.pid}` : "Preset"],
     [
       "Local build",
-      state.doctorStatus === "missing"
-        ? "Not checked"
-        : qmkCommand?.path
-          ? "Ready"
-          : "qmk not found",
+      state.doctorStatus === "loading"
+        ? "Checking"
+        : state.doctorStatus === "missing"
+          ? "Not checked"
+          : qmkCommand?.path
+            ? "Ready"
+            : "qmk not found",
     ],
     ["Distro", state.doctorReport?.snapshot.distroId ?? ""],
     ...(state.doctorReport?.snapshot.protocol
@@ -1439,11 +1444,13 @@ export function supportDetails(
         definitionList([
           [
             "Local build",
-            state.doctorStatus === "missing"
-              ? "Not checked"
-              : state.qmkDetected
-                ? "Ready"
-                : "qmk not found",
+            state.doctorStatus === "loading"
+              ? "Checking"
+              : state.doctorStatus === "missing"
+                ? "Not checked"
+                : state.qmkDetected
+                  ? "Ready"
+                  : "qmk not found",
           ],
           ["Keyboard", detected?.displayName ?? state.keyboard.displayName],
           ["Device", detected ? `${detected.device.vid}:${detected.device.pid}` : "Preset"],
