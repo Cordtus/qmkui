@@ -63,7 +63,7 @@ they never receive Keychron vendor frames.
 The key map is the lighting canvas. The right rail has three tabs — **Lighting**,
 **Key**, **Layer** — so only one control set is on screen. Click a key
 (Shift/Ctrl/⌘-click for more, or **All keys**), then use the colour wheel in
-**Lighting → Key colour**: hue around the rim, saturation from the centre,
+**Lighting → Keys**: hue around the rim, saturation from the centre,
 brightness on the Value slider, plus a hex field. **Paint keys** turns clicks into a brush so you can colour key after
 key, **Clear** removes overrides, and the swatch row re-applies colours already
 used in the project.
@@ -71,8 +71,8 @@ used in the project.
 Colours read back from the board are mirrored per key, and **Resync** re-reads
 the board's lighting without re-reading the keymap. VIA exposes global
 RGB-matrix state only: per-key colours live in the project and the generated
-firmware bundle. **Board lighting** in the Lighting tab is the separate,
-global VIA write (effect, board colour, brightness, speed); **Persist lighting**
+firmware bundle. **Lighting → Board** is the separate, global VIA write
+(effect, board colour, brightness, speed); **Persist lighting**
 stores that state in the keyboard EEPROM so it survives unplugging. Writing
 board lighting never converts a painted key colour into the whole board.
 

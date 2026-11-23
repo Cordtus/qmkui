@@ -75,6 +75,8 @@ export type EditorState = {
   selectedKeyIds: string[];
   /** Click-to-paint mode: a click applies the current colour to that key. */
   lightingPaint: boolean;
+  /** Which lighting target the editor shows. */
+  lightingTarget: "keys" | "board";
   /** Which keymap rail tab is open. */
   keymapTab: "lighting" | "key" | "layer";
   commandHistory: CommandHistory;
@@ -95,6 +97,7 @@ export type EditorState = {
   /** Result of the last lighting resync, shown in the board lighting group. */
   lightingStatus: string;
   deviceWriteEnabled: boolean;
+  deviceWriteConfirmed: boolean;
   projectStatus: string;
   /** Write-gate/result message, surfaced next to the write controls. */
   deviceWriteStatus: string;
@@ -169,6 +172,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     selectedKeyId: layout.keys[0]?.id ?? "",
     selectedKeyIds: layout.keys[0] ? [layout.keys[0].id] : [],
     lightingPaint: false,
+    lightingTarget: "keys",
     keymapTab: "lighting",
     commandHistory: createCommandHistory(),
     keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
@@ -186,6 +190,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     keyTesterOpen: false,
     lightingStatus: "",
     deviceWriteEnabled: false,
+    deviceWriteConfirmed: false,
     projectStatus: "",
     deviceWriteStatus: "",
     projectJsonDraft: JSON.stringify(currentProject, null, 2),
@@ -273,6 +278,19 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
   requestBrowserKeyboardDiscovery();
 }
 
+function mergeAvailableFields<T extends Record<string, { state: string }>>(
+  current: T,
+  next: T,
+): T {
+  const merged = { ...current };
+  for (const key of Object.keys(next) as Array<keyof T>) {
+    if (next[key].state === "available" || current[key].state !== "available") {
+      merged[key] = next[key];
+    }
+  }
+  return merged;
+}
+
 export function createActions(
   root: HTMLElement,
   state: EditorState,
@@ -354,7 +372,7 @@ export function createActions(
         if (current && !isKeychronV5MaxSnapshot(current)) {
           state.hardwareSnapshot = {
             ...current,
-            lighting: next.lighting,
+            lighting: mergeAvailableFields(current.lighting, next.lighting),
             readAt: next.readAt,
           };
         }
@@ -416,6 +434,10 @@ export function createActions(
           },
           selectKeymapTab: (tab) => {
             state.keymapTab = tab;
+            actions.render();
+          },
+          selectLightingTarget: (target) => {
+            state.lightingTarget = target;
             actions.render();
           },
           selectFirmwareStep: (step) => {
@@ -720,6 +742,9 @@ export function createActions(
           toggleKeyTester: () => {
             state.keyTesterOpen = !state.keyTesterOpen;
             actions.render();
+          },
+          setDeviceWriteConfirmed: (confirmed) => {
+            state.deviceWriteConfirmed = confirmed;
           },
           enableDeviceWrites: (confirmed) => {
             if (!confirmed) {
@@ -1316,6 +1341,7 @@ export type RenderActions = {
   selectView: (view: AppView) => void;
   selectFirmwareStep: (step: EditorState["firmwareStep"]) => void;
   selectKeymapTab: (tab: EditorState["keymapTab"]) => void;
+  selectLightingTarget: (target: EditorState["lightingTarget"]) => void;
   openCommandPalette: () => void;
   closeCommandPalette: () => void;
   openBoardPicker: () => void;
@@ -1340,6 +1366,7 @@ export type RenderActions = {
   readDevice: () => void;
   refreshLighting: () => void;
   toggleKeyTester: () => void;
+  setDeviceWriteConfirmed: (confirmed: boolean) => void;
   enableDeviceWrites: (confirmed: boolean) => void;
   saveLightingToDevice: (confirmed: boolean) => void;
   writeKeymapToDevice: (confirmed: boolean) => void;
@@ -1820,6 +1847,7 @@ function resetProjectSession(state: EditorState): void {
   state.keymapTab = "lighting";
   state.keyTesterOpen = false;
   state.deviceWriteEnabled = false;
+  state.deviceWriteConfirmed = false;
   state.deviceWriteStatus = "";
   state.flashConfirmed = false;
   state.flashVerdict = undefined;

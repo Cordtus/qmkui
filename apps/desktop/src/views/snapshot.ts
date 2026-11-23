@@ -162,7 +162,15 @@ export function deviceWriteControls(
   },
 ): HTMLElement {
   const confirmInput = element("input", {
-    attrs: { "data-write-confirm": "true", type: "checkbox" },
+    attrs: {
+      "data-write-confirm": "true",
+      type: "checkbox",
+      ...(state.deviceWriteConfirmed ? { checked: "" } : {}),
+    },
+  });
+  confirmInput.checked = state.deviceWriteConfirmed;
+  confirmInput.addEventListener("change", () => {
+    actions.setDeviceWriteConfirmed(confirmInput.checked);
   });
   const confirmed = () => confirmInput.checked;
   const enable = uiButton(

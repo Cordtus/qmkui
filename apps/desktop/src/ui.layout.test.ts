@@ -381,9 +381,11 @@ describe("device-first connection layout", () => {
     await page.locator('[data-key][data-lighting-brightness]').first().waitFor();
 
     expect(await page.locator("[data-color-hex]").count()).toBe(1);
-    expect(await page.locator('[data-control-group="board-lighting"]').count()).toBe(1);
+    await page.locator('[data-lighting-target="board"]').click();
     expect(await page.locator("[data-lighting-refresh]").count()).toBe(1);
-    expect(await page.locator('[data-context-detail="board-lighting"]').count()).toBe(0);
+    expect(await page.locator("[data-lighting-board-color]").count()).toBe(1);
+    expect(await page.locator("[data-color-hex]").count()).toBe(0);
+    await page.locator('[data-lighting-target="keys"]').click();
 
     const readout = page.locator("[data-color-hex]");
     const before = await readout.inputValue();
