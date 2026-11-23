@@ -145,7 +145,7 @@ export function createSafetyAssessment(
       projectRevision,
       deviceRevision,
       requiresRunConfirmation: true,
-      reason: "Restore point saved for this project and device.",
+      reason: "Recovery bundle recorded for this project and device.",
     };
   }
   if (latestEvent?.kind === "backupDeclined") {
@@ -154,7 +154,7 @@ export function createSafetyAssessment(
       projectRevision,
       deviceRevision,
       requiresRunConfirmation: true,
-      reason: "You chose to skip the restore point.",
+      reason: "You chose to skip the recovery bundle.",
     };
   }
 
