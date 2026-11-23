@@ -114,6 +114,8 @@ export type EditorState = {
   flashConfirmed: boolean;
   flashVerdict?: PolicyVerdict;
   flashRun?: FlashRun;
+  /** Serialized project the current flash preview was computed from. */
+  flashPreviewProject?: string;
 };
 
 export type DeviceSelectionState =
@@ -203,6 +205,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     buildLogOpen: false,
     artifacts: [],
     firmwareStep: "build",
+    flashPreviewProject: undefined,
     flashConfirmed: false,
   };
 
@@ -427,6 +430,14 @@ export function createActions(
       queueMicrotask(() => focusControl(root, '[data-focus-id="project-details-trigger"]'));
     },
     render: () => {
+      if (
+        state.flashPreviewProject !== undefined &&
+        state.flashPreviewProject !== JSON.stringify(state.project)
+      ) {
+        state.flashVerdict = undefined;
+        state.flashRun = undefined;
+        state.flashPreviewProject = undefined;
+      }
       const focusedInput = captureFocusedInput(root);
       const workspaceScroll = captureWorkspaceScroll(root);
       const layout = selectedLayout(state.keyboard, state.project);
@@ -1162,10 +1173,12 @@ export function createActions(
             if (!confirmed) {
               state.flashVerdict = undefined;
               state.flashRun = undefined;
+              state.flashPreviewProject = undefined;
             }
             actions.render();
           },
           runFlashDryRun: () => {
+            state.flashPreviewProject = JSON.stringify(state.project);
             const bootloader = state.keyboard.bootloader ?? null;
             const latest = state.artifacts.at(-1);
             if (!latest) {
@@ -1871,6 +1884,7 @@ function resetProjectSession(state: EditorState): void {
   state.flashConfirmed = false;
   state.flashVerdict = undefined;
   state.flashRun = undefined;
+  state.flashPreviewProject = undefined;
   state.buildStatus = "idle";
   state.buildLogOpen = false;
   state.buildStep = undefined;

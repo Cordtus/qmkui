@@ -1687,4 +1687,28 @@ function deferred<Value>() {
     expect(
       root.querySelector("[data-flash-status]")?.getAttribute("data-flash-status"),
     ).toBe("idle");
+
+    // A preview is invalidated by a project edit, not just by unchecking.
+    const reconfirm = root.querySelector<HTMLInputElement>("[data-flash-confirm]")!;
+    reconfirm.checked = true;
+    reconfirm.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLElement>("[data-flash-dry-run]")?.click();
+    await flush();
+    expect(root.querySelector("[data-flash-status]")?.textContent).toContain("No build artifact");
+
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>("[data-key=v5_000]")?.click();
+    await flush();
+    const hex = root.querySelector<HTMLInputElement>("[data-color-hex]")!;
+    hex.value = "#123456";
+    hex.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="firmware"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-firmware-step="flash"]')?.click();
+    await flush();
+    expect(
+      root.querySelector("[data-flash-status]")?.getAttribute("data-flash-status"),
+    ).toBe("idle");
   });
