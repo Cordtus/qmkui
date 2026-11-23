@@ -217,6 +217,111 @@ describe("device-first connection layout", () => {
     }
   }, 30_000);
 
+  it("runs the new Device controls and disclosures from the keyboard", async () => {
+    const page = await openReadResultPage({ width: 1440, height: 900 });
+
+    await page.locator("[data-command-palette-open]").focus();
+    await page.keyboard.press("Control+k");
+    const search = page.locator("[data-focus-id=command-search]");
+    await search.waitFor();
+    let focusStayedInDialog = false;
+    for (let index = 0; index < 12; index += 1) {
+      await page.keyboard.press("Tab");
+      const where = await page.evaluate(() => {
+        const dialog = document.querySelector<HTMLDialogElement>("[data-command-palette]");
+        const active = document.activeElement;
+        return {
+          inside: Boolean(dialog && active && dialog.contains(active)),
+          isBody: active === document.body,
+        };
+      });
+      // Chromium's modal dialog cycles through <body> between its first and
+      // last control; it must never land on a page control outside the dialog.
+      expect(where.inside || where.isBody).toBe(true);
+      focusStayedInDialog ||= where.inside;
+    }
+    expect(focusStayedInDialog).toBe(true);
+    await search.fill("device");
+    await page.keyboard.press("Enter");
+    expect(await page.locator('[data-view="device"]').getAttribute("aria-current")).toBe("page");
+
+    const tester = page.locator("[data-key-tester-toggle]");
+    await tester.focus();
+    await page.keyboard.press("Enter");
+    await page.locator("[data-test-capture]").waitFor();
+    expect(await tester.getAttribute("aria-pressed")).toBe("true");
+
+    await page.keyboard.press("Enter");
+    expect(await page.locator("[data-test-capture]").count()).toBe(0);
+    expect(
+      await page.evaluate(() => document.activeElement?.getAttribute("data-focus-id")),
+    ).toBe("key-tester-toggle");
+
+    await page.locator("[data-command-palette-open]").focus();
+    await page.keyboard.press("Control+k");
+    await page.locator("[data-focus-id=command-search]").waitFor();
+    await page.locator("[data-focus-id=command-search]").fill("firmware");
+    await page.keyboard.press("Enter");
+    expect(await page.locator('[data-view="firmware"]').getAttribute("aria-current")).toBe("page");
+
+    const log = page.locator('[data-context-detail="build-log"]');
+    await log.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => log.getAttribute("open")).not.toBeNull();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => log.getAttribute("open")).toBeNull();
+    await page.close();
+  }, 30_000);
+
+  it("gives every visible interactive control an accessible name", async () => {
+    const page = await openReadResultPage({ width: 1440, height: 900 });
+    for (const view of ["keymap", "device", "firmware"] as const) {
+      await page.locator(`[data-view="${view}"]`).click();
+      const unnamed = await page.evaluate(() =>
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            "button, input, select, textarea, a[href], [role=slider], [tabindex='0']",
+          ),
+        ]
+          .filter((element) => element.getClientRects().length > 0)
+          .filter((element) => {
+            const labelledBy = element.getAttribute("aria-labelledby");
+            if (labelledBy && document.getElementById(labelledBy)?.textContent?.trim()) {
+              return false;
+            }
+            const label =
+              element.getAttribute("aria-label") ||
+              element.getAttribute("title") ||
+              element.textContent?.trim() ||
+              (element instanceof HTMLInputElement
+                ? [...(element.labels ?? [])].map((item) => item.textContent?.trim()).join(" ")
+                : "");
+            return !label;
+          })
+          .map((element) => `${element.tagName.toLowerCase()}.${element.className}`),
+      );
+      expect(unnamed, view).toEqual([]);
+    }
+    await page.close();
+  }, 30_000);
+
+  it("renders identical screenshots with reduced motion", async () => {
+    const normal = await openPage({ width: 1440, height: 900 });
+    const normalShot = await normal.screenshot();
+    await normal.close();
+
+    const reduced = await browser.newPage({
+      viewport: { width: 1440, height: 900 },
+      reducedMotion: "reduce",
+    });
+    await reduced.goto(origin, { waitUntil: "networkidle" });
+    await reduced.locator("[data-connection-screen]").waitFor();
+    const reducedShot = await reduced.screenshot();
+    await reduced.close();
+
+    expect(reducedShot.equals(normalShot)).toBe(true);
+  }, 30_000);
+
   it("stays contained at 320 px and at an effective 200% zoom", async () => {
     for (const viewport of [{ width: 320, height: 720 }, { width: 720, height: 450 }]) {
       const page = await openReadResultPage(viewport);

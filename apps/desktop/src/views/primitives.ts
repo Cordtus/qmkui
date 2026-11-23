@@ -102,6 +102,41 @@ export type ColorPickerOptions = {
   onCommit: (hex: string) => void;
 };
 
+export type ColorWheelState = { h: number; s: number; v: number };
+
+/** Shared wheel markup and cursor geometry for the picker and read-only mirror. */
+export function colorWheel(
+  state: ColorWheelState,
+  options: {
+    className?: string;
+    attrs?: Record<string, string>;
+  } = {},
+): { wheel: HTMLElement; update: (next: ColorWheelState) => void } {
+  const wheel = element("div", {
+    className: `color-wheel ${options.className ?? ""}`.trim(),
+    attrs: options.attrs ?? {},
+  });
+  const shade = element("span", {
+    className: "color-wheel-shade",
+    attrs: { "aria-hidden": "true" },
+  });
+  const cursor = element("span", { className: "color-wheel-cursor" });
+  wheel.append(
+    element("span", { className: "color-wheel-disc", attrs: { "aria-hidden": "true" } }),
+    shade,
+    cursor,
+  );
+  const update = (next: ColorWheelState) => {
+    const radians = (next.h * Math.PI) / 180;
+    const radius = next.s * 50;
+    cursor.style.left = `${50 + radius * Math.sin(radians)}%`;
+    cursor.style.top = `${50 - radius * Math.cos(radians)}%`;
+    shade.style.opacity = String(1 - next.v);
+  };
+  update(state);
+  return { wheel, update };
+}
+
 /**
  * Per-key colour wheel: hue around the rim, saturation from the centre out,
  * brightness on a slider, and a hex field. Dragging only calls `onPreview` so
@@ -112,21 +147,19 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
   let hsv = hexToHsv(options.value);
 
   const preview = element("span", { className: "color-picker-preview" });
-  const shade = element("span", { className: "color-wheel-shade", attrs: { "aria-hidden": "true" } });
-  const cursor = element("span", { className: "color-wheel-cursor" });
-  const wheel = element("div", {
-    className: "color-wheel",
+  const wheelParts = colorWheel(hsv, {
     attrs: {
       "aria-label": `${options.label} hue and saturation`,
       "aria-valuemax": "360",
       "aria-valuemin": "0",
-      "aria-valuenow": String(Math.round(hexToHsv(options.value).h)),
+      "aria-valuenow": String(Math.round(hsv.h)),
       "aria-valuetext": options.value,
       "data-focus-id": `${options.focusId}-wheel`,
       role: "slider",
       tabindex: "0",
     },
-  }, [element("span", { className: "color-wheel-disc", attrs: { "aria-hidden": "true" } }), shade, cursor]);
+  });
+  const wheel = wheelParts.wheel;
 
   const value = element("input", {
     attrs: {
@@ -149,11 +182,7 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
 
   const paint = (): string => {
     const hex = hsvToHex(hsv.h, hsv.s, hsv.v);
-    const radians = (hsv.h * Math.PI) / 180;
-    const radius = hsv.s * 50;
-    cursor.style.left = `${50 + radius * Math.sin(radians)}%`;
-    cursor.style.top = `${50 - radius * Math.cos(radians)}%`;
-    shade.style.opacity = String(1 - hsv.v);
+    wheelParts.update(hsv);
     preview.style.background = hex;
     value.value = String(Math.round(hsv.v * 100));
     wheel.setAttribute("aria-valuetext", hex);

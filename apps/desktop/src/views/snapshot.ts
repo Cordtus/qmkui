@@ -9,7 +9,7 @@ import { dimHex, inkFor } from "../color";
 import { decodeHardwareKeycode, isSysRqKeycode } from "../keycodes";
 import { keychronV5MaxKeyboard } from "../presets";
 import { icon, type IconName } from "../icons";
-import { contextDisclosure, definitionList, element, layoutBounds, uiButton } from "./primitives";
+import { colorWheel, contextDisclosure, definitionList, element, layoutBounds, uiButton } from "./primitives";
 
 export function snapshotContent(state: EditorState, actions: RenderActions): HTMLElement {
   const snapshot = state.hardwareSnapshot!;
@@ -607,30 +607,18 @@ export function lightingSnapshotRows(value: KeychronV5MaxLighting): Array<[strin
 }
 
 function readOnlyColorWheel(lighting: KeychronV5MaxLighting): HTMLElement {
-  const wheel = element("div", {
-    className: "color-wheel readonly",
-    attrs: {
-      "aria-hidden": "true",
-      "data-device-lighting-wheel": hsv255ToHex(
-        lighting.hue,
-        lighting.saturation,
-        lighting.brightness,
-      ),
+  const color = hsv255ToHex(lighting.hue, lighting.saturation, lighting.brightness);
+  return colorWheel(
+    {
+      h: (lighting.hue / 255) * 360,
+      s: lighting.saturation / 255,
+      v: lighting.brightness / 255,
     },
-  });
-  const shade = element("span", { className: "color-wheel-shade", attrs: { "aria-hidden": "true" } });
-  shade.style.opacity = String(1 - lighting.brightness / 255);
-  const cursor = element("span", { className: "color-wheel-cursor" });
-  const radians = (lighting.hue / 255) * Math.PI * 2;
-  const radius = (lighting.saturation / 255) * 50;
-  cursor.style.left = `${50 + radius * Math.sin(radians)}%`;
-  cursor.style.top = `${50 - radius * Math.cos(radians)}%`;
-  wheel.append(
-    element("span", { className: "color-wheel-disc", attrs: { "aria-hidden": "true" } }),
-    shade,
-    cursor,
-  );
-  return wheel;
+    {
+      className: "readonly",
+      attrs: { "aria-hidden": "true", "data-device-lighting-wheel": color },
+    },
+  ).wheel;
 }
 
 function capabilityField(snapshot: KeychronV5MaxReadSnapshot): HTMLElement {
