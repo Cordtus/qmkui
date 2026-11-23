@@ -459,8 +459,8 @@ function deviceContent(state: EditorState, actions: RenderActions): HTMLElement 
   if (!state.hardwareSnapshot) {
     return connectionPanelView(state, actions);
   }
-  // The snapshot is the read-only board; the key tester lives here because both
-  // answer "what is this device actually doing right now?".
+  // Device is diagnostics: identity, facts, recovery, and the key tester.
+  // The board and lighting live only in Keymap.
   return element("div", { className: "view-stack device-view" }, [
     snapshotContent(state, actions),
     ...(isKeychronV5MaxSnapshot(state.hardwareSnapshot) ? [] : [safetyPanel(state, actions)]),

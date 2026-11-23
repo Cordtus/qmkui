@@ -147,9 +147,9 @@ export function safetyPanel(state: EditorState, actions: RenderActions): HTMLEle
 }
 
 /**
- * The one gated device-write surface, shared by the project editor and the
- * hardware snapshot. Writes only happen after the operator ticks the
- * confirmation checkbox. Keycode writes persist to EEPROM immediately;
+ * The one gated device-write surface, attached to the Keymap board. Writes only
+ * happen after the operator ticks the confirmation checkbox. Keycode writes
+ * persist to EEPROM immediately;
  * "save lighting to EEPROM" is a separate confirmed action (channel-3 save).
  * The write allow-list in `qmkui-hid`/`viaWrite` gates every frame.
  */
