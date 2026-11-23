@@ -367,10 +367,11 @@ export function lightingPanel(
   const activeTarget =
     state.lightingTarget === "board" && showBoardLighting ? "board" : "keys";
   const targetRow = element("div", {
-    className: "segmented",
+    className: "segmented lighting-target-row",
     attrs: { "aria-label": "Lighting target", role: "group" },
   });
-  (["keys", "board"] as const).forEach((target) => {
+  const targets: Array<"keys" | "board"> = showBoardLighting ? ["keys", "board"] : ["keys"];
+  targets.forEach((target) => {
     const selected = activeTarget === target;
     const button = uiButton({
       className: `segment ${selected ? "active" : ""}`,
@@ -379,7 +380,6 @@ export function lightingPanel(
       attrs: {
         "aria-pressed": String(selected),
         "data-lighting-target": target,
-        ...(target === "board" && !showBoardLighting ? { disabled: "" } : {}),
       },
     });
     button.addEventListener("click", () => actions.selectLightingTarget(target));

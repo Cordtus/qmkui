@@ -506,6 +506,7 @@ describe("device-first hardware workspace", () => {
     await flush();
     await flush();
 
+    expect(root.textContent).toContain("could not be re-read");
     expect(
       root.querySelector<HTMLElement>("[data-key]")?.getAttribute("data-lighting-brightness"),
     ).toBe("120");
@@ -519,6 +520,7 @@ describe("device-first hardware workspace", () => {
     ).toBe("available");
     expect(root.querySelector('[data-snapshot-field="rgb-matrix-brightness"]')?.textContent).toContain("120");
     expect(root.querySelector('[data-snapshot-field="rgb-matrix-hue"]')?.textContent).toContain("45");
+    // A lighting resync must not replace unrelated fields from the full read.
     expect(root.querySelector('[data-snapshot-field="uptime"]')?.textContent).toContain("42");
   });
 
@@ -992,6 +994,26 @@ function deferred<Value>() {
     expect(root.querySelector("[data-device-write-enable]")?.textContent).toContain("Enable writes");
   }, 20_000);
 
+  it("turns paint mode off when switching to the board lighting target", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>("[data-lighting-paint]")?.click();
+    await flush();
+    expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("true");
+
+    root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-lighting-target="keys"]')?.click();
+    await flush();
+
+    expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("colours every selected key and undoes the whole selection in one step", async () => {
     const root = document.createElement("div");
     createApp(root, {
@@ -1184,6 +1206,37 @@ function deferred<Value>() {
     );
   });
 
+  it("clears write arming when the device picker is reopened", async () => {
+    const root = document.createElement("div");
+    const chooseBrowserKeyboard = vi.fn(async () =>
+      recognizedSelection(async () => availableSnapshot()),
+    );
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+      chooseBrowserKeyboard,
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    const confirm = root.querySelector<HTMLInputElement>("[data-write-confirm]")!;
+    confirm.checked = true;
+    confirm.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
+    await flush();
+    expect(root.textContent).toContain("Writes on");
+
+    root.querySelector<HTMLElement>("[data-device-switch]")?.click();
+    await flush();
+    await flush();
+
+    expect(chooseBrowserKeyboard).toHaveBeenCalled();
+    expect(root.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked).toBe(false);
+    expect(root.querySelector("[data-device-write-enable]")?.textContent).toContain("Enable writes");
+  });
+
   it("writes the whole project keymap to the device from the editor", async () => {
     const root = document.createElement("div");
     const writeKeycode = vi.fn(async () => {});
@@ -1281,6 +1334,7 @@ function deferred<Value>() {
     expect(readLighting).toHaveBeenCalledTimes(2);
     expect(root.querySelector<HTMLElement>("[data-key]")?.getAttribute("data-lighting-brightness")).toBe("200");
     expect(root.textContent).toContain("Wrote RGB-matrix lighting");
+    expect(root.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked).toBe(false);
   });
 
   it("maps the profile's effect name to the board's firmware mode id", async () => {

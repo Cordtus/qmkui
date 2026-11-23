@@ -281,14 +281,17 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
 function mergeAvailableFields<T extends Record<string, { state: string }>>(
   current: T,
   next: T,
-): T {
+): { merged: T; preserved: number } {
   const merged = { ...current };
+  let preserved = 0;
   for (const key of Object.keys(next) as Array<keyof T>) {
-    if (next[key].state === "available" || current[key].state !== "available") {
-      merged[key] = next[key];
+    if (next[key].state !== "available" && current[key].state === "available") {
+      preserved += 1;
+      continue;
     }
+    merged[key] = next[key];
   }
-  return merged;
+  return { merged, preserved };
 }
 
 export function createActions(
@@ -370,13 +373,19 @@ export function createActions(
         }
         const current = state.hardwareSnapshot;
         if (current && !isKeychronV5MaxSnapshot(current)) {
+          const merged = mergeAvailableFields(current.lighting, next.lighting);
           state.hardwareSnapshot = {
             ...current,
-            lighting: mergeAvailableFields(current.lighting, next.lighting),
+            lighting: merged.merged,
             readAt: next.readAt,
           };
+          state.lightingStatus =
+            merged.preserved === 0
+              ? ""
+              : `${merged.preserved} lighting field${merged.preserved === 1 ? "" : "s"} could not be re-read; showing the last good value${merged.preserved === 1 ? "" : "s"}.`;
+        } else {
+          state.lightingStatus = "";
         }
-        state.lightingStatus = "";
         actions.render();
       }, fail);
     }
@@ -438,6 +447,9 @@ export function createActions(
           },
           selectLightingTarget: (target) => {
             state.lightingTarget = target;
+            if (target === "board") {
+              state.lightingPaint = false;
+            }
             actions.render();
           },
           selectFirmwareStep: (step) => {
@@ -802,6 +814,7 @@ export function createActions(
               profile.global?.effect ?? base?.effect,
               rgbMatrixEffectsFor(state.keyboard.qmkKeyboard),
             );
+            state.deviceWriteConfirmed = false;
             const payload = {
               brightness: clampByte(profile.global?.brightness ?? base?.brightness ?? 180),
               effectSpeed: clampByte(profile.global?.speed ?? base?.effectSpeed ?? 128),
@@ -843,6 +856,7 @@ export function createActions(
               actions.render();
               return;
             }
+            state.deviceWriteConfirmed = false;
             session
               .saveLighting()
               .then(() => {
@@ -875,6 +889,7 @@ export function createActions(
               actions.render();
               return;
             }
+            state.deviceWriteConfirmed = false;
             let index = 0;
             const runNext = (): Promise<void> => {
               if (index >= writes.entries.length) {
@@ -1855,6 +1870,7 @@ function slugify(value: string): string {
 
 function resetProjectSession(state: EditorState): void {
   state.lightingPaint = false;
+  state.lightingTarget = "keys";
   state.lightingStatus = "";
   state.keymapTab = "lighting";
   state.keyTesterOpen = false;
