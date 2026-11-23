@@ -25,8 +25,11 @@ npm --prefix apps/desktop ci
 
 - `apps/desktop`: static TypeScript/Vite browser app
 - `crates/qmkui-core`: project model, validation, and QMK JSON export
-- `crates/qmkui-catalog`: keyboard definition loading and search
-- `crates/qmkui-doctor`: software readiness and opt-in read-only Linux probe
+- `crates/qmkui-catalog`: keyboard definition loading/search and ingest CLI
+- `crates/qmkui-doctor`: software readiness, protocol gates, and opt-in read-only Linux probe
+- `crates/qmkui-hid`: read-only protocol core shared with Doctor diagnostics
+- `crates/qmkui-build`: build planning/staging plus the `qmkui-build` CLI
+- `crates/qmkui-flash`: gated `qmkui-flash` CLI
 - `fixtures`: deterministic catalog and project test inputs
 - `packaging/arch`: local Arch/Garuda Doctor package
 - `scripts`: repeatable checks, probing, and public-build auditing

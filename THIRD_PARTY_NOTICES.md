@@ -6,68 +6,12 @@ the linked `qmkui-doctor` dependency graph. Versions are fixed by
 
 ## Browser bundle
 
-- `@awesome.me/webawesome` 3.9.0 — MIT
 - `@phosphor-icons/core` 2.1.1 — MIT
-- `@shoelace-style/animations` 1.2.0 — MIT
-- `@shoelace-style/localize` 3.2.2 — MIT
-- `@lit/reactive-element` 2.1.2 — BSD-3-Clause
-- `lit` 3.3.3 — BSD-3-Clause
-- `lit-element` 4.2.2 — BSD-3-Clause
-- `lit-html` 3.3.3 — BSD-3-Clause
 - Vite module-preload runtime from `vite` 7.3.6 — MIT
-
-Copyright (c) 2025 Fonticons, Inc.
 
 Copyright (c) 2023 Phosphor Icons
 
-Copyright (c) 2020 A Beautiful Site, LLC
-
-Copyright (c) 2020 Daniel Eden
-
 Copyright (c) 2019-present, VoidZero Inc. and Vite contributors
-
-The Web Awesome bundle embeds Font Awesome Free 7.0.0, 7.1.0, and 7.2.0 SVG
-icon data with these notices:
-
-Copyright 2025 Fonticons, Inc.
-
-Copyright 2026 Fonticons, Inc.
-
-Font Awesome Free SVG and JavaScript icon data is licensed under CC BY 4.0:
-<https://fontawesome.com/license/free> and
-<https://creativecommons.org/licenses/by/4.0/>. QMKUI's production build
-bundles and minifies the icon data as delivered by Web Awesome; it does not
-intentionally modify the icon artwork.
-
-### BSD-3-Clause license for Lit
-
-Copyright (c) 2017 Google LLC. All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
-
-3. Neither the name of the copyright holder nor the names of its contributors
-   may be used to endorse or promote products derived from this software
-   without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-POSSIBILITY OF SUCH DAMAGE.
 
 ## qmkui-doctor dependency graph
 

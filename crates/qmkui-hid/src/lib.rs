@@ -16,7 +16,8 @@ pub mod via;
 pub mod via_write;
 
 pub use allowlist::{
-    is_read_only_keychron_command, is_read_only_via_command, is_via_write_command,
+    allowlist_snapshot, is_read_only_keychron_command, is_read_only_via_command,
+    is_via_write_command, AllowlistSnapshot,
 };
 pub use transport::{HidError, HidTransport};
 pub use via::{ViaKeymap, ViaReadProtocol, ViaRgbMatrixState};

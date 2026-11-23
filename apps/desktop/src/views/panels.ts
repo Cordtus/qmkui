@@ -1,6 +1,7 @@
 import { EditorState, RenderActions, activeLightingProfile, bundledKeyboards, currentLayer, selectedLayout } from "../appState";
 import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
+import { firmwareBundleFileName } from "../firmwareBundle";
 import { CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, LightingRuleTrigger, UiIssue, validateProject } from "../domain";
 import { illuminationBase, type IlluminationBase } from "../illumination";
 import { DEFAULT_BOARD_COLOR, boardColor, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
@@ -8,16 +9,19 @@ import { HostKeyCapture } from "../keyTester";
 import { canDeleteLayer, scanLayerReferences } from "../layerActions";
 import { lightingSystemsForKeyboard, supportedLightingSystems } from "../lightingCapabilities";
 import { ProjectSummary } from "../projectStorage";
+import { icon, type IconName } from "../icons";
 import { colorPicker, contextDisclosure, controlGroup, definitionList, element, fieldControl, optionSelect, rangeInput, uiButton } from "./primitives";
 import { keyLightingDetails, macroEditor, previewLightingColor } from "./workspace";
 import { resolveRgbMatrixEffect, rgbMatrixEffectsFor, viaDefinitionFor, type ViaRgbMatrixEffect } from "../viaDefinition";
-import { lockLabel } from "../lightingRules";
+import { lightingRuleTriggerLabel } from "../lightingRules";
 
 export type BuildActions = {
   runLocalBuild: () => void;
   setFlashConfirmed: (confirmed: boolean) => void;
   runFlashDryRun: () => void;
   downloadFirmwareBundle: () => void;
+  selectView: (view: "device") => void;
+  selectFirmwareStep: (step: "build" | "flash" | "verify") => void;
 };
 export function projectPanel(
   state: EditorState,
@@ -51,7 +55,7 @@ export function projectPanel(
 
   const projectDraft = element("textarea", {
     attrs: {
-      "aria-label": "Project JSON draft",
+      "aria-label": "Project, recovery bundle, or safety audit JSON",
       "data-focus-id": "project-json-draft",
       spellcheck: "false",
     },
@@ -135,15 +139,18 @@ export function projectPanel(
   });
   exportProject.addEventListener("click", actions.downloadProjectJson);
 
-  const transfer = element("wa-details", {
+  const transfer = element("details", {
     className: "project-transfer",
     attrs: {
-      appearance: "outlined",
-      summary: "Import or export",
       "data-project-section": "transfer",
     },
   }, [
+    element("summary", { text: "Import or export" }),
     element("div", { className: "project-transfer-content" }, [
+      element("p", {
+        className: "hint",
+        text: "Import a project, recovery bundle, or safety audit receipt.",
+      }),
       element("div", { className: "project-actions" }, [exportProject]),
       projectDraft,
       element("div", { className: "project-actions" }, [refreshDraft, importDraft]),
@@ -224,26 +231,40 @@ export function projectDetailsDrawer(
   state: EditorState,
   actions: RenderActions,
 ): HTMLElement {
-  const drawer = element("wa-drawer", {
+  const drawer = element("dialog", {
     className: "project-details-drawer",
     attrs: {
+      "aria-label": "Project details",
       "data-project-details-drawer": "true",
-      label: "Project details",
-      placement: "end",
     },
   });
   if (state.projectDetailsOpen) {
-    drawer.setAttribute("open", "");
-    (drawer as HTMLElement & { open: boolean }).open = true;
+    drawer.hidden = false;
+    queueMicrotask(() => {
+      if (drawer.isConnected && typeof drawer.showModal === "function" && !drawer.open) {
+        drawer.showModal();
+      } else {
+        drawer.setAttribute("open", "");
+      }
+    });
   } else {
     drawer.hidden = true;
-    (drawer as HTMLElement & { open: boolean }).open = false;
+    drawer.removeAttribute("open");
   }
+  drawer.addEventListener("close", () => {
+    if (state.projectDetailsOpen) {
+      actions.closeProjectDetails();
+    }
+  });
+  drawer.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    actions.closeProjectDetails();
+  });
 
   const close = uiButton({
-    className: "secondary-action",
+    className: "secondary-action drawer-footer",
     text: "Close",
-    attrs: { "data-project-details-action": "close", slot: "footer" },
+    attrs: { "data-project-details-action": "close" },
   });
   close.addEventListener("click", actions.closeProjectDetails);
 
@@ -416,40 +437,52 @@ function lightingRulesPanel(
   layout: KeyboardDefinition["layouts"][number],
   actions: RenderActions,
 ): HTMLElement {
-  const rules = state.project.lightingRules ?? [];
-  const list = element("ul", { className: "rule-list", attrs: { "data-lighting-rules": String(rules.length) } });
+  const target = layout.keys.find((key) => key.id === state.selectedKeyId);
+  const rules = (state.project.lightingRules ?? []).filter(
+    (rule) => rule.targetKeyId === state.selectedKeyId,
+  );
+  const list = element("ul", {
+    className: "rule-list",
+    attrs: { "data-lighting-rules": String(rules.length) },
+  });
   rules.forEach((rule) => {
-    const target = layout.keys.find((key) => key.id === rule.targetKeyId);
-    const remove = uiButton({
-      className: "secondary-action compact",
-      type: "button",
-      text: "Remove",
-      attrs: { "data-lighting-rule-remove": rule.id },
-    });
+    const remove = uiButton(
+      {
+        className: "icon-action compact",
+        type: "button",
+        attrs: {
+          "aria-label": `Remove ${lightingRuleTriggerLabel(rule.trigger, layout.keys)} rule`,
+          "data-lighting-rule-remove": rule.id,
+          title: "Remove rule",
+        },
+      },
+      [icon("x", { size: 13 })],
+    );
     remove.addEventListener("click", () => actions.removeLightingRule(rule.id));
     const swatch = element("span", { className: "swatch", attrs: { "aria-hidden": "true" } });
     swatch.style.background = rule.color;
     list.append(
       element("li", { className: "rule-row", attrs: { "data-lighting-rule": rule.id } }, [
         swatch,
-        element("div", {}, [
-          element("strong", { text: ruleTriggerLabel(rule.trigger, layout) }),
-          element("small", { text: target?.label ?? rule.targetKeyId }),
-        ]),
+        element("strong", { text: lightingRuleTriggerLabel(rule.trigger, layout.keys) }),
         remove,
       ]),
     );
   });
+  if (rules.length === 0) {
+    list.append(element("li", { className: "rule-empty", text: "No rules on this key." }));
+  }
 
-  const trigger = element("select", {
-    attrs: { "aria-label": "Rule trigger", "data-lighting-rule-trigger": "true" },
-  }, [
-    element("option", { text: "Caps Lock on", attrs: { value: "lock:capsLock" } }),
-    element("option", { text: "Num Lock on", attrs: { value: "lock:numLock" } }),
-    element("option", { text: "Scroll Lock on", attrs: { value: "lock:scrollLock" } }),
-    element("option", { text: "Layer active", attrs: { value: "layer" } }),
-    element("option", { text: "Key held", attrs: { value: "held" } }),
-  ]);
+  let triggerKind: "lock" | "layer" | "held" = "lock";
+  let lockKind: "capsLock" | "numLock" | "scrollLock" = "capsLock";
+  const triggerRow = element("div", {
+    className: "segmented rule-trigger-kinds",
+    attrs: { "aria-label": "Rule trigger kind", role: "group" },
+  });
+  const lockRow = element("div", {
+    className: "segmented rule-lock-kinds",
+    attrs: { "aria-label": "Lock indicator", role: "group" },
+  });
   const layer = optionSelect(
     "Rule layer",
     "rule-layer",
@@ -466,54 +499,82 @@ function lightingRulesPanel(
   held.setAttribute("data-lighting-rule-held", "true");
   const layerField = fieldControl("Layer", layer);
   const heldField = fieldControl("Held key", held);
-  const syncRuleFields = () => {
-    layerField.style.display = trigger.value === "layer" ? "" : "none";
-    heldField.style.display = trigger.value === "held" ? "" : "none";
+  const lockField = element("div", { className: "rule-lock-field" }, [lockRow]);
+  const syncFields = () => {
+    layerField.hidden = triggerKind !== "layer";
+    heldField.hidden = triggerKind !== "held";
+    lockField.hidden = triggerKind !== "lock";
+    triggerRow.querySelectorAll<HTMLElement>("[data-rule-kind]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.ruleKind === triggerKind);
+    });
+    lockRow.querySelectorAll<HTMLElement>("[data-rule-lock]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.ruleLock === lockKind);
+    });
   };
-  trigger.addEventListener("change", syncRuleFields);
-  syncRuleFields();
+  (["lock", "layer", "held"] as const).forEach((kind) => {
+    const label = kind === "lock" ? "Lock" : kind === "layer" ? "Layer" : "Held key";
+    const button = uiButton(
+      {
+        className: "segment",
+        type: "button",
+        attrs: { "data-rule-kind": kind, "aria-pressed": String(kind === triggerKind) },
+      },
+      [icon(kind === "lock" ? "lock" : kind === "layer" ? "stack" : "cursor-click", { size: 13 }), element("span", { text: label })],
+    );
+    button.addEventListener("click", () => {
+      triggerKind = kind;
+      triggerRow.querySelectorAll<HTMLElement>("[data-rule-kind]").forEach((candidate) => {
+        candidate.setAttribute("aria-pressed", String(candidate.dataset.ruleKind === kind));
+      });
+      syncFields();
+    });
+    triggerRow.append(button);
+  });
+  (["capsLock", "numLock", "scrollLock"] as const).forEach((lock) => {
+    const button = uiButton({
+      className: "segment compact",
+      text: lock === "capsLock" ? "Caps" : lock === "numLock" ? "Num" : "Scroll",
+      type: "button",
+      attrs: { "data-rule-lock": lock, "aria-pressed": String(lock === lockKind) },
+    });
+    button.addEventListener("click", () => {
+      lockKind = lock;
+      lockRow.querySelectorAll<HTMLElement>("[data-rule-lock]").forEach((candidate) => {
+        candidate.setAttribute("aria-pressed", String(candidate.dataset.ruleLock === lock));
+      });
+      syncFields();
+    });
+    lockRow.append(button);
+  });
+  syncFields();
 
-  const target = layout.keys.find((key) => key.id === state.selectedKeyId);
   const add = uiButton({
     className: "secondary-action",
     type: "button",
-    text: `Add rule for ${target?.label ?? "key"}`,
+    text: target ? `Add rule for ${target.label ?? target.id}` : "Add rule",
     attrs: { "data-lighting-rule-add": "true" },
   });
   add.addEventListener("click", () => {
-    const value = trigger.value;
-    if (value.startsWith("lock:")) {
-      actions.addLightingRule({
-        kind: "lock",
-        lock: value.slice(5) as "capsLock" | "numLock" | "scrollLock",
-      });
-    } else if (value === "layer") {
+    if (triggerKind === "lock") {
+      actions.addLightingRule({ kind: "lock", lock: lockKind });
+    } else if (triggerKind === "layer") {
       actions.addLightingRule({ kind: "layer", layerIndex: Number(layer.value) });
     } else {
       actions.addLightingRule({ kind: "held", keyId: held.value });
     }
   });
 
-  return element("section", { className: "lighting-rules" }, [
+  return element("section", {
+    className: "lighting-rules",
+    attrs: { "data-rule-target": state.selectedKeyId },
+  }, [
     list,
-    element("label", { className: "assignment-field" }, [
-      element("span", { text: "Trigger" }),
-      trigger,
-    ]),
-    element("div", { className: "rule-fields" }, [layerField, heldField]),
+    triggerRow,
+    lockField,
+    layerField,
+    heldField,
     element("div", { className: "rule-actions" }, [add]),
   ]);
-}
-
-function ruleTriggerLabel(trigger: LightingRuleTrigger, layout: KeyboardDefinition["layouts"][number]): string {
-  if (trigger.kind === "lock") {
-    return lockLabel(trigger.lock);
-  }
-  if (trigger.kind === "layer") {
-    return `Layer ${trigger.layerIndex}`;
-  }
-  const key = layout.keys.find((candidate) => candidate.id === trigger.keyId);
-  return `${key?.label ?? trigger.keyId} held`;
 }
 
 function lightingDisclosures(
@@ -739,10 +800,10 @@ export function catalogPanel(state: EditorState, actions: RenderActions): HTMLEl
       "aria-label": "Search catalog",
       "data-focus-id": "catalog-search",
       placeholder: "Search",
-      value: state.catalogSearch,
+      value: "",
     },
   });
-  const results = filteredCatalog(state.catalogSearch);
+  const results = bundledKeyboards;
   const count = element("small", { text: String(results.length) });
   const list = element("div", { className: "catalog-list", attrs: { "data-catalog-results": String(results.length) } });
   results.forEach((keyboard) => {
@@ -838,29 +899,85 @@ export function systemPanel(
   downloadSupportBundle: () => void,
   buildActions: BuildActions,
 ): HTMLElement {
-  const report = state.doctorReport;
   const layout = selectedLayout(state.keyboard, state.project);
   const buildPlan = createBuildPlan(
     state.project,
     validateProject(state.project, state.keyboard),
     state.qmkDetected,
   );
-  const commands = report?.snapshot.commands ?? [];
-  const commandList = element("div", { className: "command-list", attrs: { "data-command-count": String(commands.length) } });
-  commands.forEach((command) => {
-    commandList.append(commandRow(command));
+  const steps: Array<[EditorState["firmwareStep"], string, IconName]> = [
+    ["build", "Build", "hammer"],
+    ["flash", "Flash", "lightning"],
+    ["verify", "Verify", "check-circle"],
+  ];
+  const rail = element("div", {
+    className: "step-rail",
+    attrs: { "aria-label": "Firmware steps", "data-firmware-steps": "true" },
   });
-  if (commands.length === 0) {
-    commandList.append(
-      element("p", {
-        className: "hint",
-        text: "No command probes reported. Run the doctor on this machine to populate them.",
-      }),
+  steps.forEach(([step, label, glyph]) => {
+    const selected = state.firmwareStep === step;
+    const button = uiButton(
+      {
+        className: `step ${selected ? "active" : ""}`,
+        type: "button",
+        attrs: {
+          "aria-pressed": String(selected),
+          "data-firmware-step": step,
+        },
+      },
+      [
+        icon(selected ? "check-circle" : glyph, { size: 15 }),
+        element("span", { text: label }),
+      ],
     );
+    button.addEventListener("click", () => buildActions.selectFirmwareStep(step));
+    rail.append(button);
+  });
+
+  const panel =
+    state.firmwareStep === "flash"
+      ? flashStepPanel(buildPlan, state, buildActions)
+      : state.firmwareStep === "verify"
+        ? verifyStepPanel(buildActions)
+        : buildStepPanel(buildPlan, layout.keys.length, state, buildActions);
+
+  return element("section", {
+    className: "tab-panel system-panel",
+    attrs: { "data-panel": "system", "data-firmware-step-active": state.firmwareStep },
+  }, [
+    element("div", { className: "panel-heading" }, [
+      element("h2", { text: "Firmware" }),
+      element("small", { text: "Build, flash, and verify" }),
+    ]),
+    rail,
+    panel,
+    firmwareDiagnostics(state, issues, qmkJson, reloadProbe, downloadSupportBundle),
+  ]);
+}
+
+function firmwareDiagnostics(
+  state: EditorState,
+  issues: UiIssue[],
+  qmkJson: unknown,
+  reloadProbe: () => void,
+  downloadSupportBundle: () => void,
+): HTMLElement {
+  const report = state.doctorReport;
+  const commands = report?.snapshot.commands ?? [];
+  const commandList = element("div", {
+    className: "command-list",
+    attrs: { "data-command-count": String(commands.length) },
+  });
+  commands.forEach((command) => commandList.append(commandRow(command)));
+  if (commands.length === 0) {
+    commandList.append(element("p", { className: "hint", text: "No command probes reported." }));
   }
 
   const findings = report?.findings ?? [];
-  const findingList = element("ul", { className: "issues", attrs: { "data-finding-count": String(findings.length) } });
+  const findingList = element("ul", {
+    className: "issues",
+    attrs: { "data-finding-count": String(findings.length) },
+  });
   findings.forEach((finding) => {
     findingList.append(
       element("li", {}, [
@@ -879,12 +996,7 @@ export function systemPanel(
   const refresh = uiButton({ className: "secondary-action", text: "Refresh", type: "button" });
   refresh.addEventListener("click", reloadProbe);
 
-  return element("section", { className: "tab-panel system-panel", attrs: { "data-panel": "system" } }, [
-    element("div", { className: "panel-heading" }, [
-      element("h2", { text: "Firmware" }),
-      element("small", { text: "Build readiness and diagnostics" }),
-      refresh,
-    ]),
+  return contextDisclosure("Diagnostics and support", "firmware-diagnostics", [
     element("div", { className: "system-grid" }, [
       element("section", { className: "system-card" }, [
         element("h3", { text: "Commands" }),
@@ -893,8 +1005,8 @@ export function systemPanel(
       element("section", { className: "system-card" }, [
         element("h3", { text: "Device" }),
         definitionList(systemRows(state)),
+        refresh,
       ]),
-      buildSection(buildPlan, layout.keys.length, state, buildActions),
       element("section", { className: "system-card" }, [
         element("h3", { text: "Findings" }),
         findingList,
@@ -904,7 +1016,12 @@ export function systemPanel(
   ]);
 }
 
-export function buildSection(plan: BuildPlan, keyCount: number, state: EditorState, actions: BuildActions): HTMLElement {
+function buildStepPanel(
+  plan: BuildPlan,
+  keyCount: number,
+  state: EditorState,
+  actions: BuildActions,
+): HTMLElement {
   const blockers = element("ul", {
     className: "issues",
     attrs: { "data-build-blockers": String(plan.blockers.length) },
@@ -913,7 +1030,7 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
     blockers.append(
       element("li", {}, [
         element("span", { className: "severity warning", text: "block" }),
-        element("div", {}, [element("strong", { text: blocker })]),
+        element("div", {}, [element("strong", { text: blockerLabel(blocker) })]),
       ]),
     );
   });
@@ -927,21 +1044,98 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
   buildButton.addEventListener("click", actions.runLocalBuild);
 
   const buildOutput = state.buildStep
-    ? element("pre", { className: "build-output", attrs: { "data-build-status": state.buildStatus }, text: buildStepLabel(state.buildStep) })
+    ? element("pre", {
+        className: "build-output",
+        attrs: { "data-build-status": state.buildStatus },
+        text: buildStepLabel(state.buildStep),
+      })
     : element("p", { className: "muted", text: "No build has run this session." });
 
-  const artifacts = element("ul", { className: "artifact-list", attrs: { "data-artifact-count": String(state.artifacts.length) } });
+  const artifacts = element("ul", {
+    className: "artifact-list",
+    attrs: { "data-artifact-count": String(state.artifacts.length) },
+  });
   state.artifacts.forEach((artifact) => {
+    const copy = uiButton(
+      {
+        className: "icon-action compact",
+        type: "button",
+        attrs: {
+          "aria-label": "Copy artifact hash",
+          "data-copy-artifact": artifact.id,
+          title: "Copy artifact hash",
+        },
+      },
+      [icon("copy", { size: 13 })],
+    );
+    copy.addEventListener("click", () => {
+      void navigator.clipboard?.writeText(artifact.id);
+    });
     artifacts.append(
       element("li", {}, [
         element("code", { text: artifact.id.slice(0, 12) }),
         element("small", { text: `${artifact.qmkKeyboard} · ${artifact.createdAt}` }),
+        copy,
       ]),
     );
   });
   if (state.artifacts.length === 0) {
     artifacts.append(element("li", { className: "muted", text: "No artifacts yet." }));
   }
+
+  return element("section", {
+    className: "firmware-step build-step",
+    attrs: {
+      "data-firmware-step-panel": "build",
+      "data-build-output": plan.output,
+      "data-build-ready": String(plan.selectedReady),
+    },
+  }, [
+    element("div", { className: "firmware-target-chips" }, [
+      element("span", { className: "chip", text: plan.keyboardTarget }),
+      element("span", { className: "chip", text: plan.keymapName }),
+      element("span", { className: "chip", text: `${keyCount} keys` }),
+      element("span", { className: "chip", text: plan.output.toUpperCase() }),
+      element("span", {
+        className: `chip ${plan.selectedReady ? "ready" : "blocked"}`,
+        text: plan.selectedReady ? "Ready" : "Blocked",
+      }),
+    ]),
+    element("code", {
+      className: "command-preview",
+      text: plan.localCommand.join(" "),
+      attrs: { "data-build-command": plan.localCommand.join(" ") },
+    }),
+    blockers,
+    element("div", { className: "build-actions" }, [buildButton, firmwareButton(actions.downloadFirmwareBundle)]),
+    buildOutput,
+    element("h3", { className: "build-subheading", text: "Artifacts" }),
+    artifacts,
+  ]);
+}
+
+function flashStepPanel(
+  plan: BuildPlan,
+  state: EditorState,
+  actions: BuildActions,
+): HTMLElement {
+  const detected = detectedKeyboard(state);
+  const bundleName = firmwareBundleFileName(state.project);
+  const command = [
+    "qmkui-flash",
+    "--bundle",
+    bundleName,
+    "--qmk-path",
+    "<QMK checkout>",
+    "--keyboard",
+    plan.keyboardTarget,
+    "--keymap",
+    plan.keymapName,
+    "--bootloader",
+    state.keyboard.bootloader ?? "<from info.json>",
+    "--confirm",
+    plan.keyboardTarget,
+  ].join(" ");
 
   const flashConfirm = element("label", { className: "flash-confirm" }, [
     element("input", {
@@ -965,49 +1159,68 @@ export function buildSection(plan: BuildPlan, keyCount: number, state: EditorSta
   });
   flashButton.addEventListener("click", actions.runFlashDryRun);
 
-  const flashStatus = element("div", { className: "flash-status", attrs: { "data-flash-status": flashVerdictLabel(state) } }, [
-    ...(state.flashVerdict
-      ? [element("p", { className: state.flashVerdict.pass ? "flash-pass" : "flash-block", text: state.flashVerdict.pass ? "Preview: target matches; bootloader is checked at flash time." : `Preview: ${state.flashVerdict.reason}` })]
-      : []),
-    ...(state.flashRun ? [element("pre", { className: "build-output", text: state.flashRun.log.join("\n") })] : []),
+  return element("section", {
+    className: "firmware-step flash-step",
+    attrs: { "data-firmware-step-panel": "flash" },
+  }, [
+    element("code", {
+      className: "command-preview",
+      text: command,
+      attrs: { "data-flash-command": command },
+    }),
+    element("dl", { className: "flash-target-facts" }, [
+      element("div", {}, [element("dt", { text: "Target" }), element("dd", { text: plan.keyboardTarget })]),
+      element("div", {}, [element("dt", { text: "Bootloader" }), element("dd", { text: state.keyboard.bootloader ?? "unknown" })]),
+      element("div", {}, [element("dt", { text: "Device" }), element("dd", { text: detected ? `${detected.device.vid}:${detected.device.pid}` : "not detected" })]),
+      element("div", {}, [element("dt", { text: "Operator gate" }), element("dd", { text: "--confirm must repeat the target" })]),
+    ]),
+    element("div", { className: "flash-controls" }, [flashConfirm, flashButton]),
+    element("div", {
+      className: "flash-status",
+      attrs: { "data-flash-status": flashVerdictLabel(state) },
+    }, [
+      ...(state.flashVerdict
+        ? [
+            element("p", {
+              className: state.flashVerdict.pass ? "flash-pass" : "flash-block",
+              text: state.flashVerdict.pass
+                ? "Preview: target matches; bootloader is checked at flash time."
+                : `Preview: ${state.flashVerdict.reason}`,
+            }),
+          ]
+        : []),
+      ...(state.flashRun
+        ? [element("pre", { className: "build-output", text: state.flashRun.log.join("\n") })]
+        : []),
+    ]),
   ]);
+}
 
-  return element(
-    "section",
+function verifyStepPanel(actions: BuildActions): HTMLElement {
+  const tester = uiButton({
+    className: "secondary-action",
+    type: "button",
+    text: "Open key tester",
+    attrs: { "data-verify-tester": "true" },
+  });
+  tester.addEventListener("click", () => actions.selectView("device"));
+  return element("section", {
+    className: "firmware-step verify-step",
+    attrs: { "data-firmware-step-panel": "verify" },
+  }, [
+    element("h3", { text: "Post-flash smoke check" }),
+    postFlashSmokeChecklist(),
+    element("div", { className: "build-actions" }, [tester]),
+  ]);
+}
+
+function blockerLabel(code: string): string {
+  return (
     {
-      className: "system-card system-build",
-      attrs: {
-        "data-build-output": plan.output,
-        "data-build-ready": String(plan.selectedReady),
-      },
-    },
-    [
-      element("h3", { text: "Build" }),
-      definitionList([
-        ["Target", plan.keyboardTarget],
-        ["Keymap", plan.keymapName],
-        ["Keys", String(keyCount)],
-        ["Output", plan.output.toUpperCase()],
-        ["Local", plan.localReady ? "Ready" : "Blocked"],
-      ]),
-      element("code", {
-        className: "command-preview",
-        text: plan.localCommand.join(" "),
-        attrs: { "data-build-command": plan.localCommand.join(" ") },
-      }),
-      blockers,
-      element("div", { className: "build-actions" }, [buildButton]),
-      buildOutput,
-      element("h3", { className: "build-subheading", text: "Artifacts" }),
-      artifacts,
-      element("h3", { className: "build-subheading", text: "Firmware bundle" }),
-      element("div", { className: "build-actions" }, [
-        firmwareButton(actions.downloadFirmwareBundle),
-      ]),
-      element("h3", { className: "build-subheading", text: "Flash preview" }),
-      element("div", { className: "flash-controls" }, [flashConfirm, flashButton]),
-      flashStatus,
-    ],
+      "command.qmk.missing": "The qmk CLI is not installed on this machine.",
+      "build.remote.unavailable": "Remote builds need a JSON-only project.",
+      "build.remote.generatedC": "Remote builds cannot generate custom C.",
+    }[code] ?? code
   );
 }
 
@@ -1055,31 +1268,15 @@ export function systemRows(state: EditorState): Array<[string, string]> {
           : "Missing qmk",
     ],
     ["Distro", state.doctorReport?.snapshot.distroId ?? ""],
+    ...(state.doctorReport?.snapshot.protocol
+      ? [[
+          "Protocol gates",
+          `${state.doctorReport.snapshot.protocol.viaReadCommands.length} VIA reads · ${state.doctorReport.snapshot.protocol.keychronReadCommands.length} Keychron reads · ${state.doctorReport.snapshot.protocol.viaWriteCommands.length} writes`,
+        ] as [string, string]]
+      : []),
   ];
 }
 
-export function filteredCatalog(query: string): KeyboardDefinition[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) {
-    return bundledKeyboards;
-  }
-
-  return bundledKeyboards.filter((keyboard) => {
-    const text = [
-      keyboard.id,
-      keyboard.qmkKeyboard,
-      keyboard.displayName,
-      keyboard.manufacturer,
-      ...(keyboard.aliases ?? []),
-      keyboard.usb?.vid,
-      keyboard.usb?.pid,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return text.includes(needle);
-  });
-}
 
 export function detectedKeyboard(state: EditorState): DetectedKeyboard | undefined {
   return state.doctorReport?.snapshot.hardwareProbe.detectedKeyboards?.[0];
@@ -1260,14 +1457,13 @@ export function supportDetails(
   downloadSupportBundle: () => void,
 ): HTMLElement {
   const detected = detectedKeyboard(state);
-  return element("wa-details", {
+  return element("details", {
     className: "support-details",
     attrs: {
-      appearance: "outlined",
-      summary: "Support details",
       "data-support-details": "true",
     },
   }, [
+    element("summary", { text: "Support details" }),
     element("div", { className: "support-details-content" }, [
       element("section", {}, [element("h3", { text: "Validation" }), issueList(issues)]),
       element("section", {}, [

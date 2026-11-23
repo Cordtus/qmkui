@@ -9,6 +9,7 @@ import type { GenericViaStandardState } from "./devices/genericViaReader";
 import { hexToHsv } from "./color";
 import exampleProject from "../../../fixtures/projects/example-60.json";
 import { createApp } from "./ui";
+import { createSafetyLedgerStorage } from "./safetyStorage";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -46,6 +47,61 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
     expect(root.querySelector('[data-device-action="write"]')).toBeNull();
     expect(root.querySelector('[data-device-action="flash"]')).toBeNull();
+  });
+
+  it("records a recovery backup and downloads the matching audit receipt", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+      safetyLedgerStorage: workingSafetyStorage(),
+    });
+    await flush();
+
+    expect(root.querySelector("[data-safety-panel]")?.getAttribute("data-safety-state")).toBe(
+      "backupRequired",
+    );
+
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:qmkui");
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    root.querySelector<HTMLElement>("[data-recovery-download]")?.click();
+    await flush();
+
+    expect(root.querySelector("[data-safety-panel]")?.getAttribute("data-safety-state")).toBe(
+      "backupRecorded",
+    );
+    expect(root.textContent).toContain("Recovery bundle downloaded");
+    const bundle = createUrl.mock.calls[0]?.[0] as Blob;
+    expect(JSON.parse(await bundle.text()).format).toBe("qmkui.recovery-bundle");
+
+    root.querySelector<HTMLElement>("[data-safety-audit]")?.click();
+    await flush();
+    expect(createUrl).toHaveBeenCalledTimes(2);
+    const audit = createUrl.mock.calls[1]?.[0] as Blob;
+    expect(JSON.parse(await audit.text()).format).toBe("qmkui.safety-audit");
+
+    click.mockRestore();
+    createUrl.mockRestore();
+    revoke.mockRestore();
+  });
+
+  it("records an explicit recovery decline", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+      safetyLedgerStorage: workingSafetyStorage(),
+    });
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-recovery-decline]")?.click();
+    await flush();
+
+    expect(root.querySelector("[data-safety-panel]")?.getAttribute("data-safety-state")).toBe(
+      "declined",
+    );
+    expect(root.querySelector("[data-recovery-download]")).toBeNull();
+    expect(root.querySelector("[data-safety-audit]")).not.toBeNull();
   });
 
   it("opens the board picker from the keyboard chip and closes it", async () => {
@@ -472,6 +528,14 @@ function genericViaSnapshot(): GenericViaStandardState {
   };
 }
 
+function workingSafetyStorage() {
+  const values = new Map<string, string>();
+  return createSafetyLedgerStorage({
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  });
+}
+
 async function flush(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -699,13 +763,14 @@ function deferred<Value>() {
     expect(painted?.getAttribute("data-lighting-source")).toBe("override");
     expect(painted?.querySelector(".key-override-dot")).not.toBeNull();
 
-    const trigger = root.querySelector<HTMLSelectElement>("[data-lighting-rule-trigger]")!;
-    trigger.value = "lock:capsLock";
     root.querySelector<HTMLElement>("[data-lighting-rule-add]")?.click();
     await flush();
     const rules = root.querySelectorAll("[data-lighting-rule]");
     expect(rules).toHaveLength(1);
-    expect(rules[0]?.textContent).toContain("Caps Lock");
+    expect(rules[0]?.textContent).toContain("Caps Lock on");
+    expect(
+      root.querySelectorAll("[data-key=v5_001] [data-key-rule-badge]"),
+    ).toHaveLength(1);
 
     // Rules participate in the shared undo history.
     root.querySelector<HTMLElement>("[data-editor-undo]")?.click();
@@ -719,6 +784,9 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>("[data-lighting-rule-remove]")?.click();
     await flush();
     expect(root.querySelectorAll("[data-lighting-rule]")).toHaveLength(0);
+    expect(
+      root.querySelectorAll("[data-key=v5_001] [data-key-rule-badge]"),
+    ).toHaveLength(0);
   }, 20_000);
 
   it("turns paint mode off when another keyboard is loaded", async () => {
@@ -1269,6 +1337,55 @@ function deferred<Value>() {
     expect(root.querySelector("[data-build-status]")?.textContent).toContain("compiled keymap");
   });
 
+  it("shows the Rust protocol gates in Firmware diagnostics", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+      doctorReportLoader: async () => ({
+        snapshot: {
+          commands: [],
+          hardwareProbe: { status: "skipped", reason: "test" },
+          protocol: {
+            viaReadCommands: [1, 2, 4, 8],
+            keychronReadCommands: [160, 161, 162, 163],
+            viaWriteCommands: [5, 7, 9],
+          },
+        },
+        findings: [],
+      }),
+    });
+    await flush();
+
+    root.querySelector<HTMLElement>('[data-view="firmware"]')?.click();
+    await flush();
+    expect(root.textContent).toContain("4 VIA reads · 4 Keychron reads · 3 writes");
+  });
+
+  it("shows one firmware step at a time and links verify back to the device", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+
+    root.querySelector<HTMLElement>('[data-view="firmware"]')?.click();
+    await flush();
+    expect(root.querySelectorAll("[data-firmware-step-panel]")).toHaveLength(1);
+    expect(root.querySelector('[data-firmware-step-panel="build"]')).not.toBeNull();
+
+    root.querySelector<HTMLElement>('[data-firmware-step="flash"]')?.click();
+    await flush();
+    expect(root.querySelector('[data-firmware-step-panel="flash"]')).not.toBeNull();
+    expect(root.querySelector("[data-flash-command]")?.textContent).toContain("--confirm");
+
+    root.querySelector<HTMLElement>('[data-firmware-step="verify"]')?.click();
+    await flush();
+    expect(root.querySelector("[data-smoke-checklist]")).not.toBeNull();
+    root.querySelector<HTMLElement>("[data-verify-tester]")?.click();
+    await flush();
+    expect(root.querySelector('[data-view="device"]')?.getAttribute("aria-current")).toBe("page");
+  });
+
   it("blocks a flash dry run without an artifact or operator confirmation", async () => {
     const root = document.createElement("div");
     createApp(root, {
@@ -1279,6 +1396,8 @@ function deferred<Value>() {
     root.querySelector<HTMLElement>('[data-view="firmware"]')?.click();
     await flush();
 
+    root.querySelector<HTMLElement>('[data-firmware-step="flash"]')?.click();
+    await flush();
     root.querySelector<HTMLElement>("[data-flash-dry-run]")?.click();
     await flush();
 

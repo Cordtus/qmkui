@@ -3,6 +3,7 @@ import type {
   KeyboardDefinition,
   LightingProfile,
   LightingRule,
+  LightingRuleTrigger,
   Project,
   VisualKey,
 } from "./domain";
@@ -93,8 +94,19 @@ export function generateLightingRulesC(
   return lines.join("\n");
 }
 
-export function lockLabel(lock: LightingLock): string {
-  return lockLabels[lock];
+/** Compact, human label for a rule trigger; shared by the editor and keycaps. */
+export function lightingRuleTriggerLabel(
+  trigger: LightingRuleTrigger,
+  keys: readonly VisualKey[],
+): string {
+  if (trigger.kind === "lock") {
+    return `${lockLabels[trigger.lock]} on`;
+  }
+  if (trigger.kind === "layer") {
+    return `Layer ${trigger.layerIndex}`;
+  }
+  const key = keys.find((candidate) => candidate.id === trigger.keyId);
+  return `${key?.label ?? trigger.keyId} held`;
 }
 
 type MatrixBounds = KeyboardDefinition["matrix"];

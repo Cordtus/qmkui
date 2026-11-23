@@ -172,6 +172,11 @@ export type DoctorReport = {
       devices?: UsbDeviceSnapshot[];
       detectedKeyboards?: DetectedKeyboard[];
     };
+    protocol?: {
+      viaReadCommands: number[];
+      keychronReadCommands: number[];
+      viaWriteCommands: number[];
+    };
   };
   findings: Array<{ code: string; severity: string; title: string; message: string }>;
 };

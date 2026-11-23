@@ -1,4 +1,4 @@
-import { EditorState, RenderActions, isKeychronV5MaxSnapshot, keyboardForSelection } from "../appState";
+import { EditorState, RenderActions, isKeychronV5MaxSnapshot, keyboardForSelection, safetyAssessment } from "../appState";
 import { hsv255ToHex } from "../color";
 import type { KeyboardDefinition } from "../domain";
 import { GenericViaStandardState } from "../devices/genericViaReader";
@@ -9,7 +9,7 @@ import { dimHex, inkFor } from "../color";
 import { decodeHardwareKeycode, isSysRqKeycode } from "../keycodes";
 import { keychronV5MaxKeyboard } from "../presets";
 import { icon } from "../icons";
-import { definitionList, element, layoutBounds, uiButton } from "./primitives";
+import { contextDisclosure, definitionList, element, layoutBounds, uiButton } from "./primitives";
 
 export function snapshotContent(state: EditorState, actions: RenderActions): HTMLElement {
   const snapshot = state.hardwareSnapshot!;
@@ -21,6 +21,7 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
   const keyboard = keyboardForSelection(state.deviceSelection) ?? state.keyboard;
 
   return element("section", { className: "view-stack snapshot-grid", attrs: { "data-hardware-snapshot": "true", "data-source": "hardware" } }, [
+    deviceStatusStrip(snapshot, keyboard),
     snapshotKeymapField(
       snapshot.keymap,
       state.snapshotLayerIndex,
@@ -30,10 +31,14 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
       keyboard,
       illuminationBase(snapshot),
     ),
-    snapshotField("Identity", snapshot.identity, identitySnapshotRows),
-    snapshotField("Capabilities", snapshot.capabilities, capabilitySnapshotRows),
-    snapshotLightingField(snapshot.lighting),
-    snapshotField("Macros", snapshot.macros, macrosSnapshotRows),
+    snapshotLightingField(snapshot.lighting, actions.refreshLighting),
+    contextDisclosure("Device facts", "device-facts", [
+      element("div", { className: "snapshot-group-fields" }, [
+        snapshotField("Identity", snapshot.identity, identitySnapshotRows),
+        snapshotField("Capabilities", snapshot.capabilities, capabilitySnapshotRows),
+        snapshotField("Macros", snapshot.macros, macrosSnapshotRows),
+      ]),
+    ]),
     deviceWriteControls(state, actions, {
       description: `Selected key ${state.snapshotSelectedKey} on layer ${state.snapshotLayerIndex}.`,
       controls: (confirmed) => {
@@ -62,6 +67,103 @@ export function snapshotContent(state: EditorState, actions: RenderActions): HTM
       },
       lightingSave: true,
     }),
+  ]);
+}
+
+/** One-line identity strip; details stay available in Device facts. */
+function deviceStatusStrip(
+  snapshot: KeychronV5MaxReadSnapshot,
+  keyboard: KeyboardDefinition,
+): HTMLElement {
+  const identity = snapshot.identity.state === "available" ? snapshot.identity.value : undefined;
+  const usb = keyboard.usb;
+  return element("section", {
+    className: "device-status-strip",
+    attrs: { "data-device-status": "true" },
+  }, [
+    icon("usb", { size: 18, className: "device-status-icon" }),
+    element("div", { className: "device-status-copy" }, [
+      element("strong", { text: identity?.model ?? keyboard.displayName }),
+      element("small", {
+        text: [
+          identity ? `Firmware ${identity.firmwareVersion}` : "Firmware unknown",
+          identity
+            ? `Protocol ${identity.protocolVersion.map((part) => `0x${part.toString(16).padStart(2, "0")}`).join(" ")}`
+            : "Protocol unknown",
+          usb ? `${usb.vid}:${usb.pid}` : "USB id unknown",
+        ].join(" · "),
+      }),
+    ]),
+    element("span", { className: "status-chip ready", text: "Connected" }),
+  ]);
+}
+
+/**
+ * Recovery state for the exact project/device pair. The ledger is private and
+ * local-only; the bundle is the operator's restore point before a write.
+ */
+export function safetyPanel(state: EditorState, actions: RenderActions): HTMLElement {
+  const assessment = safetyAssessment(state);
+  const ledger = state.safetyLedgerStorage.load();
+  const latest = [...ledger.events]
+    .reverse()
+    .find(
+      (event) =>
+        event.projectRevision === assessment.projectRevision &&
+        event.deviceRevision === assessment.deviceRevision,
+    );
+  const label = {
+    blocked: "Blocked",
+    backupRequired: "Backup required",
+    backupRecorded: "Backup recorded",
+    declined: "Backup declined",
+  }[assessment.state];
+  const actionsRow = element("div", { className: "safety-actions" });
+  if (assessment.state === "backupRequired") {
+    const download = uiButton({
+      className: "secondary-action",
+      type: "button",
+      text: "Download recovery bundle",
+      attrs: { "data-recovery-download": "true" },
+    });
+    download.addEventListener("click", actions.downloadRecoveryBundle);
+    const decline = uiButton({
+      className: "secondary-action",
+      type: "button",
+      text: "Decline backup",
+      attrs: { "data-recovery-decline": "true" },
+    });
+    decline.addEventListener("click", actions.declineRecovery);
+    actionsRow.append(download, decline);
+  }
+  if (latest) {
+    const audit = uiButton({
+      className: "secondary-action",
+      type: "button",
+      text: "Download audit receipt",
+      attrs: { "data-safety-audit": "true" },
+    });
+    audit.addEventListener("click", actions.downloadSafetyAudit);
+    actionsRow.append(audit);
+  }
+
+  return element("section", {
+    className: `safety-panel ${assessment.state}`,
+    attrs: {
+      "data-safety-panel": "true",
+      "data-safety-state": assessment.state,
+    },
+  }, [
+    element("div", { className: "safety-heading" }, [
+      icon("lock", { size: 15 }),
+      element("strong", { text: "Recovery" }),
+      element("span", { className: "status-chip", text: label }),
+    ]),
+    element("p", { text: assessment.reason }),
+    element("small", {
+      text: `${ledger.events.length} local event${ledger.events.length === 1 ? "" : "s"} · ledger ${state.safetyLedgerStorage.availability()}`,
+    }),
+    ...(actionsRow.childElementCount > 0 ? [actionsRow] : []),
   ]);
 }
 
@@ -469,10 +571,20 @@ export function lightingSnapshotRows(value: KeychronV5MaxLighting): Array<[strin
  * The V5 Max exposes only global VIA RGB-matrix state (channel 3), so this is a
  * value list — there is no per-LED colour map to render as swatches.
  */
-export function snapshotLightingField(field: KeychronV5MaxReadSnapshot["lighting"]): HTMLElement {
+export function snapshotLightingField(
+  field: KeychronV5MaxReadSnapshot["lighting"],
+  onResync: () => void,
+): HTMLElement {
   if (field.state !== "available") {
     return snapshotField("Lighting", field, lightingSnapshotRows);
   }
+  const resync = uiButton({
+    className: "secondary-action compact",
+    type: "button",
+    text: "Resync",
+    attrs: { "data-device-lighting-refresh": "true", title: "Re-read the board's lighting state" },
+  });
+  resync.addEventListener("click", onResync);
   const swatch = element("span", {
     className: "lighting-swatch",
     attrs: {
@@ -487,7 +599,10 @@ export function snapshotLightingField(field: KeychronV5MaxReadSnapshot["lighting
     className: "snapshot-field lighting available",
     attrs: { "data-snapshot-field": "lighting", "data-snapshot-state": "available" },
   }, [
-    element("h2", { text: "Lighting" }),
+    element("div", { className: "snapshot-field-heading" }, [
+      element("h2", { text: "Lighting" }),
+      resync,
+    ]),
     element("div", { className: "lighting-swatches", attrs: { "data-lighting-swatches": "true" } }, [swatch]),
     definitionList(lightingSnapshotRows(field.value)),
   ]);

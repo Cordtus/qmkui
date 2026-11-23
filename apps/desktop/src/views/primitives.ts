@@ -270,18 +270,16 @@ export function contextDisclosure(
   children: Array<Node | string>,
   options: { open?: boolean; onToggle?: (open: boolean) => void } = {},
 ): HTMLElement {
-  const details = element("wa-details", {
+  const details = element("details", {
     className: "context-disclosure",
     attrs: {
       "data-context-detail": id,
-      appearance: "outlined",
-      summary,
       ...(options.open ? { open: "" } : {}),
     },
-  }, children);
+  }, [element("summary", { text: summary }), ...children]);
+  details.open = Boolean(options.open);
   if (options.onToggle) {
-    details.addEventListener("wa-after-show", () => options.onToggle?.(true));
-    details.addEventListener("wa-after-hide", () => options.onToggle?.(false));
+    details.addEventListener("toggle", () => options.onToggle?.(details.open));
   }
   return details;
 }
@@ -368,7 +366,7 @@ export function uiButton(options: UiButtonOptions = {}, children: Array<Node | s
   };
   const className = ["control-button", options.className].filter(Boolean).join(" ");
   const button = element(
-    "wa-button",
+    "button",
     {
       ...options,
       className,
@@ -376,11 +374,6 @@ export function uiButton(options: UiButtonOptions = {}, children: Array<Node | s
     },
     children,
   );
-  if ("disabled" in attrs) {
-    button.setAttribute("disabled", "");
-    (button as HTMLElement & { disabled: boolean }).disabled = true;
-  } else {
-    (button as HTMLElement & { disabled: boolean }).disabled = false;
-  }
+  button.disabled = "disabled" in attrs;
   return button;
 }

@@ -22,7 +22,7 @@ import { KeychronV5MaxReadSnapshot } from "./devices/keychronV5MaxReader";
 import { loadLocalDoctorReport } from "./doctorReport";
 import { DoctorReport, KeyboardDefinition, LightingProfile, LightingRule, LightingRuleTrigger, Project, UiIssue, exportQmkJson, jsonExportBlockers, validateProject } from "./domain";
 import { HostKeyCapture, captureHostKey } from "./keyTester";
-import { DEFAULT_BOARD_COLOR, boardColor, lightingForKey } from "./keyDetails";
+import { DEFAULT_BOARD_COLOR, activeLightingProfile, boardColor, lightingForKey } from "./keyDetails";
 import { buildFirmwareBundle, firmwareBundleFileName } from "./firmwareBundle";
 import { createZip } from "./zip";
 import { keycodeCategories, keycodeValue, kindForKeycode } from "./keycodes";
@@ -34,7 +34,7 @@ import {
   defaultProjectStorage,
   importProjectJson,
 } from "./projectStorage";
-import { RecoveryBundle, SafetyAuditReceipt, importRecoveryBundleJson, importSafetyAuditReceiptJson, mergeSafetyLedgers, recoveryBundleMatchesKeyboard, safetyAuditMatchesCurrent } from "./safety";
+import { RecoveryBundle, SafetyAssessment, SafetyAuditReceipt, createRecoveryBundle, createSafetyAssessment, createSafetyAuditReceipt, importRecoveryBundleJson, importSafetyAuditReceiptJson, mergeSafetyLedgers, recoveryBundleMatchesKeyboard, safetyAuditMatchesCurrent, serializeRecoveryBundle, serializeSafetyAuditReceipt } from "./safety";
 import { SafetyLedgerStorage, createMemorySafetyLedgerStorage, createSafetyLedgerStorage } from "./safetyStorage";
 import { mainShell } from "./views/shell";
 export const fixtureKeyboard = catalog[0] as KeyboardDefinition;
@@ -81,7 +81,6 @@ export type EditorState = {
   commandHistory: CommandHistory;
   keycodeCategoryId: string;
   keycodeSearch: string;
-  catalogSearch: string;
   projectStorage: ProjectStorage;
   safetyLedgerStorage: SafetyLedgerStorage;
   downloadProjectJson: (project: Project) => void;
@@ -110,6 +109,7 @@ export type EditorState = {
   buildStatus: "idle" | "building" | "built" | "failed";
   buildStep?: BuildStep;
   artifacts: BuildArtifact[];
+  firmwareStep: "build" | "flash" | "verify";
   flashConfirmed: boolean;
   flashVerdict?: PolicyVerdict;
   flashRun?: FlashRun;
@@ -174,7 +174,6 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     commandHistory: createCommandHistory(),
     keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
     keycodeSearch: "",
-    catalogSearch: "",
     projectStorage,
     safetyLedgerStorage,
     downloadProjectJson: options.downloadProjectJson ?? downloadProjectJson,
@@ -200,6 +199,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     buildRunner: options.buildRunner ?? unsupportedBrowserRunner(),
     buildStatus: "idle",
     artifacts: [],
+    firmwareStep: "build",
     flashConfirmed: false,
   };
 
@@ -388,6 +388,10 @@ export function createActions(
           },
           selectKeymapTab: (tab) => {
             state.keymapTab = tab;
+            actions.render();
+          },
+          selectFirmwareStep: (step) => {
+            state.firmwareStep = step;
             actions.render();
           },
           selectView: (view) => {
@@ -889,10 +893,6 @@ export function createActions(
             state.keycodeSearch = query;
             actions.render();
           },
-          updateCatalogSearch: (query) => {
-            state.catalogSearch = query;
-            actions.render();
-          },
           selectKeyboardFromCatalog: (keyboardId) => {
             const keyboard = bundledKeyboards.find((item) => item.id === keyboardId);
             if (!keyboard) {
@@ -907,7 +907,6 @@ export function createActions(
             state.selectedKeyId = selectedLayout(state.keyboard, state.project).keys[0]?.id ?? "";
             state.selectedKeyIds = state.selectedKeyId ? [state.selectedKeyId] : [];
             state.commandHistory.clear();
-            state.catalogSearch = "";
             state.lightingPaint = false;
             state.keymapTab = "lighting";
             state.projectJsonDraft = JSON.stringify(state.project, null, 2);
@@ -923,6 +922,7 @@ export function createActions(
             state.buildStep = undefined;
             state.artifacts = [];
             state.activeView = "keymap";
+            state.firmwareStep = "build";
             actions.render();
           },
           saveProject: () => {
@@ -980,6 +980,85 @@ export function createActions(
           downloadProjectJson: () => {
             state.downloadProjectJson(structuredClone(state.project));
             state.projectStatus = `Project export started for ${state.project.name}.`;
+            actions.render();
+          },
+          downloadRecoveryBundle: () => {
+            const assessment = safetyAssessment(state);
+            if (assessment.state === "blocked") {
+              state.projectStatus = assessment.reason;
+              actions.render();
+              return;
+            }
+            try {
+              const occurredAt = new Date().toISOString();
+              state.safetyLedgerStorage.append(
+                "backupConfirmed",
+                state.project,
+                state.keyboard,
+                occurredAt,
+              );
+              const bundle = createRecoveryBundle({
+                project: state.project,
+                keyboard: state.keyboard,
+                ledger: state.safetyLedgerStorage.load(),
+                createdAt: occurredAt,
+              });
+              downloadText(
+                serializeRecoveryBundle(bundle),
+                `qmkui-recovery-${slugify(state.project.name)}.json`,
+                "application/json",
+              );
+              state.projectStatus = "Recovery bundle downloaded; backup recorded for this project and device.";
+            } catch {
+              state.projectStatus = "Recovery bundle could not be recorded; private storage is unavailable.";
+            }
+            actions.render();
+          },
+          declineRecovery: () => {
+            const assessment = safetyAssessment(state);
+            if (assessment.state === "blocked" || assessment.state === "backupRecorded" || assessment.state === "declined") {
+              state.projectStatus = assessment.reason;
+              actions.render();
+              return;
+            }
+            try {
+              state.safetyLedgerStorage.append(
+                "backupDeclined",
+                state.project,
+                state.keyboard,
+                new Date().toISOString(),
+              );
+              state.projectStatus = "Recovery bundle declined for this project and device state.";
+            } catch {
+              state.projectStatus = "Could not record the decline; private storage is unavailable.";
+            }
+            actions.render();
+          },
+          downloadSafetyAudit: () => {
+            const assessment = safetyAssessment(state);
+            const event = [...state.safetyLedgerStorage.load().events]
+              .reverse()
+              .find(
+                (candidate) =>
+                  candidate.projectRevision === assessment.projectRevision &&
+                  candidate.deviceRevision === assessment.deviceRevision,
+              );
+            if (!event) {
+              state.projectStatus = "No safety event matches this project and device.";
+              actions.render();
+              return;
+            }
+            const receipt = createSafetyAuditReceipt({
+              project: state.project,
+              keyboard: state.keyboard,
+              event,
+            });
+            downloadText(
+              serializeSafetyAuditReceipt(receipt),
+              `qmkui-safety-audit-${slugify(state.project.name)}.json`,
+              "application/json",
+            );
+            state.projectStatus = "Safety audit receipt downloaded.";
             actions.render();
           },
           downloadSupportBundle: () => {
@@ -1259,6 +1338,7 @@ export function createActions(
 export type RenderActions = {
   selectLayer: (layerIndex: number) => void;
   selectView: (view: AppView) => void;
+  selectFirmwareStep: (step: EditorState["firmwareStep"]) => void;
   selectKeymapTab: (tab: EditorState["keymapTab"]) => void;
   openCommandPalette: () => void;
   closeCommandPalette: () => void;
@@ -1293,13 +1373,15 @@ export type RenderActions = {
   writeLightingToDevice: (confirmed: boolean) => void;
   selectKeycodeCategory: (categoryId: string) => void;
   updateKeycodeSearch: (query: string) => void;
-  updateCatalogSearch: (query: string) => void;
   selectKeyboardFromCatalog: (keyboardId: string) => void;
   saveProject: () => void;
   renameSavedProject: (name: string) => void;
   duplicateSavedProject: () => void;
   deleteSavedProject: () => void;
   downloadProjectJson: () => void;
+  downloadRecoveryBundle: () => void;
+  declineRecovery: () => void;
+  downloadSafetyAudit: () => void;
   downloadSupportBundle: () => void;
   selectSavedProject: (projectId: string) => void;
   openSavedProject: () => void;
@@ -1320,6 +1402,17 @@ export type RenderActions = {
   setFlashConfirmed: (confirmed: boolean) => void;
   runFlashDryRun: () => void;
 };
+
+/** Current recovery state for this exact project, keyboard, and private ledger. */
+export function safetyAssessment(state: EditorState): SafetyAssessment {
+  return createSafetyAssessment(
+    state.project,
+    state.keyboard,
+    validateProject(state.project, state.keyboard),
+    state.safetyLedgerStorage.load(),
+    state.safetyLedgerStorage.availability(),
+  );
+}
 
 export function isProtocolVerifiableSelection(
   selection: DeviceSelectionState,
@@ -1526,17 +1619,10 @@ export function restoreWorkspaceScroll(root: HTMLElement, scroll: WorkspaceScrol
 }
 
 function focusElement(element: HTMLElement): void {
-  // Web Awesome overrides host.focus() and throws while its shadow button is
-  // not mounted, so focus the inner control directly when it exists.
-  const inner = element.shadowRoot?.querySelector<HTMLElement>("button");
-  if (inner) {
-    inner.focus({ preventScroll: true });
-    return;
-  }
   if (!element.hasAttribute("tabindex")) {
     element.setAttribute("tabindex", "-1");
   }
-  HTMLElement.prototype.focus.call(element, { preventScroll: true });
+  element.focus({ preventScroll: true });
 }
 
 function focusControl(root: HTMLElement, selector: string): void {
@@ -1791,20 +1877,7 @@ export function selectedLayout(keyboard: KeyboardDefinition, currentProject: Pro
   );
 }
 
-export function activeLightingProfile(currentProject: Project): LightingProfile {
-  if (!currentProject.lightingProfiles?.length) {
-    currentProject.lightingProfiles = [
-      {
-        id: "profile_default",
-        name: "Default",
-        mode: "static",
-        perKey: {},
-      },
-    ];
-  }
-
-  return currentProject.lightingProfiles[0];
-}
+export { activeLightingProfile };
 
 /**
  * Record a write-gate or write-result message. It goes to the shared project

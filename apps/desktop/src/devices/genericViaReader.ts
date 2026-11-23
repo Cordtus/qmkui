@@ -68,21 +68,21 @@ export async function readGenericViaStandardState(
       keymap: unverified(UNKNOWN_MATRIX_DIMENSIONS),
       switchMatrix: unverified(UNKNOWN_MATRIX_DIMENSIONS),
       lighting: {
-        backlightBrightness: await standardValue("Backlight brightness", () => customByte(protocol, 1, 1)),
-        backlightEffect: await standardValue("Backlight effect", () => customByte(protocol, 1, 2)),
-        rgblightBrightness: await standardValue("RGB light brightness", () => customByte(protocol, 2, 1)),
-        rgblightEffect: await standardValue("RGB light effect", () => customByte(protocol, 2, 2)),
-        rgblightEffectSpeed: await standardValue("RGB light effect speed", () => customByte(protocol, 2, 3)),
-        rgblightHue: await standardValue("RGB light hue", () => customPair(protocol, 2, 4, 0)),
-        rgblightSaturation: await standardValue("RGB light saturation", () => customPair(protocol, 2, 4, 1)),
-        rgbMatrixBrightness: await standardValue("RGB matrix brightness", () => customByte(protocol, 3, 1)),
-        rgbMatrixEffect: await standardValue("RGB matrix effect", () => customByte(protocol, 3, 2)),
-        rgbMatrixEffectSpeed: await standardValue("RGB matrix effect speed", () => customByte(protocol, 3, 3)),
-        rgbMatrixHue: await standardValue("RGB matrix hue", () => customPair(protocol, 3, 4, 0)),
-        rgbMatrixSaturation: await standardValue("RGB matrix saturation", () => customPair(protocol, 3, 4, 1)),
-        ledMatrixBrightness: await standardValue("LED matrix brightness", () => customByte(protocol, 5, 1)),
-        ledMatrixEffect: await standardValue("LED matrix effect", () => customByte(protocol, 5, 2)),
-        ledMatrixEffectSpeed: await standardValue("LED matrix effect speed", () => customByte(protocol, 5, 3)),
+        backlightBrightness: await standardValue("Backlight brightness", () => customByte(protocol, { channel: 1, valueId: 1 })),
+        backlightEffect: await standardValue("Backlight effect", () => customByte(protocol, { channel: 1, valueId: 2 })),
+        rgblightBrightness: await standardValue("RGB light brightness", () => customByte(protocol, { channel: 2, valueId: 1 })),
+        rgblightEffect: await standardValue("RGB light effect", () => customByte(protocol, { channel: 2, valueId: 2 })),
+        rgblightEffectSpeed: await standardValue("RGB light effect speed", () => customByte(protocol, { channel: 2, valueId: 3 })),
+        rgblightHue: await standardValue("RGB light hue", () => customPair(protocol, { channel: 2, valueId: 4 }, 0)),
+        rgblightSaturation: await standardValue("RGB light saturation", () => customPair(protocol, { channel: 2, valueId: 4 }, 1)),
+        rgbMatrixBrightness: await standardValue("RGB matrix brightness", () => customByte(protocol, { channel: 3, valueId: 1 })),
+        rgbMatrixEffect: await standardValue("RGB matrix effect", () => customByte(protocol, { channel: 3, valueId: 2 })),
+        rgbMatrixEffectSpeed: await standardValue("RGB matrix effect speed", () => customByte(protocol, { channel: 3, valueId: 3 })),
+        rgbMatrixHue: await standardValue("RGB matrix hue", () => customPair(protocol, { channel: 3, valueId: 4 }, 0)),
+        rgbMatrixSaturation: await standardValue("RGB matrix saturation", () => customPair(protocol, { channel: 3, valueId: 4 }, 1)),
+        ledMatrixBrightness: await standardValue("LED matrix brightness", () => customByte(protocol, { channel: 5, valueId: 1 })),
+        ledMatrixEffect: await standardValue("LED matrix effect", () => customByte(protocol, { channel: 5, valueId: 2 })),
+        ledMatrixEffectSpeed: await standardValue("LED matrix effect speed", () => customByte(protocol, { channel: 5, valueId: 3 })),
       },
       readAt: (options.now ?? (() => new Date().toISOString()))(),
     };
@@ -100,25 +100,29 @@ async function standardValue<Value>(
   }
 }
 
-type LightingChannel = 1 | 2 | 3 | 5;
+type CustomByteSelection =
+  | { channel: 1; valueId: 1 | 2 }
+  | { channel: 2; valueId: 1 | 2 | 3 }
+  | { channel: 3; valueId: 1 | 2 | 3 }
+  | { channel: 5; valueId: 1 | 2 | 3 };
+
+type CustomPairSelection = { channel: 2 | 3; valueId: 4 };
 
 async function customByte(
   protocol: ViaReadProtocol,
-  channel: LightingChannel,
-  valueId: number,
+  selection: CustomByteSelection,
 ): Promise<number> {
-  const value = await protocol.getCustomValue({ channel, valueId } as never);
+  const value = await protocol.getCustomValue(selection);
   return value.bytes[0]!;
 }
 
 /** Colour values are a hue/saturation pair in one response (value id 4). */
 async function customPair(
   protocol: ViaReadProtocol,
-  channel: LightingChannel,
-  valueId: number,
+  selection: CustomPairSelection,
   index: 0 | 1,
 ): Promise<number> {
-  const value = await protocol.getCustomValue({ channel, valueId } as never);
+  const value = await protocol.getCustomValue(selection);
   return value.bytes[index]!;
 }
 

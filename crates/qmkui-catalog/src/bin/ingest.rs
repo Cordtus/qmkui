@@ -7,17 +7,30 @@
 //!   cargo run -p qmkui-catalog --bin ingest \
 //!     --qmk-path <QMK_CHECKOUT> --out <CATALOG_JSON> [--commit <HASH>]
 
-use qmkui_catalog::ingest_qmk_boards;
+use qmkui_catalog::{ingest_qmk_boards, load_catalog, validate_catalog};
 use std::env;
 use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
+
+    if let Some(path) = flag_value(&args, "--validate") {
+        let json = std::fs::read_to_string(&path)
+            .map_err(|error| format!("could not read {path}: {error}"))?;
+        let catalog = load_catalog(&json).map_err(|error| error.to_string())?;
+        validate_catalog(&catalog).map_err(|error| error.to_string())?;
+        println!("Validated {} boards in {path}", catalog.len());
+        return Ok(());
+    }
+
     let qmk_path = flag_value(&args, "--qmk-path").ok_or_else(|| {
         "missing --qmk-path <QMK_CHECKOUT> (a checkout of QMK firmware)".to_owned()
     })?;
-    let out =
-        flag_value(&args, "--out").ok_or_else(|| "missing --out <CATALOG_JSON>".to_owned())?;
+    let check = args.iter().any(|arg| arg == "--check");
+    let out = flag_value(&args, "--out");
+    if !check && out.is_none() {
+        return Err("missing --out <CATALOG_JSON> (or use --check)".to_owned());
+    }
     let commit = flag_value(&args, "--commit");
 
     let root = PathBuf::from(&qmk_path);
@@ -45,6 +58,13 @@ fn main() -> Result<(), String> {
             definition.qmk_commit = Some(commit.clone());
         }
     }
+
+    validate_catalog(&catalog).map_err(|error| error.to_string())?;
+    if check {
+        println!("Validated {} ingested boards", catalog.len());
+        return Ok(());
+    }
+    let out = out.expect("checked above");
 
     let serialized = serde_json::to_string_pretty(&catalog).map_err(|error| error.to_string())?;
     std::fs::write(&out, format!("{serialized}\n"))

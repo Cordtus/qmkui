@@ -1,8 +1,3 @@
-import "@awesome.me/webawesome/dist/styles/webawesome.css";
-import "@awesome.me/webawesome/dist/components/button/button.js";
-import "@awesome.me/webawesome/dist/components/details/details.js";
-import "@awesome.me/webawesome/dist/components/dialog/dialog.js";
-import "@awesome.me/webawesome/dist/components/drawer/drawer.js";
 import "./styles.css";
 import { createApp } from "./ui";
 

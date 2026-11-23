@@ -190,6 +190,8 @@ cargo fmt --all -- --check
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p qmkui-doctor -- --no-hardware-probe
+cargo run -p qmkui-build -- --project fixtures/projects/example-60.json --out target/qmkui-build
+scripts/refresh-catalog.sh --check              # validates ingest + checked-in catalog
 ```
 
 Run `cargo fmt --check`, `cargo test`, the frontend tests and
@@ -203,8 +205,8 @@ apps/desktop          the whole product: static TypeScript/Vite app
 crates/qmkui-core     project model, validation, QMK JSON export
 crates/qmkui-catalog  keyboard definition loading and search
 crates/qmkui-doctor   readiness CLI + opt-in read-only USB metadata probe
-crates/qmkui-hid      read-only VIA/Keychron protocol core
-crates/qmkui-build    build planning, command runner, artifact store
+crates/qmkui-hid      read-only VIA/Keychron protocol core; supplies Doctor protocol gates
+crates/qmkui-build    build planning, command runner, artifact store, project CLI
 crates/qmkui-flash    flash models, bootloader registry, wrong-target policy, gated qmk flash adapter/CLI
 fixtures/             catalog, projects, protocol vectors and allow-lists
 scripts/              check, audit and probe entrypoints
