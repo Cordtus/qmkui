@@ -305,21 +305,34 @@ describe("device-first connection layout", () => {
     await page.close();
   }, 30_000);
 
-  it("renders identical screenshots with reduced motion", async () => {
-    const normal = await openPage({ width: 1440, height: 900 });
-    const normalShot = await normal.screenshot();
-    await normal.close();
+  it("renders identical connection and Keymap screenshots with reduced motion", async () => {
+    const connection = await openPage({ width: 1440, height: 900 });
+    const normalConnection = await connection.screenshot();
+    await connection.close();
 
-    const reduced = await browser.newPage({
+    const reducedConnection = await browser.newPage({
       viewport: { width: 1440, height: 900 },
       reducedMotion: "reduce",
     });
-    await reduced.goto(origin, { waitUntil: "networkidle" });
-    await reduced.locator("[data-connection-screen]").waitFor();
-    const reducedShot = await reduced.screenshot();
-    await reduced.close();
+    await reducedConnection.goto(origin, { waitUntil: "networkidle" });
+    await reducedConnection.locator("[data-connection-screen]").waitFor();
+    expect((await reducedConnection.screenshot()).equals(normalConnection)).toBe(true);
+    await reducedConnection.close();
 
-    expect(reducedShot.equals(normalShot)).toBe(true);
+    const keymap = await openReadResultPage({ width: 1440, height: 900 });
+    await keymap.locator('[data-view="keymap"]').click();
+    await keymap.locator("[data-keyboard-workspace]").waitFor();
+    const normalKeymap = await keymap.screenshot();
+    await keymap.close();
+
+    const reducedKeymap = await openReadResultPage(
+      { width: 1440, height: 900 },
+      { reducedMotion: "reduce" },
+    );
+    await reducedKeymap.locator('[data-view="keymap"]').click();
+    await reducedKeymap.locator("[data-keyboard-workspace]").waitFor();
+    expect((await reducedKeymap.screenshot()).equals(normalKeymap)).toBe(true);
+    await reducedKeymap.close();
   }, 30_000);
 
   it("stays contained at 320 px and at an effective 200% zoom", async () => {
