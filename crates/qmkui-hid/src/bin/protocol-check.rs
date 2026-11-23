@@ -125,6 +125,30 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
     if keymap.keycodes[0][0] != [1, 2, 3] {
         return Err("sequential keymap decode mismatch".into());
     }
+    let mut via = ViaReadProtocol::new(VectorTransport::from_dir(dir, "via-commands.json")?);
+    let macros = via.read_via_macros()?;
+    let macro_text: String = macros
+        .macros
+        .iter()
+        .flatten()
+        .filter_map(|step| step.char.clone())
+        .collect();
+    let expected_text: String = decoded_vector_bytes(
+        &via_fixtures,
+        "dynamicKeymapMacroGetBufferFirstChunk",
+        "bytes",
+    )?
+    .iter()
+    .filter(|byte| **byte != 0)
+    .map(|byte| char::from(*byte))
+    .collect();
+    if u64::from(macros.count) != decoded_u64(&via_fixtures, "macroCount")?
+        || u64::from(macros.buffer_size) != decoded_u64(&via_fixtures, "macroBufferSize")?
+        || macros.macros.len() as u64 != decoded_u64(&via_fixtures, "macroCount")?
+        || macro_text != expected_text
+    {
+        return Err("via-commands.json: macro decode mismatch".into());
+    }
 
     let mut writer = ViaWriteProtocol::new(RecordingTransport::default());
     writer.set_keycode(0, 0, 0, 0x0046)?;
@@ -208,6 +232,21 @@ fn commands(value: &Value, key: &str) -> Result<Vec<u8>, Box<dyn std::error::Err
     commands.sort_unstable();
     commands.dedup();
     Ok(commands)
+}
+
+fn decoded_vector_bytes(
+    entries: &[Value],
+    name: &str,
+    key: &str,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let entry = entries
+        .iter()
+        .find(|entry| entry.get("name").and_then(Value::as_str) == Some(name))
+        .ok_or_else(|| format!("no fixture named {name}"))?;
+    let decoded = entry
+        .get("decoded")
+        .ok_or_else(|| format!("fixture {name} has no decoded block"))?;
+    bytes(decoded, key)
 }
 
 fn decoded_u64(entries: &[Value], key: &str) -> Result<u64, Box<dyn std::error::Error>> {

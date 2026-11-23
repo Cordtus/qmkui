@@ -6,6 +6,7 @@ import v5Lighting from "../../../../fixtures/protocol/v5-lighting.json";
 import readOnlyCommands from "../../../../fixtures/protocol/read-only-commands.json";
 import {
   ViaReadProtocol,
+  readViaMacros,
   type ViaReadTransport,
 } from "./viaReadProtocol";
 
@@ -40,7 +41,7 @@ describe("protocol fixture corpus conformance", () => {
 
   it("replays the dynamic keymap and macro buffer vectors", async () => {
     const dynamic = viaCommands.find((vector) => vector.name === "dynamicKeymapGetBuffer")!;
-    const macro = viaCommands.find((vector) => vector.name === "dynamicKeymapMacroGetBuffer")!;
+    const macro = viaCommands.find((vector) => vector.name === "dynamicKeymapMacroGetBufferFirstChunk")!;
     const dynamicDecoded = dynamic.decoded as { offset: number; size: number; bytes: number[] };
     const macroDecoded = macro.decoded as { offset: number; size: number; bytes: number[] };
 
@@ -55,6 +56,27 @@ describe("protocol fixture corpus conformance", () => {
     ).getMacroBuffer(macroDecoded.offset, macroDecoded.size);
     expect(macroChunk.offset).toBe(macroDecoded.offset);
     expect(Array.from(macroChunk.bytes)).toEqual(macroDecoded.bytes);
+  });
+
+  it("replays the macro vectors through readViaMacros", async () => {
+    const vectors = [
+      "dynamicKeymapMacroGetCount",
+      "dynamicKeymapMacroGetBufferSize",
+      "dynamicKeymapMacroGetBufferFirstChunk",
+    ].map((name) => viaCommands.find((vector) => vector.name === name)!);
+    const count = vectors[0]!.decoded as { macroCount: number };
+    const size = vectors[1]!.decoded as { macroBufferSize: number };
+    const chunk = vectors[2]!.decoded as { bytes: number[] };
+
+    const macros = await readViaMacros(new ViaReadProtocol(transportForVectors(vectors)));
+
+    expect(macros.count).toBe(count.macroCount);
+    expect(macros.bufferSize).toBe(size.macroBufferSize);
+    expect(macros.macros).toEqual([
+      chunk.bytes
+        .filter((byte) => byte !== 0)
+        .map((byte) => ({ kind: "char", char: String.fromCharCode(byte) })),
+    ]);
   });
 
   it("keeps every fixture vector on a documented read command", () => {
@@ -110,16 +132,25 @@ describe("protocol fixture corpus conformance", () => {
 });
 
 function transportFor(request: readonly number[], response: readonly number[]): ViaReadTransport {
+  return transportForVectors([{ request, response }]);
+}
+
+function transportForVectors(
+  vectors: readonly { request: readonly number[]; response: readonly number[] }[],
+): ViaReadTransport {
   const listeners = new Set<(event: { reportId: number; data: Uint8Array }) => void>();
   return {
     sendReport: async (_reportId: number, data: BufferSource) => {
       const sent = Array.from(new Uint8Array(data as ArrayBuffer));
-      for (let index = 0; index < request.length; index += 1) {
-        if (sent[index] !== request[index]) {
-          throw new Error(`Unexpected request byte at ${index}`);
-        }
+      const vector = vectors.find((candidate) =>
+        candidate.request.every((byte, index) => sent[index] === byte),
+      );
+      if (!vector) {
+        throw new Error("Unexpected request");
       }
-      listeners.forEach((listener) => listener({ reportId: 0, data: new Uint8Array(response) }));
+      listeners.forEach((listener) =>
+        listener({ reportId: 0, data: new Uint8Array(vector.response) }),
+      );
     },
     addEventListener: (_type, listener) => listeners.add(listener),
     removeEventListener: (_type, listener) => listeners.delete(listener),

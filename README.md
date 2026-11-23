@@ -81,8 +81,11 @@ layer N is active”, and “while key X is held”. **Download firmware** build
 zip with `keymap.c` (all layers), `qmkui-lighting-rules.c`
 (`rgb_matrix_indicators_advanced_user` with every per-key colour and rule), and
 build/flash instructions. Copy it into your QMK checkout, then compile and
-flash with QMK CLI or Toolbox. The browser app does not build or flash
-firmware; the native `qmkui-flash` adapter does (below).
+flash with QMK CLI or Toolbox. On boards with their own lock indicators
+(Keychron, for example), these colours are applied after the vendor indicator
+while an RGB effect is active; the vendor indicator is what shows when the
+matrix is off. The browser app does not build or flash firmware; the native
+`qmkui-flash` adapter does (below).
 
 ## Exports
 

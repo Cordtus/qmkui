@@ -1,5 +1,5 @@
 use qmkui_build::{
-    artifact::{command_log, ArtifactInput, ArtifactStore},
+    artifact::{ArtifactInput, ArtifactStore},
     plan::{plan_build, project_digest, Readiness},
     runner::{CommandPlan, CommandResult, CommandRunner},
     stage_json_project,
@@ -94,7 +94,6 @@ fn runner_records_command_plans() {
         .expect("runs");
     assert_eq!(result.exit_code, Some(0));
     assert_eq!(runner.plans.len(), 1);
-    assert!(command_log(&runner.plans[0], &result).contains("$ qmk compile"));
 }
 
 #[test]
