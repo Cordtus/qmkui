@@ -177,12 +177,16 @@ describe("device-first hardware workspace", () => {
       '[data-focus-id="project-json-draft"]',
     )!;
     draft.focus();
+    const originalDraft = draft.value;
     draft.value = "a";
     draft.dispatchEvent(new Event("input", { bubbles: true }));
     draft.value = "ab";
     draft.dispatchEvent(new Event("input", { bubbles: true }));
     expect(document.activeElement).toBe(draft);
     expect(draft.value).toBe("ab");
+
+    root.querySelector<HTMLElement>('[data-project-action="refresh-draft"]')?.click();
+    expect(draft.value).toBe(originalDraft);
 
     root.querySelector<HTMLElement>('[data-project-details-action="close"]')?.click();
     await flush();

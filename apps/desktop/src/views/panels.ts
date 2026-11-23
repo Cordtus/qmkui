@@ -120,7 +120,9 @@ export function projectPanel(
     attrs: { "data-project-action": "refresh-draft" },
   });
   refreshDraft.addEventListener("click", () => {
-    actions.updateProjectJsonDraft(JSON.stringify(state.project, null, 2));
+    const json = JSON.stringify(state.project, null, 2);
+    projectDraft.value = json;
+    actions.updateProjectJsonDraft(json);
   });
 
   const importDraft = uiButton({
