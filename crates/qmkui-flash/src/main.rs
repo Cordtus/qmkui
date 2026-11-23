@@ -245,8 +245,14 @@ fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Er
         INTERRUPTED.store(false, Ordering::SeqCst);
         #[cfg(unix)]
         unsafe {
-            libc::signal(libc::SIGINT, handle_interrupt as libc::sighandler_t);
-            libc::signal(libc::SIGTERM, handle_interrupt as libc::sighandler_t);
+            libc::signal(
+                libc::SIGINT,
+                handle_interrupt as *const () as libc::sighandler_t,
+            );
+            libc::signal(
+                libc::SIGTERM,
+                handle_interrupt as *const () as libc::sighandler_t,
+            );
         }
         let cancel = Arc::new(AtomicBool::new(false));
         eprintln!("Press Enter or Ctrl-C to cancel the flash. Cancelling during a write can leave the board in bootloader mode.");
