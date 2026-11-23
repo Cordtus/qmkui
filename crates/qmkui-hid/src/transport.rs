@@ -1,6 +1,5 @@
 use thiserror::Error;
 
-pub const VIA_REPORT_ID: u8 = 0;
 pub const REPORT_LENGTH: usize = 32;
 
 #[derive(Debug, Error)]

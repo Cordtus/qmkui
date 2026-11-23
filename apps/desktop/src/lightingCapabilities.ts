@@ -18,12 +18,6 @@ export function lightingSystemsForKeyboard(keyboard: KeyboardDefinition): Lighti
   ];
 }
 
-export function supportedLightingSystems(keyboard: KeyboardDefinition): LightingSystem[] {
-  return lightingSystemsForKeyboard(keyboard).filter(
-    (system) => system.capability.support === "supported",
-  );
-}
-
 function system(
   id: LightingSystemId,
   label: string,

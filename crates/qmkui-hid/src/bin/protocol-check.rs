@@ -297,9 +297,10 @@ struct SequentialTransport {
 }
 
 impl HidTransport for SequentialTransport {
-    fn request(&mut self, command: u8, _payload: &[u8]) -> Result<Vec<u8>, HidError> {
+    fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
         let mut report = vec![0u8; REPORT_LENGTH];
         report[0] = command;
+        report[1..1 + payload.len()].copy_from_slice(payload);
         match command {
             0x11 => report[1] = 1,
             0x04 => {

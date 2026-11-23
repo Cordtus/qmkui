@@ -37,7 +37,7 @@ UI change.
 | Read a Keychron V5 Max ANSI Knob | Works: identity, capabilities, keymap, lighting, macros |
 | Read any other verified VIA device | Standard VIA state only, no inferred model or layout |
 | Edit a key map and lighting profile (project) | Works, local project data |
-| Write keycodes / RGB-matrix lighting to hardware | Implemented and gated; mock transports only until the bench test is signed off |
+| Write keycodes / RGB-matrix lighting to hardware | Implemented and gated; hardware bench validation is pending operator sign-off |
 | Flash / bootloader / firmware build | Native `qmkui-flash` CLI; the browser only previews |
 | In-app `qmk compile` execution | Not implemented; QMKUI plans the command and hands the bundle to `qmkui-flash` |
 
@@ -93,8 +93,8 @@ firmware; the native `qmkui-flash` adapter does (below).
   lighting profile + rules, device identity/lighting when connected, validation
   issues, doctor findings (local paths redacted) and macros (actions redacted
   unless requested).
-- **Firmware zip** (Lighting → Firmware) — `keymap.c`, the lighting overlay and
-  build/flash instructions.
+- **Firmware zip** (Firmware → Build → Download firmware bundle) — `keymap.c`,
+  the lighting overlay and build/flash instructions.
 
 ## Flash a firmware bundle
 
@@ -143,10 +143,11 @@ the live dynamic keymap, and RGB-matrix lighting — go through one gated path:
 
 Keycodes persist immediately (QMK writes EEPROM on set). Lighting is volatile
 until a separate confirmed **Persist lighting** action stores it in EEPROM. The
-V5 Max lighting frames were validated against the documented manual test plan
-before hardware use. Flash goes only through `qmkui-flash`: an explicit target
-confirmation, one matching bootloader device, a checksummed bundle staged under
-`.qmkui/`, then `qmk flash`. Keep vendor recovery firmware separately, matched
+V5 Max lighting frames follow the documented manual test plan; hardware
+validation is pending the operator's bench sign-off. Flash goes only through
+`qmkui-flash`: an explicit target confirmation, one matching bootloader device,
+a checksummed bundle staged under `.qmkui/`, then `qmk flash`. Keep vendor
+recovery firmware separately, matched
 to the exact model and firmware.
 
 ## Run it

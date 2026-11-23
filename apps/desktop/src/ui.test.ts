@@ -886,6 +886,9 @@ function deferred<Value>() {
     expect(root.querySelectorAll('[data-settings-group="lighting"]')).toHaveLength(1);
     expect(root.querySelectorAll("[data-color-hex]")).toHaveLength(1);
     expect(root.querySelectorAll("[data-key-info-panel]")).toHaveLength(0);
+    expect(root.textContent).toContain(
+      "Per-key colours and rules apply in the firmware bundle",
+    );
 
     root.querySelector<HTMLElement>('[data-lighting-target="board"]')?.click();
     await flush();
@@ -990,6 +993,7 @@ function deferred<Value>() {
     await flush();
 
     expect(root.querySelector("[data-lighting-paint]")?.getAttribute("aria-pressed")).toBe("false");
+    expect(root.querySelectorAll('[data-lighting-target="board"]')).toHaveLength(0);
     expect(root.querySelector<HTMLInputElement>("[data-write-confirm]")?.checked).toBe(false);
     expect(root.querySelector("[data-device-write-enable]")?.textContent).toContain("Enable writes");
   }, 20_000);
@@ -1667,8 +1671,20 @@ function deferred<Value>() {
 
     root.querySelector<HTMLElement>('[data-firmware-step="flash"]')?.click();
     await flush();
+    const confirm = root.querySelector<HTMLInputElement>("[data-flash-confirm]")!;
+    confirm.checked = true;
+    confirm.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
     root.querySelector<HTMLElement>("[data-flash-dry-run]")?.click();
     await flush();
 
     expect(root.querySelector("[data-flash-status]")?.textContent).toContain("No build artifact");
+
+    const cleared = root.querySelector<HTMLInputElement>("[data-flash-confirm]")!;
+    cleared.checked = false;
+    cleared.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+    expect(
+      root.querySelector("[data-flash-status]")?.getAttribute("data-flash-status"),
+    ).toBe("idle");
   });

@@ -28,7 +28,6 @@ export async function projectDigest(project: Project): Promise<string> {
 export type BuildArtifact = {
   id: string;
   projectDigest: string;
-  firmwareSha256: string;
   qmkKeyboard: string;
   createdAt: string;
 };
