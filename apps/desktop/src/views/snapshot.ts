@@ -103,6 +103,7 @@ function deviceStatusStrip(
     text: state.keyTesterOpen ? "Hide key test" : "Test keys",
     attrs: {
       "aria-pressed": String(state.keyTesterOpen),
+      "data-focus-id": "key-tester-toggle",
       "data-key-tester-toggle": "true",
       title: "Press keys on the board and see what the host receives",
     },
@@ -617,6 +618,8 @@ function readOnlyColorWheel(lighting: KeychronV5MaxLighting): HTMLElement {
       ),
     },
   });
+  const shade = element("span", { className: "color-wheel-shade", attrs: { "aria-hidden": "true" } });
+  shade.style.opacity = String(1 - lighting.brightness / 255);
   const cursor = element("span", { className: "color-wheel-cursor" });
   const radians = (lighting.hue / 255) * Math.PI * 2;
   const radius = (lighting.saturation / 255) * 50;
@@ -624,6 +627,7 @@ function readOnlyColorWheel(lighting: KeychronV5MaxLighting): HTMLElement {
   cursor.style.top = `${50 - radius * Math.cos(radians)}%`;
   wheel.append(
     element("span", { className: "color-wheel-disc", attrs: { "aria-hidden": "true" } }),
+    shade,
     cursor,
   );
   return wheel;

@@ -469,7 +469,7 @@ function deviceContent(state: EditorState, actions: RenderActions): HTMLElement 
   return element("div", { className: "view-stack device-view" }, [
     snapshotContent(state, actions),
     ...(isKeychronV5MaxSnapshot(state.hardwareSnapshot) ? [] : [safetyPanel(state, actions)]),
-    ...(state.keyTesterOpen
+    ...(state.keyTesterOpen && isKeychronV5MaxSnapshot(state.hardwareSnapshot)
       ? [element("section", { className: "device-tester" }, [testPanel(state, actions)])]
       : []),
   ]);

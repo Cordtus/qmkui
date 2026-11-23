@@ -1814,6 +1814,7 @@ input[type="color"] {
 .device-status-strip {
   grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s3);
   border: 1px solid var(--line);
@@ -2643,6 +2644,10 @@ pre {
 }
 
 @media (max-width: 640px) {
+  .lighting-mirror {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .topbar {
     align-items: stretch;
   }
@@ -2858,6 +2863,10 @@ button.control-button.palette-row.active {
 }
 
 @media (max-width: 640px) {
+  .lighting-mirror {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .topbar-actions {
     justify-content: flex-start;
   }

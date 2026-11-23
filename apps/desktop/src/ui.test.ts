@@ -1438,6 +1438,9 @@ function deferred<Value>() {
 
     expect(buildRunner).toHaveBeenCalled();
     expect(root.querySelector("[data-build-status]")?.textContent).toContain("compiled keymap");
+    expect(
+      root.querySelector('[data-context-detail="build-log"]')?.hasAttribute("open"),
+    ).toBe(true);
   });
 
   it("shows the Rust protocol gates in Firmware diagnostics", async () => {

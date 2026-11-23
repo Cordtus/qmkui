@@ -22,6 +22,7 @@ export type BuildActions = {
   downloadFirmwareBundle: () => void;
   selectView: (view: "device") => void;
   selectFirmwareStep: (step: "build" | "flash" | "verify") => void;
+  setBuildLogOpen: (open: boolean) => void;
 };
 export function projectPanel(
   state: EditorState,
@@ -1114,7 +1115,10 @@ function buildStepPanel(
     }),
     blockers,
     element("div", { className: "build-actions" }, [buildButton, firmwareButton(actions.downloadFirmwareBundle)]),
-    contextDisclosure("Build log", "build-log", [buildOutput]),
+    contextDisclosure("Build log", "build-log", [buildOutput], {
+      open: state.buildLogOpen,
+      onToggle: actions.setBuildLogOpen,
+    }),
     element("h3", { className: "build-subheading", text: "Artifacts" }),
     artifacts,
   ]);

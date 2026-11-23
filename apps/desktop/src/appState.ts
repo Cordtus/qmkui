@@ -109,6 +109,7 @@ export type EditorState = {
   buildRunner: BuildRunner;
   buildStatus: "idle" | "building" | "built" | "failed";
   buildRunnerAvailable: boolean;
+  buildLogOpen: boolean;
   buildStep?: BuildStep;
   artifacts: BuildArtifact[];
   firmwareStep: "build" | "flash" | "verify";
@@ -202,6 +203,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     buildRunner: options.buildRunner ?? unsupportedBrowserRunner(),
     buildRunnerAvailable: options.buildRunner !== undefined,
     buildStatus: "idle",
+    buildLogOpen: false,
     artifacts: [],
     firmwareStep: "build",
     flashConfirmed: false,
@@ -398,6 +400,10 @@ export function createActions(
           selectFirmwareStep: (step) => {
             state.firmwareStep = step;
             actions.render();
+          },
+          setBuildLogOpen: (open) => {
+            // Native <details> owns the DOM state; the next render follows it.
+            state.buildLogOpen = open;
           },
           selectView: (view) => {
             state.activeView = view;
@@ -1115,6 +1121,7 @@ export function createActions(
           runLocalBuild: () => {
             const plan = createBuildPlan(state.project, validateProject(state.project, state.keyboard), state.qmkDetected);
             state.buildStatus = "building";
+            state.buildLogOpen = true;
             actions.render();
             runLocalBuild(plan, state.buildRunner).then(
               (step) => {
@@ -1412,6 +1419,7 @@ export type RenderActions = {
   removeMacro: (macroId: string) => void;
   reloadProbe: () => void;
   runLocalBuild: () => void;
+  setBuildLogOpen: (open: boolean) => void;
   setFlashConfirmed: (confirmed: boolean) => void;
   runFlashDryRun: () => void;
 };
@@ -1855,6 +1863,7 @@ function resetProjectSession(state: EditorState): void {
   state.flashVerdict = undefined;
   state.flashRun = undefined;
   state.buildStatus = "idle";
+  state.buildLogOpen = false;
   state.buildStep = undefined;
   state.artifacts = [];
   state.firmwareStep = "build";

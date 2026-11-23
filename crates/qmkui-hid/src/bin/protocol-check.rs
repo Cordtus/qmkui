@@ -18,7 +18,12 @@ fn main() {
     let dir = std::env::args()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("fixtures/protocol"));
+        .unwrap_or_else(|| {
+            PathBuf::from(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../fixtures/protocol"
+            ))
+        });
     match run(&dir) {
         Ok(summary) => println!("{summary}"),
         Err(error) => {
@@ -32,9 +37,9 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
     let read_rules: Value = read_json_file(dir, "read-only-commands.json")?;
     let write_rules: Value = read_json_file(dir, "write-commands.json")?;
     let expected = allowlist_snapshot();
-    let read_commands = commands(&read_rules, "viaReadCommands");
-    let keychron_commands = commands(&read_rules, "keychronReadCommands");
-    let write_commands = commands(&write_rules, "viaWriteCommands");
+    let read_commands = commands(&read_rules, "viaReadCommands")?;
+    let keychron_commands = commands(&read_rules, "keychronReadCommands")?;
+    let write_commands = commands(&write_rules, "viaWriteCommands")?;
 
     if read_commands != expected.via_read_commands {
         return Err("viaReadCommands does not match the embedded allow-list".into());
@@ -105,8 +110,7 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
         return Err("sequential keymap decode mismatch".into());
     }
 
-    let mut writes = RecordingTransport::default();
-    let mut writer = ViaWriteProtocol::new(&mut writes);
+    let mut writer = ViaWriteProtocol::new(RecordingTransport::default());
     writer.set_keycode(0, 0, 0, 0x0046)?;
     writer.set_rgb_matrix_lighting(RgbMatrixLighting {
         brightness: 180,
@@ -116,9 +120,22 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
         effect: Some(1),
     })?;
     writer.save_rgb_matrix_eeprom()?;
-    for frame in &writes.frames {
-        if !expected.via_write_commands.contains(&frame[0]) {
-            return Err(format!("write frame {:#04x} is not allowed", frame[0]).into());
+    let writes = writer.into_inner();
+    let frames = &writes.frames;
+    if frames.len() != 6 {
+        return Err(format!("expected 6 write frames, got {}", frames.len()).into());
+    }
+    let expected_frames: &[&[u8]] = &[
+        &[0x05, 0, 0, 0, 0x00, 0x46],
+        &[0x07, 3, 1, 180],
+        &[0x07, 3, 2, 1],
+        &[0x07, 3, 3, 128],
+        &[0x07, 3, 4, 10, 20],
+        &[0x09, 3, 0, 0],
+    ];
+    for (index, expected) in expected_frames.iter().enumerate() {
+        if !frames[index].starts_with(expected) {
+            return Err(format!("write frame {index} does not match {expected:02x?}").into());
         }
     }
 
@@ -158,20 +175,23 @@ fn read_vectors(dir: &Path, name: &str) -> Result<Vec<Value>, Box<dyn std::error
         .ok_or_else(|| format!("{name} is not an array").into())
 }
 
-fn commands(value: &Value, key: &str) -> Vec<u8> {
-    value[key]
+fn commands(value: &Value, key: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let entries = value[key]
         .as_object()
-        .map(|entries| {
-            let mut commands: Vec<u8> = entries
-                .values()
-                .filter_map(Value::as_u64)
+        .ok_or_else(|| format!("{key} is not an object"))?;
+    let mut commands: Vec<u8> = entries
+        .values()
+        .map(|command| {
+            command
+                .as_u64()
+                .filter(|command| *command <= 0xff)
                 .map(|command| command as u8)
-                .collect();
-            commands.sort_unstable();
-            commands.dedup();
-            commands
+                .ok_or_else(|| format!("{key} contains an invalid command"))
         })
-        .unwrap_or_default()
+        .collect::<Result<_, _>>()?;
+    commands.sort_unstable();
+    commands.dedup();
+    Ok(commands)
 }
 
 fn bytes(value: &Value, key: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -204,9 +224,7 @@ impl VectorTransport {
 
 impl HidTransport for VectorTransport {
     fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        let mut request = vec![0u8; REPORT_LENGTH];
-        request[0] = command;
-        request[1..1 + payload.len()].copy_from_slice(payload);
+        let request = qmkui_hid::transport::build_report(command, payload);
         self.by_request
             .get(&request)
             .cloned()
@@ -244,9 +262,7 @@ struct RecordingTransport {
 
 impl HidTransport for RecordingTransport {
     fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        let mut frame = vec![0u8; REPORT_LENGTH];
-        frame[0] = command;
-        frame[1..1 + payload.len()].copy_from_slice(payload);
+        let frame = qmkui_hid::transport::build_report(command, payload);
         self.frames.push(frame.clone());
         Ok(frame)
     }

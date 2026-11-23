@@ -36,6 +36,11 @@ impl<T: HidTransport> ViaWriteProtocol<T> {
         Self { transport }
     }
 
+    /// Returns the transport for diagnostics and test recording.
+    pub fn into_inner(self) -> T {
+        self.transport
+    }
+
     /// Sets a keycode on the live dynamic keymap. QMK persists keycodes to
     /// EEPROM immediately (`dynamic_keymap_set_keycode`); there is no separate
     /// keymap-save command.

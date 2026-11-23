@@ -228,34 +228,46 @@ describe("device-first connection layout", () => {
       }));
       expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
       expect(layout.board?.width ?? 0).toBeGreaterThan(0);
+
+      await page.locator('[data-view="device"]').click();
+      const device = await page.evaluate(() => {
+        const strip = document.querySelector<HTMLElement>("[data-device-status]");
+        return {
+          pageWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+          stripRight: strip?.getBoundingClientRect().right,
+        };
+      });
+      expect(device.pageWidth).toBeLessThanOrEqual(device.viewportWidth);
+      expect(device.stripRight ?? 0).toBeLessThanOrEqual(device.viewportWidth);
       await page.close();
     }
   }, 30_000);
 
-  it("honours reduced motion", async () => {
-    const page = await browser.newPage({
-      viewport: { width: 1440, height: 900 },
-      reducedMotion: "reduce",
+  it("honours reduced motion on an element that actually transitions", async () => {
+    const normalPage = await openReadResultPage({ width: 1440, height: 900 });
+    await normalPage.locator('[data-view="keymap"]').click();
+    const normal = await normalPage.locator("[data-key]").first().evaluate((element) => {
+      const value = getComputedStyle(element).transitionDuration.split(",")[0]!.trim();
+      return value.endsWith("ms") ? Number.parseFloat(value) / 1000 : Number.parseFloat(value);
     });
-    await page.addInitScript(() => {
-      const listeners = new Set<(event: { reportId: number; data: Uint8Array }) => void>();
-      (navigator as unknown as { hid: unknown }).hid = {
-        getDevices: async () => [],
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
-        requestDevice: async () => {
-          throw new Error("not used");
-        },
-      };
-      void listeners;
-    });
-    await page.goto(origin, { waitUntil: "networkidle" });
-    const duration = await page.locator("[data-device-action=connect]").evaluate(
-      (element) => getComputedStyle(element).transitionDuration,
+    await normalPage.close();
+
+    const reducedPage = await openReadResultPage(
+      { width: 1440, height: 900 },
+      { reducedMotion: "reduce" },
     );
-    expect(["0.01ms", "0.00001s", "1e-05s", "0s"]).toContain(duration);
-    await page.close();
-  });
+    await reducedPage.locator('[data-view="keymap"]').click();
+    const reduced = await reducedPage.locator("[data-key]").first().evaluate((element) => {
+      const value = getComputedStyle(element).transitionDuration.split(",")[0]!.trim();
+      return value.endsWith("ms") ? Number.parseFloat(value) / 1000 : Number.parseFloat(value);
+    });
+    await reducedPage.close();
+
+    expect(normal).toBeGreaterThanOrEqual(0.1);
+    expect(reduced).toBeLessThan(normal);
+    expect(reduced).toBeLessThanOrEqual(0.00002);
+  }, 30_000);
 
   it("keeps the board-lighting disclosure open while adjusting it", async () => {
     const page = await openReadResultPage({ width: 1440, height: 900 });
@@ -302,8 +314,11 @@ async function openPage(viewport: { width: number; height: number }): Promise<Pa
   return page;
 }
 
-async function openReadResultPage(viewport: { width: number; height: number }): Promise<Page> {
-  const page = await browser.newPage({ viewport });
+async function openReadResultPage(
+  viewport: { width: number; height: number },
+  options: { reducedMotion?: "reduce" } = {},
+): Promise<Page> {
+  const page = await browser.newPage({ viewport, ...options });
   await page.addInitScript(() => {
     const listeners = new Set<(event: { reportId: number; data: Uint8Array }) => void>();
     const report = (bytes: number[]) => {

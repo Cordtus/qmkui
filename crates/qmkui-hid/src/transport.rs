@@ -37,9 +37,3 @@ pub fn build_report(command: u8, payload: &[u8]) -> Vec<u8> {
     report[1..1 + payload.len()].copy_from_slice(payload);
     report
 }
-
-impl<T: HidTransport + ?Sized> HidTransport for &mut T {
-    fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        (**self).request(command, payload)
-    }
-}
