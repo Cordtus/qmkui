@@ -47,7 +47,7 @@ export function rail(activeView: AppView, selectView: (view: AppView) => void): 
   // Choosing a keyboard is a dialog, not a place you live in.
   const views: Array<{ id: AppView; label: string; hint: string; icon: IconName }> = [
     { id: "keymap", label: "Keymap", hint: "Assign keys and set lighting", icon: "keyboard" },
-    { id: "device", label: "Device", hint: "Inspect the connected board", icon: "usb" },
+    { id: "device", label: "Device", hint: "Identity, recovery, and key tester", icon: "usb" },
     { id: "firmware", label: "Firmware", hint: "Build, flash and diagnostics", icon: "lightning" },
   ];
   const nav = element("nav", { attrs: { "aria-label": "Workbench" } });
