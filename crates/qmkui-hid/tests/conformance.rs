@@ -174,14 +174,14 @@ fn read_via_macros_returns_empty_when_disabled() {
 
 #[test]
 fn read_helpers_decode_keyboard_values_and_encoders() {
-    let mut via = ViaReadProtocol::new(MetadataTransport);
+    let mut via = ViaReadProtocol::new(VectorTransport::from_vectors("via-commands.json"));
     assert_eq!(via.get_uptime().expect("uptime"), 0x0102_0304);
     assert_eq!(via.get_layout_options().expect("layout options"), 3);
     assert_eq!(via.get_firmware_version().expect("firmware"), 0x0001_0002);
     assert_eq!(via.get_keycodes_version().expect("keycodes"), 12);
     assert_eq!(
         via.get_encoder_keycode(2, 1, true).expect("encoder"),
-        0x0046
+        0xabcd
     );
 }
 
@@ -203,7 +203,7 @@ fn replays_the_dynamic_keymap_and_macro_buffer_vectors() {
 
 #[test]
 fn dynamic_keymap_buffer_rejects_an_empty_or_oversized_chunk() {
-    let mut via = ViaReadProtocol::new(MetadataTransport);
+    let mut via = ViaReadProtocol::new(VectorTransport::from_vectors("via-commands.json"));
     assert!(matches!(
         via.get_dynamic_keymap_buffer(0, 0),
         Err(HidError::InvalidRequest)
@@ -212,37 +212,6 @@ fn dynamic_keymap_buffer_rejects_an_empty_or_oversized_chunk() {
         via.get_dynamic_keymap_buffer(0, 29),
         Err(HidError::InvalidRequest)
     ));
-}
-
-/// Serves the fixed keyboard-value and encoder responses used by the read-helper
-/// test. Every request payload is echoed, as VIA does. Every other command is a
-/// mismatch.
-struct MetadataTransport;
-
-impl HidTransport for MetadataTransport {
-    fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        let mut report = vec![0u8; 32];
-        report[0] = command;
-        report[1..1 + payload.len()].copy_from_slice(payload);
-        match command {
-            0x02 => {
-                let value: u32 = match payload[0] {
-                    0x01 => 0x0102_0304,
-                    0x02 => 3,
-                    0x04 => 0x0001_0002,
-                    0x06 => 12,
-                    _ => return Err(HidError::ResponseMismatch),
-                };
-                report[2..6].copy_from_slice(&value.to_be_bytes());
-            }
-            0x14 => {
-                assert_eq!(payload, &[2, 1, 1]);
-                report[4..6].copy_from_slice(&0x0046u16.to_be_bytes());
-            }
-            _ => return Err(HidError::ResponseMismatch),
-        }
-        Ok(report)
-    }
 }
 
 /// Serves macro commands from a fixed buffer. `0x0c` reports the macro count

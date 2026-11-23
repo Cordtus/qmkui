@@ -22,7 +22,6 @@ const MAX_BUFFER_READ_SIZE = 28;
 
 const KEYBOARD_VALUE_UPTIME = 0x01;
 const KEYBOARD_VALUE_LAYOUT_OPTIONS = 0x02;
-const KEYBOARD_VALUE_SWITCH_MATRIX_STATE = 0x03;
 const KEYBOARD_VALUE_FIRMWARE_VERSION = 0x04;
 const KEYBOARD_VALUE_KEYCODES_VERSION = 0x06;
 
@@ -61,11 +60,6 @@ export type ViaCustomValue = {
 };
 
 export type ViaBufferChunk = {
-  offset: number;
-  bytes: Uint8Array;
-};
-
-export type ViaSwitchMatrixState = {
   offset: number;
   bytes: Uint8Array;
 };
@@ -123,11 +117,6 @@ export class ViaReadProtocol {
     return this.getKeyboardUint32(KEYBOARD_VALUE_LAYOUT_OPTIONS);
   }
 
-  async getSwitchMatrixState(offset: number): Promise<ViaSwitchMatrixState> {
-    const response = await this.read(GET_KEYBOARD_VALUE, [KEYBOARD_VALUE_SWITCH_MATRIX_STATE, offset]);
-    return { offset, bytes: response.slice(3) };
-  }
-
   async getFirmwareVersion(): Promise<number> {
     return this.getKeyboardUint32(KEYBOARD_VALUE_FIRMWARE_VERSION);
   }
@@ -173,10 +162,12 @@ export class ViaReadProtocol {
     return this.getBufferChunk(DYNAMIC_KEYMAP_MACRO_GET_BUFFER, offset, size);
   }
 
+  /** Kept for the shared read-vector contract; the app has no raw-buffer caller. */
   async getDynamicKeymapBuffer(offset: number, size: number): Promise<ViaBufferChunk> {
     return this.getBufferChunk(DYNAMIC_KEYMAP_GET_BUFFER, offset, size);
   }
 
+  /** Kept for the shared read-vector contract; the app has no encoder caller. */
   async getEncoderKeycode(layer: number, encoder: number, clockwise: boolean): Promise<number> {
     const response = await this.read(DYNAMIC_KEYMAP_GET_ENCODER, [layer, encoder, clockwise ? 1 : 0]);
     return readUint16(response, 4);
@@ -317,9 +308,6 @@ function hasExpectedPayloadShape(command: number, payload: readonly number[]): b
 }
 
 function isKeyboardValueRequest(payload: readonly number[]): boolean {
-  if (payload[0] === KEYBOARD_VALUE_SWITCH_MATRIX_STATE) {
-    return payload.length === 2;
-  }
   return payload.length === 1 && [
     KEYBOARD_VALUE_UPTIME,
     KEYBOARD_VALUE_LAYOUT_OPTIONS,
