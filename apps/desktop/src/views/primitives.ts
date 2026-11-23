@@ -89,16 +89,13 @@ export type ColorPickerOptions = {
   onCommit: (hex: string) => void;
 };
 
-/** Shared wheel markup and cursor geometry for the picker and read-only mirror. */
+/** Shared wheel markup and cursor geometry for the colour picker. */
 export function colorWheel(
   state: Hsv,
-  options: {
-    className?: string;
-    attrs?: Record<string, string>;
-  } = {},
+  options: { attrs?: Record<string, string> } = {},
 ): { wheel: HTMLElement; update: (next: Hsv) => void } {
   const wheel = element("div", {
-    className: `color-wheel ${options.className ?? ""}`.trim(),
+    className: "color-wheel",
     attrs: options.attrs ?? {},
   });
   const shade = element("span", {
@@ -191,6 +188,9 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
   };
   let dragging = false;
   wheel.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
     event.preventDefault();
     wheel.focus({ preventScroll: true });
     dragging = true;

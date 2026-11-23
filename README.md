@@ -45,8 +45,9 @@ UI change.
 
 - **Identity** — model, firmware version, protocol version, default layer.
 - **Capabilities** — the firmware feature bitmap.
-- **Keymap** — the live dynamic keymap, read per matrix position and rendered on
-  the board. The bundled definition is never substituted for device state.
+- **Keymap** — the live dynamic keymap, read per matrix position and used to
+  confirm the device's capabilities. The editing board renders the project with
+  its bundled definition; device state is never substituted for it.
 - **Lighting** — the global VIA RGB-matrix state: brightness, effect, effect
   speed, hue and saturation (channel 3).
 - **Macros** — the VIA dynamic macro buffer, decoded into key steps and text.
@@ -169,7 +170,7 @@ http://127.0.0.1:5173/?demo
 ```
 
 That installs a dev-only mock Keychron V5 Max (captured identity and lighting,
-stock keymap), so discovery, reads, the key map mirror and the gated write path
+stock keymap), so discovery, reads, the Keymap board and the gated write path
 all work in memory. The mock is excluded from production builds.
 
 ### Install as an app

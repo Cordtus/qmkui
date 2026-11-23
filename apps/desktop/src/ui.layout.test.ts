@@ -378,14 +378,15 @@ describe("device-first connection layout", () => {
     const page = await openReadResultPage({ width: 1440, height: 900 });
     await page.locator('[data-view="keymap"]').click();
     await page.locator('[data-keymap-tab="lighting"]').click();
-    await page.locator("[data-lighting-color-readout]").waitFor();
+    await page.locator('[data-key][data-lighting-brightness]').first().waitFor();
 
     expect(await page.locator("[data-color-hex]").count()).toBe(1);
     expect(await page.locator('[data-control-group="board-lighting"]').count()).toBe(1);
     expect(await page.locator("[data-lighting-refresh]").count()).toBe(1);
     expect(await page.locator('[data-context-detail="board-lighting"]').count()).toBe(0);
 
-    const before = await page.locator("[data-lighting-color-readout]").textContent();
+    const readout = page.locator("[data-color-hex]");
+    const before = await readout.inputValue();
     const wheel = page.locator(".color-picker .color-wheel");
     const box = await wheel.boundingBox();
     if (!box) throw new Error("Missing colour wheel");
@@ -395,10 +396,8 @@ describe("device-first connection layout", () => {
     await page.mouse.move(box.x + box.width * 0.85, box.y + box.height * 0.5, { steps: 8 });
     await page.mouse.up();
 
-    await expect
-      .poll(() => page.locator("[data-lighting-color-readout]").textContent())
-      .not.toBe(before);
-    const after = await page.locator("[data-lighting-color-readout]").textContent();
+    await expect.poll(() => readout.inputValue()).not.toBe(before);
+    const after = await readout.inputValue();
     expect(
       await page.locator("[data-key].selected").first().getAttribute("data-lighting-color"),
     ).toBe(after);

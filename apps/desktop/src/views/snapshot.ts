@@ -159,8 +159,6 @@ export function deviceWriteControls(
   options: {
     description: string;
     controls: (confirmed: () => boolean) => HTMLElement[];
-    /** Show the channel-3 "save lighting to EEPROM" action. Default true. */
-    lightingSave?: boolean;
   },
 ): HTMLElement {
   const confirmInput = element("input", {
@@ -214,7 +212,7 @@ export function deviceWriteControls(
       enable,
       element("div", { className: "write-bar-actions" }, [
         ...options.controls(confirmed),
-        ...(options.lightingSave === false ? [] : [save]),
+        save,
       ]),
     ]),
     ...(state.deviceWriteStatus
@@ -358,10 +356,6 @@ function capabilityField(snapshot: KeychronV5MaxReadSnapshot): HTMLElement {
   ]);
 }
 
-/**
- * The V5 Max exposes only global VIA RGB-matrix state (channel 3), so this is a
- * read-only wheel plus values — there is no per-LED colour map.
- */
 export function macrosSnapshotRows(value: ViaMacros): Array<[string, string]> {
   if (value.count === 0) {
     return [["Macros", "None configured"]];

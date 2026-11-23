@@ -977,6 +977,25 @@ function deferred<Value>() {
     );
   });
 
+  it("shows a refused write next to the board write controls", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
+    await flush();
+
+    root.querySelector<HTMLElement>("[data-write-keymap]")?.click();
+    await flush();
+
+    expect(root.querySelector("[data-write-status]")?.textContent).toContain(
+      "Confirm the keymap write and enable device writes first.",
+    );
+  });
+
   it("writes the whole project keymap to the device from the editor", async () => {
     const root = document.createElement("div");
     const writeKeycode = vi.fn(async () => {});
@@ -1019,7 +1038,16 @@ function deferred<Value>() {
       }) => {},
     );
     const selection = recognizedSelection(async () => availableSnapshot());
-    const readLighting = vi.fn(async () => availableSnapshot().lighting);
+    let reads = 0;
+    const readLighting = vi.fn(async () => {
+      reads += 1;
+      return reads === 1
+        ? availableSnapshot().lighting
+        : {
+            state: "available" as const,
+            value: { brightness: 200, effect: 7, effectSpeed: 8, hue: 170, saturation: 255 },
+          };
+    });
     (selection.session as { writeKeycode: unknown }).writeKeycode = vi.fn(async () => {});
     (selection.session as { saveLighting: unknown }).saveLighting = vi.fn(async () => {});
     (selection.session as { writeRgbMatrix: unknown }).writeRgbMatrix = writeRgbMatrix;
@@ -1060,8 +1088,10 @@ function deferred<Value>() {
     expect(payload.effect).toBe(7);
     expect(payload.hue).toBeGreaterThanOrEqual(0);
     expect(payload.saturation).toBeGreaterThanOrEqual(0);
-    // One resync when entering Keymap, one after the write.
+    // One resync when entering Keymap, one after the write. The second read
+    // must reach the board, not just be called.
     expect(readLighting).toHaveBeenCalledTimes(2);
+    expect(root.querySelector<HTMLElement>("[data-key]")?.getAttribute("data-lighting-brightness")).toBe("200");
     expect(root.textContent).toContain("Wrote RGB-matrix lighting");
   });
 

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   decodeHardwareKeycode,
   formatKeycap,
-  isSysRqKeycode,
   keycodeValue,
   kindForKeycode,
 } from "./keycodes";
@@ -54,12 +53,6 @@ describe("hardware keycode decoding", () => {
 
   it("falls back to the raw hex value for unknown keycodes", () => {
     expect(decodeHardwareKeycode(0x7777)).toBe("0x7777");
-  });
-
-  it("recognizes Print Screen as the Linux Magic SysRq key", () => {
-    expect(isSysRqKeycode(0x0046)).toBe(true);
-    expect(isSysRqKeycode(0x0044)).toBe(false);
-    expect(isSysRqKeycode(0x009a)).toBe(false);
   });
 });
 

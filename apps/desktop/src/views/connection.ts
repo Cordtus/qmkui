@@ -22,6 +22,12 @@ export function connectionPanel(state: EditorState, actions: RenderActions): HTM
   const recognized = isBrowserReadSelection(state.deviceSelection) ? state.deviceSelection : undefined;
   const session = recognized ? browserReadSession(recognized) : undefined;
   const canRead = Boolean(session?.capabilities.canRead);
+  const heading =
+    state.snapshotReadStatus === "failed"
+      ? "Could not read keyboard"
+      : recognized
+        ? "Keyboard selected"
+        : "No keyboard connected";
   const connect = uiButton({
     className: "secondary-action",
     text: choosing ? "Choosing keyboard..." : "Connect keyboard",
@@ -64,7 +70,7 @@ export function connectionPanel(state: EditorState, actions: RenderActions): HTM
   return element("section", { className: "connection-panel" }, [
     element("div", { className: "connection-intro" }, [
       element("p", { className: "eyebrow", text: "QMKUI" }),
-      element("h1", { text: "No keyboard connected" }),
+      element("h1", { text: heading }),
     ]),
     element("div", { className: "connection-actions" }, [connect, ...(verify ? [verify] : []), ...(read ? [read] : [])]),
     ...(error

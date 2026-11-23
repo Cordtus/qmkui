@@ -92,7 +92,7 @@ export type EditorState = {
   hardwareSnapshot?: KeychronV5MaxReadSnapshot | GenericViaStandardState;
   snapshotReadStatus: "idle" | "reading" | "failed";
   keyTesterOpen: boolean;
-  /** Result of the last lighting-only resync, shown next to the readout. */
+  /** Result of the last lighting-only resync, shown in the board lighting group. */
   lightingStatus: string;
   deviceWriteEnabled: boolean;
   projectStatus: string;
@@ -284,14 +284,12 @@ export function createActions(
    * backlight state; the key map re-derives each key's colour from it.
    * Skipped until a snapshot exists and while a full read is in flight.
    */
+  let lightingReadEpoch = 0;
   const readLightingNow = () => {
     if (!isBrowserReadSelection(state.deviceSelection)) {
       return;
     }
     if (!isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
-      return;
-    }
-    if (state.snapshotReadStatus === "reading") {
       return;
     }
     const session = browserReadSession(state.deviceSelection);
@@ -300,10 +298,14 @@ export function createActions(
     }
     const readLighting = session.readLighting;
     const selectionEpoch = state.deviceSelectionEpoch;
+    const readEpoch = ++lightingReadEpoch;
     state.lightingStatus = "Reading lighting…";
     actions.render();
     readLighting().then(
       (lighting) => {
+        if (readEpoch !== lightingReadEpoch) {
+          return;
+        }
         if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
           return;
         }
@@ -326,6 +328,9 @@ export function createActions(
         actions.render();
       },
       () => {
+        if (readEpoch !== lightingReadEpoch) {
+          return;
+        }
         if (!isCurrentProtocolSession(state, selectionEpoch, session)) {
           return;
         }

@@ -7,7 +7,7 @@ import { illuminationBase, type IlluminationBase } from "../illumination";
 import { DEFAULT_BOARD_COLOR, boardColor, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { HostKeyCapture } from "../keyTester";
 import { canDeleteLayer, scanLayerReferences } from "../layerActions";
-import { supportedLightingSystems } from "../lightingCapabilities";
+import { lightingSystemsForKeyboard } from "../lightingCapabilities";
 import { ProjectSummary } from "../projectStorage";
 import { icon, type IconName } from "../icons";
 import { colorPicker, contextDisclosure, controlGroup, definitionList, element, fieldControl, optionSelect, rangeInput, showNativeDialog, uiButton } from "./primitives";
@@ -173,11 +173,13 @@ export function projectPanel(
           ["Layout", state.project.target.qmkLayoutMacro],
           ["Layers", String(state.project.layers.length)],
         ]),
-        element("p", {
-          className: "project-status muted",
-          text: state.projectStatus,
-          attrs: { "data-project-status": "true" },
-        }),
+        ...(state.projectStatus
+          ? [element("p", {
+              className: "project-status muted",
+              text: state.projectStatus,
+              attrs: { "data-project-status": "true" },
+            })]
+          : []),
         element("div", { className: "project-actions" }, [save]),
       ]),
       element("section", {
@@ -283,10 +285,17 @@ export function lightingPanel(
   actions: RenderActions,
 ): HTMLElement {
   const profile = activeLightingProfile(state.project);
-  const supportedSystems = supportedLightingSystems(state.keyboard);
-  const rgbMatrix = supportedSystems.some((system) => system.id === "rgbMatrix");
+  const rgbSystem = lightingSystemsForKeyboard(state.keyboard).find(
+    (system) => system.id === "rgbMatrix",
+  );
+  const rgbMatrix = rgbSystem?.capability.support === "supported";
+  const showBoardLighting = rgbSystem?.capability.support !== "unsupported";
   const effects = rgbMatrixEffectsFor(state.keyboard.qmkKeyboard);
   const base = illuminationBase(state.hardwareSnapshot);
+  const currentEffect =
+    base?.effect === undefined
+      ? undefined
+      : (effects.find((effect) => effect.id === base.effect)?.name ?? `Effect ${base.effect}`);
   const context = buildSelectedKeyContext(
     state.project,
     layout.keys,
@@ -375,32 +384,29 @@ export function lightingPanel(
         element("div", { className: "selection-actions" }, [paint, selectAll, clear]),
       ]),
       swatches,
-      element("span", {
-        className: "visually-hidden",
-        text: selectedLighting.color || "unset",
-        attrs: { "data-lighting-color-readout": "true" },
-      }),
-      element("div", { className: "assignment-field" }, [
+      element("div", { className: "assignment-field lighting-mode-row" }, [
         element("span", { text: "Mode" }),
         modeButtons,
       ]),
     ]),
     ...(rgbMatrix ? [controlGroup("lighting-rules", "Key rules", [lightingRulesPanel(state, layout, actions)])] : []),
-    ...(rgbMatrix
+    ...(showBoardLighting
       ? [controlGroup("board-lighting", "Board lighting", [
           element("div", { className: "board-light-head" }, [
             element("span", {
               className: "hint",
               text: base
-                ? `Current board: ${base.source}`
-                : "No board lighting read; the controls use the project profile.",
+                ? `Board lighting read: ${base.source}${currentEffect ? ` · ${currentEffect}` : ""}`
+                : "No board lighting read; using profile/default values.",
             }),
-            resyncLightingButton(actions),
+            resyncLightingButton(actions, Boolean(base)),
           ]),
           ...(state.lightingStatus
             ? [element("small", { className: "board-light-status", text: state.lightingStatus })]
             : []),
-          rgbMatrixControls(profile, actions, effects, base),
+          ...(rgbMatrix
+            ? [rgbMatrixControls(profile, actions, effects, base)]
+            : [element("p", { className: "hint", text: "No RGB-matrix controls are declared for this keyboard." })]),
         ])]
       : []),
   ]);
@@ -651,13 +657,16 @@ export function rgbMatrixControls(
   ]);
 }
 
-/** A slider with its live value, so a drag has a number to aim at. */
-function resyncLightingButton(actions: RenderActions): HTMLElement {
+function resyncLightingButton(actions: RenderActions, enabled: boolean): HTMLElement {
   const resync = uiButton({
     className: "secondary-action compact",
     type: "button",
     text: "Resync",
-    attrs: { "data-lighting-refresh": "true", title: "Re-read the board's lighting state" },
+    attrs: {
+      "data-lighting-refresh": "true",
+      title: enabled ? "Re-read the board's lighting state" : "No board lighting read to resync",
+      ...(enabled ? {} : { disabled: "" }),
+    },
   });
   resync.addEventListener("click", actions.refreshLighting);
   return resync;
@@ -1388,12 +1397,19 @@ export function layerTools(state: EditorState, actions: RenderActions): HTMLElem
           className: "hint",
           text: `${references.length} layer key${references.length === 1 ? "" : "s"} point${references.length === 1 ? "s" : ""} here.`,
         })]),
+    ...(deleteState.deleted
+      ? []
+      : [element("p", {
+          className: "hint",
+          text: deleteStateLabel(deleteState),
+          attrs: { "data-layer-delete-reason": "true" },
+        })]),
   ]);
 }
 
 export function deleteStateLabel(state: ReturnType<typeof canDeleteLayer>): string {
   if (state.deleted) {
-    return "Ready";
+    return "";
   }
   if (state.reason === "base") {
     return "The base layer cannot be deleted.";

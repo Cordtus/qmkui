@@ -5,12 +5,8 @@ import { formatKeycap } from "./keycodes";
 
 export type SelectedKeyContext = {
   key: VisualKey;
-  selectedLayer: LayerSummary;
-  selectedAssignment?: KeyLayerDetail;
-  primaryAssignment?: KeyLayerDetail;
   layers: KeyLayerDetail[];
   lighting: KeyLightingDetail;
-  shortcuts: KeyShortcut[];
   relations: KeyRelation[];
 };
 
@@ -46,7 +42,6 @@ export type LayerTarget = {
 };
 
 export type KeyLightingDetail = {
-  profileName: string;
   mode: LightingProfile["mode"];
   color: string;
   /** Where the colour came from, for honest rendering and labels. */
@@ -100,20 +95,14 @@ export function buildSelectedKeyContext(
   const layers = [...project.layers]
     .sort((left, right) => left.index - right.index)
     .map((layer) => layerDetailForKey(project.layers, layer, key.id, selectedLayer.index));
-  const selectedAssignment = layers.find((detail) => detail.layer.index === selectedLayer.index);
-  const primaryAssignment = layers.find((detail) => detail.layer.index === 0) ?? layers[0];
   const selectedKeycodes = keycodesForKey(layers);
   const shortcuts = shortcutsForKey(project.layers, selectedKeycodes, key.id);
   const relations = relationsForKey(layers, shortcuts);
 
   return {
     key,
-    selectedLayer: summarizeLayer(selectedLayer),
-    selectedAssignment,
-    primaryAssignment,
     layers,
     lighting: lightingForKey(profile, key.id, base),
-    shortcuts,
     relations,
   };
 }
@@ -337,7 +326,6 @@ export function lightingForKey(
     ? profileBrightness
     : (base?.brightness ?? 180);
   return {
-    profileName: profile.name,
     mode: hasSource ? profile.mode : "off",
     color,
     source,

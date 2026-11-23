@@ -836,9 +836,6 @@ export function previewLightingColor(color: string): void {
     key.style.setProperty("--key-light", dimHex(color, brightness / 255));
     key.setAttribute("data-lighting-color", color);
   });
-  document.querySelectorAll<HTMLElement>("[data-lighting-color-readout]").forEach((node) => {
-    node.textContent = color;
-  });
 }
 
 function ruleGlyph(rule: LightingRule): IconName {
