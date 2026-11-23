@@ -2,7 +2,10 @@
 //! is gated by the shared read-only allow-list before any report is emitted.
 //! The TS reader's `getSwitchMatrixState` is deliberately not mirrored: no
 //! native consumer decodes the raw switch-matrix bitmap, and interpreting it
-//! needs matrix dimensions the crate does not carry.
+//! needs matrix dimensions the crate does not carry. The metadata helpers
+//! (uptime, layout/firmware/keycodes versions, dynamic buffer, encoder) mirror
+//! the TS generic reader; `protocol-check` covers the keymap, lighting, and
+//! macro paths, and conformance tests pin every decoder.
 
 use crate::allowlist::is_read_only_via_command;
 use crate::transport::{HidError, HidTransport, REPORT_LENGTH};

@@ -196,8 +196,8 @@ fn replays_the_dynamic_keymap_and_macro_buffer_vectors() {
 
     let mut via = ViaReadProtocol::new(VectorTransport::from_vectors("via-commands.json"));
     assert_eq!(
-        via.get_macro_buffer(0x0123, 3).expect("macro buffer"),
-        vec![0xde, 0xad, 0xbe]
+        via.get_macro_buffer(0, 4).expect("macro buffer"),
+        vec![0x68, 0x69, 0x00, 0x00]
     );
 }
 

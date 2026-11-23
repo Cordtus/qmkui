@@ -1,4 +1,4 @@
-use crate::{BuildError, CommandPlan, CommandResult};
+use crate::BuildError;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -79,13 +79,4 @@ pub struct ArtifactInput {
 
 pub fn hex_sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
-}
-
-pub fn command_log(plan: &CommandPlan, result: &CommandResult) -> String {
-    let argv = std::iter::once(&plan.program)
-        .chain(plan.args.iter())
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .join(" ");
-    format!("$ {argv}\nexit: {:?}\n{}", result.exit_code, result.stdout)
 }

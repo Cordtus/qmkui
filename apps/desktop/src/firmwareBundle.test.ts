@@ -90,12 +90,14 @@ describe("firmware bundle", () => {
     const lighting = byName.get("qmkui-lighting-rules.c")!;
     expect(lighting).toContain("RGB_MATRIX_INDICATOR_SET_COLOR");
     expect(lighting).toContain("host_keyboard_led_state().caps_lock");
+    expect(lighting).toContain("these lock colours win");
 
     const readme = byName.get("README.md")!;
     expect(readme).toContain(
       "qmk compile -kb test/keyboard -km bundle_map",
     );
     expect(readme).toContain("QMKUI did not build or flash this bundle.");
+    expect(readme).toContain("applied after the vendor indicator");
   });
 
   it("derives matrix bounds from the keys when keyboard metadata omits them", () => {
@@ -120,6 +122,19 @@ describe("firmware bundle", () => {
     const lighting = files.find((file) => file.name === "qmkui-lighting-rules.c")!;
     expect(lighting.contents).toContain("State rules: none configured");
     expect(lighting.contents).not.toContain("\n    qmkui_set_key_color(");
+    expect(lighting.contents).not.toContain("these lock colours win");
+    const readme = files.find((file) => file.name === "README.md")!;
+    expect(readme.contents).not.toContain("applied after the vendor indicator");
+  });
+
+  it("omits the lock-indicator caveat when no lock rule is emitted", () => {
+    const withoutRules = project();
+    withoutRules.lightingRules = [];
+    const files = buildFirmwareBundle(withoutRules, keyboard)!;
+    const lighting = files.find((file) => file.name === "qmkui-lighting-rules.c")!;
+    const readme = files.find((file) => file.name === "README.md")!;
+    expect(lighting.contents).not.toContain("these lock colours win");
+    expect(readme.contents).not.toContain("applied after the vendor indicator");
   });
 
   it("sanitizes the project name and empty keycodes", () => {
