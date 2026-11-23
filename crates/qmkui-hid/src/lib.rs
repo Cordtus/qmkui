@@ -10,6 +10,8 @@
 //! module.
 
 pub mod allowlist;
+#[doc(hidden)]
+pub mod fixture_support;
 pub mod keychron_v5;
 pub mod transport;
 pub mod via;
