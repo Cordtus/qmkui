@@ -58,6 +58,35 @@ describe("protocol fixture corpus conformance", () => {
     expect(Array.from(macroChunk.bytes)).toEqual(macroDecoded.bytes);
   });
 
+  it("replays metadata, encoder, and dynamic-buffer vectors", async () => {
+    const names = [
+      "getUptime",
+      "getLayoutOptions",
+      "getFirmwareVersion",
+      "getKeycodesVersion",
+      "getEncoderKeycode",
+      "dynamicKeymapGetBuffer",
+    ];
+    const vectors = names.map((name) => viaCommands.find((vector) => vector.name === name)!);
+    const uptime = vectors[0]!.decoded as { uptime: number };
+    const layoutOptions = vectors[1]!.decoded as { layoutOptions: number };
+    const firmwareVersion = vectors[2]!.decoded as { firmwareVersion: number };
+    const keycodesVersion = vectors[3]!.decoded as { keycodesVersion: number };
+    const encoder = vectors[4]!.decoded as { encoderKeycode: number };
+    const dynamic = vectors[5]!.decoded as { offset: number; size: number; bytes: number[] };
+    const protocol = new ViaReadProtocol(transportForVectors(vectors));
+
+    expect(await protocol.getUptime()).toBe(uptime.uptime);
+    expect(await protocol.getLayoutOptions()).toBe(layoutOptions.layoutOptions);
+    expect(await protocol.getFirmwareVersion()).toBe(firmwareVersion.firmwareVersion);
+    expect(await protocol.getKeycodesVersion()).toBe(keycodesVersion.keycodesVersion);
+    expect(await protocol.getEncoderKeycode(2, 1, true)).toBe(encoder.encoderKeycode);
+
+    const chunk = await protocol.getDynamicKeymapBuffer(dynamic.offset, dynamic.size);
+    expect(chunk.offset).toBe(dynamic.offset);
+    expect(Array.from(chunk.bytes)).toEqual(dynamic.bytes);
+  });
+
   it("replays the macro vectors through readViaMacros", async () => {
     const vectors = [
       "dynamicKeymapMacroGetCount",

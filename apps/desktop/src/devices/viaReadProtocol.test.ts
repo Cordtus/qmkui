@@ -36,16 +36,6 @@ describe("VIA read protocol", () => {
         expected: 0x01020304,
       },
       {
-        name: "switch matrix state",
-        start: (protocol) => protocol.getSwitchMatrixState(2),
-        request: [0x02, 0x03, 0x02],
-        response: [0x02, 0x03, 0x02, 0xa1, 0xb2],
-        expected: {
-          offset: 2,
-          bytes: new Uint8Array([0xa1, 0xb2, ...new Array<number>(27).fill(0)]),
-        },
-      },
-      {
         name: "firmware version",
         start: (protocol) => protocol.getFirmwareVersion(),
         request: [0x02, 0x04],

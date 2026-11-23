@@ -86,6 +86,32 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
     if u64::from(via.get_keycode(0, 0, 0)?) != decoded_u64(&via_fixtures, "keycode")? {
         return Err("via-commands.json: keycode decode mismatch".into());
     }
+    if u64::from(via.get_uptime()?) != decoded_u64(&via_fixtures, "uptime")?
+        || u64::from(via.get_layout_options()?) != decoded_u64(&via_fixtures, "layoutOptions")?
+        || u64::from(via.get_firmware_version()?) != decoded_u64(&via_fixtures, "firmwareVersion")?
+        || u64::from(via.get_keycodes_version()?) != decoded_u64(&via_fixtures, "keycodesVersion")?
+        || u64::from(via.get_encoder_keycode(2, 1, true)?)
+            != decoded_u64(&via_fixtures, "encoderKeycode")?
+    {
+        return Err("via-commands.json: metadata/encoder decode mismatch".into());
+    }
+    let dynamic_offset = u16::try_from(decoded_vector_u64(
+        &via_fixtures,
+        "dynamicKeymapGetBuffer",
+        "offset",
+    )?)
+    .map_err(|_| "dynamic buffer offset is out of range")?;
+    let dynamic_size = u8::try_from(decoded_vector_u64(
+        &via_fixtures,
+        "dynamicKeymapGetBuffer",
+        "size",
+    )?)
+    .map_err(|_| "dynamic buffer size is out of range")?;
+    if via.get_dynamic_keymap_buffer(dynamic_offset, dynamic_size)?
+        != decoded_vector_bytes(&via_fixtures, "dynamicKeymapGetBuffer", "bytes")?
+    {
+        return Err("via-commands.json: dynamic buffer decode mismatch".into());
+    }
 
     let mut reader = KeychronV5Reader::new(VectorTransport::from_dir(dir, "v5-identity.json")?);
     let identity = reader.read_identity()?;
@@ -234,19 +260,34 @@ fn commands(value: &Value, key: &str) -> Result<Vec<u8>, Box<dyn std::error::Err
     Ok(commands)
 }
 
+fn decoded_vector<'a>(
+    entries: &'a [Value],
+    name: &str,
+) -> Result<&'a Value, Box<dyn std::error::Error>> {
+    entries
+        .iter()
+        .find(|entry| entry.get("name").and_then(Value::as_str) == Some(name))
+        .and_then(|entry| entry.get("decoded"))
+        .ok_or_else(|| format!("no decoded fixture named {name}").into())
+}
+
+fn decoded_vector_u64(
+    entries: &[Value],
+    name: &str,
+    key: &str,
+) -> Result<u64, Box<dyn std::error::Error>> {
+    decoded_vector(entries, name)?
+        .get(key)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| format!("fixture {name} decodes no {key}").into())
+}
+
 fn decoded_vector_bytes(
     entries: &[Value],
     name: &str,
     key: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let entry = entries
-        .iter()
-        .find(|entry| entry.get("name").and_then(Value::as_str) == Some(name))
-        .ok_or_else(|| format!("no fixture named {name}"))?;
-    let decoded = entry
-        .get("decoded")
-        .ok_or_else(|| format!("fixture {name} has no decoded block"))?;
-    bytes(decoded, key)
+    bytes(decoded_vector(entries, name)?, key)
 }
 
 fn decoded_u64(entries: &[Value], key: &str) -> Result<u64, Box<dyn std::error::Error>> {
