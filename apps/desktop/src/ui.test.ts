@@ -436,8 +436,10 @@ describe("device-first hardware workspace", () => {
     const snapshot = genericViaSnapshot();
     snapshot.uptime = { state: "unavailable", reason: "Uptime read failed: timeout." };
     snapshot.firmwareVersion = { state: "available", value: 9 };
+    snapshot.lighting.rgbMatrixBrightness = { state: "available", value: 120 };
     snapshot.lighting.rgbMatrixEffect = { state: "unavailable", reason: "RGB matrix effect read failed: timeout." };
     snapshot.lighting.rgbMatrixHue = { state: "available", value: 44 };
+    snapshot.lighting.rgbMatrixSaturation = { state: "available", value: 200 };
 
     createApp(root, { discoverBrowserKeyboard: async () => genericViaSelection(async () => snapshot) });
     await flush();
