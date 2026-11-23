@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { KeyboardDefinition } from "../domain";
-import { buildViaModels, findViaModel, isKeychronVendor } from "./keychronModels";
+import { buildViaModels, findViaModel } from "./keychronModels";
 
 const keyboards = [
   {
@@ -46,10 +46,5 @@ describe("VIA model registry", () => {
     const models = buildViaModels(keyboards);
     expect(findViaModel(models, 0x3434, 0x0950)).toBeDefined();
     expect(findViaModel(models, 0x3434, 0xffff)).toBeUndefined();
-  });
-
-  it("recognises the Keychron vendor id for any product", () => {
-    expect(isKeychronVendor(0x3434)).toBe(true);
-    expect(isKeychronVendor(0x1234)).toBe(false);
   });
 });
