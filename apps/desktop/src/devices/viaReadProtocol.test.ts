@@ -237,6 +237,7 @@ describe("VIA read protocol", () => {
     ["a short keycode payload", 0x04, [1, 2]],
     ["a long keycode payload", 0x04, [1, 2, 3, 4]],
     ["a device-indication keyboard value", 0x02, [0x05]],
+    ["a zero-size buffer request", 0x12, [0, 0, 0]],
     ["an oversized macro-buffer request", 0x0e, [0, 0, 29]],
     ["a non-binary encoder direction", 0x14, [0, 0, 2]],
     ["a direct custom-get request that bypasses channel selection", 0x08, [3, 4]],
@@ -403,6 +404,16 @@ describe("VIA read protocol", () => {
       ],
     });
     expect(sentCommands(transport).map(([command]) => command)).toEqual([0x0c, 0x0d, 0x0e]);
+  });
+
+  it("rejects a zero macro chunk size before reading", async () => {
+    const transport = createTransport();
+    const protocol = new ViaReadProtocol(transport);
+
+    await expect(readViaMacros(protocol, { maxChunkSize: 0 })).rejects.toMatchObject({
+      code: "invalid-request",
+    });
+    expect(transport.sendReport).not.toHaveBeenCalled();
   });
 
   it("returns an empty macro list when the device reports zero macros", async () => {

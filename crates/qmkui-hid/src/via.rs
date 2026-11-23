@@ -1,5 +1,8 @@
 //! Standard VIA read commands, mirroring `viaReadProtocol.ts`. Every command
 //! is gated by the shared read-only allow-list before any report is emitted.
+//! The TS reader's `getSwitchMatrixState` is deliberately not mirrored: no
+//! native consumer decodes the raw switch-matrix bitmap, and interpreting it
+//! needs matrix dimensions the crate does not carry.
 
 use crate::allowlist::is_read_only_via_command;
 use crate::transport::{HidError, HidTransport, REPORT_LENGTH};
@@ -27,7 +30,7 @@ const RGB_MATRIX_EFFECT: u8 = 2;
 const RGB_MATRIX_EFFECT_SPEED: u8 = 3;
 const RGB_MATRIX_COLOR: u8 = 4;
 
-const MAX_MACRO_BUFFER_CHUNK: u8 = 28;
+const MAX_BUFFER_CHUNK: u8 = 28;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +108,11 @@ impl<T: HidTransport> ViaReadProtocol<T> {
         if response.len() != REPORT_LENGTH || response[0] != command {
             return Err(HidError::ResponseMismatch);
         }
+        // VIA echoes the command payload; a response for another offset/value
+        // must not be decoded as this request.
+        if response[1..1 + payload.len()] != *payload {
+            return Err(HidError::ResponseMismatch);
+        }
         Ok(response)
     }
 
@@ -174,7 +182,7 @@ impl<T: HidTransport> ViaReadProtocol<T> {
     /// `getMacroBuffer`: the request carries a 16-bit offset and the payload
     /// bytes start at response index 4.
     pub fn get_macro_buffer(&mut self, offset: u16, size: u8) -> Result<Vec<u8>, HidError> {
-        if size == 0 || size > MAX_MACRO_BUFFER_CHUNK {
+        if size == 0 || size > MAX_BUFFER_CHUNK {
             return Err(HidError::InvalidRequest);
         }
         let response = self.read(
@@ -209,7 +217,7 @@ impl<T: HidTransport> ViaReadProtocol<T> {
         let mut bytes = Vec::with_capacity(usize::from(buffer_size));
         let mut offset = 0u16;
         while offset < buffer_size {
-            let chunk = (buffer_size - offset).min(u16::from(MAX_MACRO_BUFFER_CHUNK));
+            let chunk = (buffer_size - offset).min(u16::from(MAX_BUFFER_CHUNK));
             bytes.extend(self.get_macro_buffer(offset, chunk as u8)?);
             offset += chunk;
         }
@@ -221,9 +229,22 @@ impl<T: HidTransport> ViaReadProtocol<T> {
         })
     }
 
-    pub fn get_dynamic_keymap_buffer(&mut self, offset: u8, size: u8) -> Result<Vec<u8>, HidError> {
-        let response = self.read(DYNAMIC_KEYMAP_GET_BUFFER, &[offset, size])?;
-        Ok(response[3..].to_vec())
+    /// Reads a chunk of the dynamic keymap buffer. Mirrors the TypeScript
+    /// `getDynamicKeymapBuffer`: the request carries a 16-bit offset and the
+    /// payload bytes start at response index 4.
+    pub fn get_dynamic_keymap_buffer(
+        &mut self,
+        offset: u16,
+        size: u8,
+    ) -> Result<Vec<u8>, HidError> {
+        if size == 0 || size > MAX_BUFFER_CHUNK {
+            return Err(HidError::InvalidRequest);
+        }
+        let response = self.read(
+            DYNAMIC_KEYMAP_GET_BUFFER,
+            &[(offset >> 8) as u8, (offset & 0xff) as u8, size],
+        )?;
+        Ok(response[4..4 + usize::from(size)].to_vec())
     }
 
     pub fn get_encoder_keycode(

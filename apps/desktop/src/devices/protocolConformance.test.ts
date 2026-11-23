@@ -38,6 +38,25 @@ describe("protocol fixture corpus conformance", () => {
     expect(custom.verification).toBe("verified");
   });
 
+  it("replays the dynamic keymap and macro buffer vectors", async () => {
+    const dynamic = viaCommands.find((vector) => vector.name === "dynamicKeymapGetBuffer")!;
+    const macro = viaCommands.find((vector) => vector.name === "dynamicKeymapMacroGetBuffer")!;
+    const dynamicDecoded = dynamic.decoded as { offset: number; size: number; bytes: number[] };
+    const macroDecoded = macro.decoded as { offset: number; size: number; bytes: number[] };
+
+    const dynamicChunk = await new ViaReadProtocol(
+      transportFor(dynamic.request, dynamic.response),
+    ).getDynamicKeymapBuffer(dynamicDecoded.offset, dynamicDecoded.size);
+    expect(dynamicChunk.offset).toBe(dynamicDecoded.offset);
+    expect(Array.from(dynamicChunk.bytes)).toEqual(dynamicDecoded.bytes);
+
+    const macroChunk = await new ViaReadProtocol(
+      transportFor(macro.request, macro.response),
+    ).getMacroBuffer(macroDecoded.offset, macroDecoded.size);
+    expect(macroChunk.offset).toBe(macroDecoded.offset);
+    expect(Array.from(macroChunk.bytes)).toEqual(macroDecoded.bytes);
+  });
+
   it("keeps every fixture vector on a documented read command", () => {
     const keychronRead = new Set(Object.values(readOnlyCommands.keychronReadCommands));
     const viaRead = new Set(Object.values(readOnlyCommands.viaReadCommands));

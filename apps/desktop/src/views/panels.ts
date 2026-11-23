@@ -404,6 +404,12 @@ export function lightingPanel(
     ...(rgbMatrix
       ? [controlGroup("lighting-rules", "Key rules", [lightingRulesPanel(state, layout, actions)])]
       : []),
+    element("p", {
+      className: "hint",
+      text: rgbMatrix
+        ? "Per-key colours and rules apply in the firmware bundle; the board write changes only the global board state."
+        : "Per-key colours apply in the firmware bundle; this board has no board-lighting controls.",
+    }),
   ];
 
   const boardEditor = [
@@ -1122,7 +1128,6 @@ function flashStepPanel(
   state: EditorState,
   actions: BuildActions,
 ): HTMLElement {
-  const detected = detectedKeyboard(state);
   const bundleName = firmwareBundleFileName(state.project);
   const command = [
     "qmkui-flash",
@@ -1174,7 +1179,6 @@ function flashStepPanel(
     element("dl", { className: "flash-target-facts" }, [
       element("div", {}, [element("dt", { text: "Target" }), element("dd", { text: plan.keyboardTarget })]),
       element("div", {}, [element("dt", { text: "Bootloader" }), element("dd", { text: state.keyboard.bootloader ?? "unknown" })]),
-      element("div", {}, [element("dt", { text: "Device" }), element("dd", { text: detected ? `${detected.device.vid}:${detected.device.pid}` : "not detected" })]),
       element("div", {}, [element("dt", { text: "Operator gate" }), element("dd", { text: "--confirm must repeat the target" })]),
     ]),
     element("div", { className: "flash-controls" }, [flashConfirm, flashButton]),

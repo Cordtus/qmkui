@@ -369,7 +369,7 @@ function isUint16(value: number): boolean {
 }
 
 function isBufferReadSize(value: number): boolean {
-  return Number.isInteger(value) && value >= 0 && value <= MAX_BUFFER_READ_SIZE;
+  return Number.isInteger(value) && value >= 1 && value <= MAX_BUFFER_READ_SIZE;
 }
 
 function readUint16(response: Uint8Array, offset: number): number {
@@ -406,6 +406,9 @@ export async function readViaMacros(
   options: { maxChunkSize?: number } = {},
 ): Promise<ViaMacros> {
   const maxChunkSize = options.maxChunkSize ?? MAX_BUFFER_READ_SIZE;
+  if (!isBufferReadSize(maxChunkSize)) {
+    throw new ViaReadProtocolError("invalid-request");
+  }
   const count = await protocol.getMacroCount();
   if (count === 0) {
     return { count, bufferSize: 0, macros: [] };

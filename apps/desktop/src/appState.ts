@@ -1,5 +1,4 @@
 import catalog from "../../../fixtures/catalog/keyboards.json";
-import project from "../../../fixtures/projects/example-60.json";
 import { createBuildPlan } from "./buildPlan";
 import { BuildArtifact, BuildRunner, BuildStep, projectDigest, runLocalBuild, unsupportedBrowserRunner } from "./buildService";
 import { importConfiguratorKeymap } from "./configuratorImport";
@@ -38,7 +37,6 @@ import { RecoveryBundle, SafetyAssessment, SafetyAuditReceipt, createRecoveryBun
 import { SafetyLedgerStorage, createMemorySafetyLedgerStorage, createSafetyLedgerStorage } from "./safetyStorage";
 import { mainShell } from "./views/shell";
 export const fixtureKeyboard = catalog[0] as KeyboardDefinition;
-export const fixtureProject = project as Project;
 export const bundledKeyboards = [keychronV5MaxKeyboard, fixtureKeyboard];
 /** Known VIA models derived from the bundled keyboards, for device identity. */
 export const bundledViaModels = buildViaModels(bundledKeyboards);
@@ -116,6 +114,8 @@ export type EditorState = {
   flashConfirmed: boolean;
   flashVerdict?: PolicyVerdict;
   flashRun?: FlashRun;
+  /** Serialized project the current flash preview was computed from. */
+  flashPreviewProject?: string;
 };
 
 export type DeviceSelectionState =
@@ -205,6 +205,7 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     buildLogOpen: false,
     artifacts: [],
     firmwareStep: "build",
+    flashPreviewProject: undefined,
     flashConfirmed: false,
   };
 
@@ -429,6 +430,14 @@ export function createActions(
       queueMicrotask(() => focusControl(root, '[data-focus-id="project-details-trigger"]'));
     },
     render: () => {
+      if (
+        state.flashPreviewProject !== undefined &&
+        state.flashPreviewProject !== JSON.stringify(state.project)
+      ) {
+        state.flashVerdict = undefined;
+        state.flashRun = undefined;
+        state.flashPreviewProject = undefined;
+      }
       const focusedInput = captureFocusedInput(root);
       const workspaceScroll = captureWorkspaceScroll(root);
       const layout = selectedLayout(state.keyboard, state.project);
@@ -1144,7 +1153,6 @@ export function createActions(
                       {
                         id: `artifact-${digest.slice(0, 12)}`,
                         projectDigest: digest,
-                        firmwareSha256: digest,
                         qmkKeyboard: plan.keyboardTarget,
                         createdAt: new Date().toISOString(),
                       },
@@ -1162,13 +1170,16 @@ export function createActions(
           },
           setFlashConfirmed: (confirmed) => {
             state.flashConfirmed = confirmed;
+            if (!confirmed) {
+              state.flashVerdict = undefined;
+              state.flashRun = undefined;
+              state.flashPreviewProject = undefined;
+            }
             actions.render();
           },
           runFlashDryRun: () => {
-            // Mirrors views/panels.detectedKeyboard; the state layer must not
-            // import the view layer, so the accessor is duplicated here.
+            state.flashPreviewProject = JSON.stringify(state.project);
             const bootloader = state.keyboard.bootloader ?? null;
-            const usb = state.keyboard.usb;
             const latest = state.artifacts.at(-1);
             if (!latest) {
               state.flashVerdict = { pass: false, reason: "No build artifact is available to flash." };
@@ -1182,18 +1193,11 @@ export function createActions(
               actions.render();
               return;
             }
-            if (!usb) {
-              state.flashVerdict = { pass: false, reason: "This keyboard declares no USB identity." };
-              state.flashRun = undefined;
-              actions.render();
-              return;
-            }
             // Preview only: a browser cannot observe bootloader mode. The
             // native qmkui-flash CLI detects the bootloader identity for real,
             // so never label the declared family as detected here.
             const request = {
               target: flashTargetFromArtifact(latest, bootloader),
-              expectedDevice: { vendorId: usb.vid, productId: usb.pid },
               operatorConfirmed: state.flashConfirmed,
             };
             projectDigest(state.project).then((digest) => {
@@ -1880,6 +1884,7 @@ function resetProjectSession(state: EditorState): void {
   state.flashConfirmed = false;
   state.flashVerdict = undefined;
   state.flashRun = undefined;
+  state.flashPreviewProject = undefined;
   state.buildStatus = "idle";
   state.buildLogOpen = false;
   state.buildStep = undefined;
