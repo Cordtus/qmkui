@@ -7,11 +7,10 @@ import { dimHex, inkFor } from "../color";
 import { KeyLayerDetail, KeyLightingDetail, KeyRelation, SelectedKeyContext, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { icon, type IconName } from "../icons";
 import { KeycodeEntry, formatKeycap, keycodeCategories } from "../keycodes";
-import { rgbMatrixEffectsFor } from "../viaDefinition";
 import { lightingRuleTriggerLabel } from "../lightingRules";
 import { layerTabs, layerTools, lightingPanel } from "./panels";
 import { deviceWriteControls } from "./snapshot";
-import { KEY_LABEL_INSET, KEY_LABEL_UNIT, colorSwatch, contextDisclosure, controlGroup, definitionRow, element, fieldControl, keycapLabel, layoutBounds, optionSelect, parameterBlock, settingsGroup, textInput, uiButton } from "./primitives";
+import { KEY_LABEL_INSET, KEY_LABEL_UNIT, contextDisclosure, controlGroup, element, fieldControl, keycapLabel, layoutBounds, optionSelect, settingsGroup, textInput, uiButton } from "./primitives";
 /** Board only, no side rail — used where the surrounding view owns the rail. */
 export function keyboardBoard(
   state: EditorState,
@@ -33,63 +32,15 @@ export function keyboardBoard(
         element("div", { className: "board-tabs-block", attrs: { "data-layer-strip": "true" } }, [
           layerTabs(state, actions),
         ]),
-        boardLightingReadout(state, actions),
       ]),
       canvas,
       element("footer", { className: "board-foot" }, [
-        element("span", { className: "board-legend" }, [
-          element("span", { className: "legend-light", attrs: { "aria-hidden": "true" } }),
-          element("span", {
-            text: state.hardwareSnapshot ? "Keys mirror the connected board." : "No board read yet.",
-          }),
-        ]),
         element("small", { text: `${layout.keys.length} keys` }),
       ]),
       boardWriteControls(state, actions),
     ]),
   ]);
   return stage;
-}
-
-/**
- * The board's readable lighting state. VIA has no per-LED colour read, so the
- * board's global colour + effect is the whole truth; every key is derived from
- * it unless a draft override is set. Multi-colour effects generate their palette
- * on the board, which the readout says out loud instead of inventing it.
- */
-function boardLightingReadout(state: EditorState, actions: RenderActions): HTMLElement {
-  const base = illuminationBase(state.hardwareSnapshot);
-  const effects = rgbMatrixEffectsFor(state.keyboard.qmkKeyboard);
-  const effect = base?.effect === undefined
-    ? undefined
-    : (effects.find((candidate) => candidate.id === base.effect)?.name ?? `Effect ${base.effect}`);
-  const read = uiButton({
-    className: "secondary-action compact",
-    type: "button",
-    text: "Resync",
-    attrs: {
-      "data-lighting-refresh": "true",
-      title: "Re-read the board's lighting state",
-      ...(state.hardwareSnapshot ? {} : { disabled: "" }),
-    },
-  });
-  read.addEventListener("click", () => actions.refreshLighting());
-
-  return element("div", { className: "board-light", attrs: { "data-board-lighting": base ? "live" : "none" } }, [
-    base ? colorSwatch(base.color) : element("span", { className: "color-swatch color-swatch-empty", text: "?" }),
-    element("div", { className: "board-light-text" }, [
-      element("strong", {
-        text: base ? `${base.source}${effect ? ` · ${effect}` : ""}` : "No lighting read",
-      }),
-      element("small", {
-        text: base
-          ? `Brightness ${base.brightness}${base.effectSpeed === undefined ? "" : ` · speed ${base.effectSpeed}`}`
-          : "Connect a board to mirror its colours.",
-      }),
-    ]),
-    ...(state.lightingStatus ? [element("small", { className: "board-light-status", text: state.lightingStatus })] : []),
-    read,
-  ]);
 }
 
 export function keyboardWorkspace(
@@ -117,8 +68,6 @@ export function selectedKeyInfoPanel(
     state.selectedKeyId,
     illuminationBase(state.hardwareSnapshot),
   );
-  const fallbackKey = layout.keys[0];
-
   return element("aside", {
     className: "key-info-panel",
     attrs: {
@@ -127,9 +76,8 @@ export function selectedKeyInfoPanel(
     },
   }, [
     context
-      ? selectedKeySummary(context)
-      : element("dl", {}, selectedKeyRows(fallbackKey, currentLayer(state))),
-    context ? selectedKeyDetails(context) : element("div", { className: "hint", text: "Select a key on the board." }),
+      ? selectedKeyDetails(context)
+      : element("div", { className: "hint", text: "Select a key on the board." }),
   ]);
 }
 
@@ -189,7 +137,6 @@ export function workspaceControls(
 /** Writes live under the board so they are never buried in the rail. */
 function boardWriteControls(state: EditorState, actions: RenderActions): HTMLElement {
   return deviceWriteControls(state, actions, {
-    compact: true,
     description: `Writes the project keymap (${state.project.layers.length} layers) and the board RGB state. Per-key colours are firmware-only. The floppy button persists lighting to EEPROM.`,
     controls: (confirmed) => {
       const writeKeymap = uiButton(
@@ -205,9 +152,9 @@ function boardWriteControls(state: EditorState, actions: RenderActions): HTMLEle
         {
           className: "secondary-action",
           type: "button",
-          attrs: { "data-write-lighting": "true", title: "Write the board-wide RGB state" },
+          attrs: { "data-write-lighting": "true", title: "Write the board-wide effect and colour, not per-key colours" },
         },
-        [icon("lightbulb", { size: 15 }), element("span", { text: "Write lighting" })],
+        [icon("lightbulb", { size: 15 }), element("span", { text: "Write board lighting" })],
       );
       writeLighting.addEventListener("click", () => actions.writeLightingToDevice(confirmed()));
       return [writeKeymap, writeLighting];
@@ -595,23 +542,10 @@ export function layerSelect(state: EditorState, selectedLayerIndex: number): HTM
   );
 }
 
-export function selectedKeySummary(context: SelectedKeyContext): HTMLElement {
-  const rows = [
-    definitionRow("Key", context.key.label ?? context.key.id),
-    definitionRow("Layer", context.selectedLayer.name),
-    definitionRow("Current", context.selectedAssignment?.label ?? ""),
-    definitionRow("Primary", context.primaryAssignment?.label ?? ""),
-  ];
-  if (context.key.matrix) {
-    rows.push(definitionRow("Matrix", `${context.key.matrix.row}, ${context.key.matrix.col}`));
-  }
-  return element("dl", { attrs: { "data-selected-key-summary": context.key.id } }, rows);
-}
-
 export function selectedKeyDetails(context: SelectedKeyContext): HTMLElement {
   return element("div", { className: "key-details" }, [
     keyLayerList(context.layers),
-    keyRelationList(context.relations),
+    ...(context.relations.length === 0 ? [] : [keyRelationList(context.relations)]),
   ]);
 }
 
@@ -645,47 +579,6 @@ export function keyLayerRow(detail: KeyLayerDetail): HTMLElement {
     ]),
   );
   return row;
-}
-
-export function keyLightingDetails(context: SelectedKeyContext): HTMLElement {
-  const lighting = context.lighting;
-  const conditionList = element("div", {
-    className: "condition-list",
-    attrs: { "data-key-detail-section": "lighting-conditions" },
-  });
-  lighting.conditions.forEach((condition) => {
-    conditionList.append(
-      element("div", {
-        className: "condition-row",
-        attrs: {
-          "data-lighting-condition": condition.id,
-          "data-condition-color": condition.color,
-        },
-      }, [
-        colorSwatch(condition.color),
-        element("div", {}, [
-          element("strong", { text: condition.name }),
-          element("small", {
-            text: [condition.when, condition.qmk, condition.layerIndex === undefined ? "" : `L${condition.layerIndex}`]
-              .filter(Boolean)
-              .join(" / "),
-          }),
-        ]),
-      ]),
-    );
-  });
-
-  return controlGroup("key-lighting", "Lighting", [
-    parameterBlock("Current profile", [
-      element("dl", { attrs: { "data-selected-lighting": context.key.id } }, [
-        definitionRow("Profile", lighting.profileName),
-        definitionRow("Mode", lighting.mode),
-        definitionRow("Configured color", lighting.color),
-        definitionRow("Map display", lighting.mode === "off" ? "Off" : "Illuminated"),
-      ]),
-    ]),
-    parameterBlock("Effects / conditions", [conditionList]),
-  ]);
 }
 
 export function keyRelationList(relations: KeyRelation[]): HTMLElement {
@@ -798,17 +691,6 @@ export function keycodeButton(
   );
   button.addEventListener("click", () => updateKeycode(entry.qmk));
   return button;
-}
-
-export function selectedKeyRows(
-  key: VisualKey,
-  layer: ReturnType<typeof currentLayer>,
-): HTMLElement[] {
-  const rows = [definitionRow("Key", key.label ?? key.id), definitionRow("Layer", layer?.name ?? "")];
-  if (key.matrix) {
-    rows.push(definitionRow("Matrix", `${key.matrix.row}, ${key.matrix.col}`));
-  }
-  return rows;
 }
 
 export function keyAriaLabel(

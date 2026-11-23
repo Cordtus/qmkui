@@ -155,7 +155,7 @@ export function topbar(
         keyboardSwitch,
         element("small", { className: "device-id", text: deviceId, attrs: { title: "Connected device id" } }),
       ]),
-      ...(state.projectStatus && !state.projectStatus.startsWith("Project is not saved")
+      ...(state.projectStatus
         ? [
             element("p", {
               className: "topbar-status",
@@ -358,7 +358,6 @@ function commandPalette(state: EditorState, actions: RenderActions): HTMLElement
     element("div", { className: "palette-search" }, [icon("magnifying-glass", { size: 16 }), input]),
     list,
     empty,
-    element("p", { className: "hint palette-hint", text: "Ctrl-K opens this anywhere. Esc closes it." }),
   );
   setActive(0);
   showNativeDialog(dialog, () => input.focus());
@@ -394,10 +393,6 @@ function boardPickerDialog(state: EditorState, actions: RenderActions): HTMLElem
   });
   cancel.addEventListener("click", actions.closeBoardPicker);
   dialog.append(
-    element("p", {
-      className: "hint board-picker-hint",
-      text: "Switch the project to another bundled definition.",
-    }),
     catalogPanel(state, actions),
     element("div", { className: "board-picker-actions" }, [cancel]),
   );

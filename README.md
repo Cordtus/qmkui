@@ -18,8 +18,8 @@ Three surfaces, one workbench:
 
 - **Keymap** — board-first editing, one inspector (Lighting / Key / Layer), and
   a write strip that stays attached to the board.
-- **Device** — read-only keymap mirror, capability chips, global lighting wheel,
-  recovery panel, and an opt-in key tester.
+- **Device** — identity, capability chips, macros, recovery, and an opt-in key
+  tester; the board and lighting live only in Keymap.
 - **Firmware** — Build → Flash → Verify step rail, the exact `qmkui-flash`
   command, diagnostics, and support export.
 

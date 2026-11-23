@@ -75,7 +75,6 @@ export type EditorState = {
   selectedKeyIds: string[];
   /** Click-to-paint mode: a click applies the current colour to that key. */
   lightingPaint: boolean;
-  boardLightingOpen: boolean;
   /** Which keymap rail tab is open. */
   keymapTab: "lighting" | "key" | "layer";
   commandHistory: CommandHistory;
@@ -91,8 +90,6 @@ export type EditorState = {
   deviceSelectionEpoch: number;
   protocolVerification: ProtocolVerificationState;
   hardwareSnapshot?: KeychronV5MaxReadSnapshot | GenericViaStandardState;
-  snapshotLayerIndex: number;
-  snapshotSelectedKey: string;
   snapshotReadStatus: "idle" | "reading" | "failed";
   keyTesterOpen: boolean;
   /** Result of the last lighting-only resync, shown next to the readout. */
@@ -172,7 +169,6 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     selectedKeyId: layout.keys[0]?.id ?? "",
     selectedKeyIds: layout.keys[0] ? [layout.keys[0].id] : [],
     lightingPaint: false,
-    boardLightingOpen: false,
     keymapTab: "lighting",
     commandHistory: createCommandHistory(),
     keycodeCategoryId: keycodeCategories[0]?.id ?? "basic",
@@ -186,13 +182,11 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     deviceSelection: { state: "discovering" },
     deviceSelectionEpoch: 0,
     protocolVerification: { state: "idle" },
-    snapshotLayerIndex: 0,
-    snapshotSelectedKey: "0:0",
     snapshotReadStatus: "idle",
     keyTesterOpen: false,
     lightingStatus: "",
     deviceWriteEnabled: false,
-    projectStatus: "Project is not saved in this preview session.",
+    projectStatus: "",
     deviceWriteStatus: "",
     projectJsonDraft: JSON.stringify(currentProject, null, 2),
     selectedSavedProjectId: projectStorage.list()[0]?.id ?? "",
@@ -234,8 +228,6 @@ export function createApp(root: HTMLElement, options: AppOptions = {}): void {
     state.deviceSelection = { state: "discovering" };
     state.protocolVerification = { state: "idle" };
     state.hardwareSnapshot = undefined;
-    state.snapshotLayerIndex = 0;
-    state.snapshotSelectedKey = "0:0";
     state.snapshotReadStatus = "idle";
     state.lightingStatus = "";
     actions.render();
@@ -330,7 +322,7 @@ export function createActions(
           lighting,
           readAt: new Date().toISOString(),
         };
-        state.lightingStatus = "Lighting resynced from board.";
+        state.lightingStatus = "";
         actions.render();
       },
       () => {
@@ -462,12 +454,6 @@ export function createActions(
             keyIds.forEach((keyId) => setLightingColor(state.project, keyId, color));
             state.commandHistory.push({ kind: "set-lighting", keyIds, before, after: color });
             actions.render();
-          },
-          setBoardLightingOpen: (open) => {
-            // Native <details> already reflects the change; re-rendering here
-            // would destroy the focused summary. The next render uses the
-            // stored state.
-            state.boardLightingOpen = open;
           },
           toggleLightingPaint: () => {
             state.lightingPaint = !state.lightingPaint;
@@ -640,7 +626,6 @@ export function createActions(
             state.deviceSelection = { state: "selecting" };
             state.protocolVerification = { state: "idle" };
             state.hardwareSnapshot = undefined;
-            state.snapshotLayerIndex = 0;
             state.snapshotReadStatus = "idle";
             state.lightingStatus = "";
             actions.render();
@@ -652,8 +637,6 @@ export function createActions(
                 state.deviceSelection = selection;
                 state.protocolVerification = { state: "idle" };
                 state.hardwareSnapshot = undefined;
-                state.snapshotLayerIndex = 0;
-                state.snapshotSelectedKey = "0:0";
                 state.snapshotReadStatus = "idle";
                 state.lightingStatus = "";
                 actions.render();
@@ -704,21 +687,6 @@ export function createActions(
             state.keycodeSearch = "";
             actions.render();
           },
-          selectSnapshotLayer: (layerIndex) => {
-            if (
-              !isKeychronV5MaxSnapshot(state.hardwareSnapshot) ||
-              state.hardwareSnapshot.keymap.state !== "available" ||
-              !state.hardwareSnapshot.keymap.value.keycodes[layerIndex]
-            ) {
-              return;
-            }
-            state.snapshotLayerIndex = layerIndex;
-            actions.render();
-          },
-          selectSnapshotKey: (matrixKey) => {
-            state.snapshotSelectedKey = matrixKey;
-            actions.render();
-          },
           toggleKeyTester: () => {
             state.keyTesterOpen = !state.keyTesterOpen;
             actions.render();
@@ -732,50 +700,6 @@ export function createActions(
             state.deviceWriteEnabled = true;
             noteWriteStatus(state, "Device writes enabled; use caution.");
             actions.render();
-          },
-          writeSnapshotKeycode: (keycode, confirmed) => {
-            if (!confirmed || !state.deviceWriteEnabled) {
-              noteWriteStatus(state, "Confirm the write and enable device writes first.");
-              actions.render();
-              return;
-            }
-            if (!Number.isInteger(keycode) || keycode < 0 || keycode > 0xffff) {
-              noteWriteStatus(state, "Enter a hex keycode between 0000 and FFFF.");
-              actions.render();
-              return;
-            }
-            if (!isKeychronV5MaxSnapshot(state.hardwareSnapshot)) {
-              noteWriteStatus(state, "No device keymap snapshot to write to.");
-              actions.render();
-              return;
-            }
-            const session = currentWriteSession(state);
-            if (!session) {
-              noteWriteStatus(state, writeRefusalReason(state));
-              actions.render();
-              return;
-            }
-            const [rowText, colText] = state.snapshotSelectedKey.split(":");
-            const row = Number(rowText);
-            const col = Number(colText);
-            if (!Number.isInteger(row) || !Number.isInteger(col)) {
-              noteWriteStatus(state, "Select a key on the device keymap first.");
-              actions.render();
-              return;
-            }
-            session
-              .writeKeycode(state.snapshotLayerIndex, row, col, keycode)
-              .then(() => {
-                noteWriteStatus(
-                  state,
-                  `Wrote keycode 0x${keycode.toString(16).padStart(4, "0")} to layer ${state.snapshotLayerIndex} position ${row}:${col}.`,
-                );
-                actions.render();
-              })
-              .catch(() => {
-                noteWriteStatus(state, "Device write failed.");
-                actions.render();
-              });
           },
           writeLightingToDevice: (confirmed) => {
             if (!confirmed || !state.deviceWriteEnabled) {
@@ -832,6 +756,9 @@ export function createActions(
               .then(() => {
                 noteWriteStatus(state, "Wrote RGB-matrix lighting to the device.");
                 actions.render();
+                // Mirror what the board accepted instead of leaving the old
+                // readout beside the new write result.
+                readLightingNow();
               })
               .catch(() => {
                 noteWriteStatus(state, "Lighting write failed.");
@@ -1369,7 +1296,6 @@ export type RenderActions = {
   selectAllKeys: () => void;
   updateSelectedKeycode: (qmk: string) => void;
   updateSelectedLighting: (color: string) => void;
-  setBoardLightingOpen: (open: boolean) => void;
   toggleLightingPaint: () => void;
   paintKey: (keyId: string) => void;
   clearSelectedLighting: () => void;
@@ -1383,11 +1309,8 @@ export type RenderActions = {
   verifyKeychronV5MaxProtocol: () => void;
   readDevice: () => void;
   refreshLighting: () => void;
-  selectSnapshotLayer: (layerIndex: number) => void;
-  selectSnapshotKey: (matrixKey: string) => void;
   toggleKeyTester: () => void;
   enableDeviceWrites: (confirmed: boolean) => void;
-  writeSnapshotKeycode: (keycode: number, confirmed: boolean) => void;
   saveLightingToDevice: (confirmed: boolean) => void;
   writeKeymapToDevice: (confirmed: boolean) => void;
   writeLightingToDevice: (confirmed: boolean) => void;
@@ -1582,12 +1505,6 @@ export function readDeviceSnapshot(state: EditorState, render: () => void): void
         return;
       }
       state.hardwareSnapshot = snapshot;
-      state.snapshotLayerIndex = 0;
-      const keyboard = keyboardForSelection(state.deviceSelection) ?? state.keyboard;
-      const firstMatrixKey = keyboard.layouts[0]?.keys.find((key) => key.matrix)?.matrix;
-      state.snapshotSelectedKey = firstMatrixKey
-        ? `${firstMatrixKey.row}:${firstMatrixKey.col}`
-        : "0:0";
       state.snapshotReadStatus = "idle";
       render();
     },
@@ -1853,7 +1770,6 @@ function slugify(value: string): string {
 
 function resetProjectSession(state: EditorState): void {
   state.lightingPaint = false;
-  state.boardLightingOpen = false;
   state.lightingStatus = "";
   state.keymapTab = "lighting";
   state.keyTesterOpen = false;

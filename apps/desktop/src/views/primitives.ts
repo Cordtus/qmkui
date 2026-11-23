@@ -26,13 +26,6 @@ export function controlGroup(id: string, label: string, children: Array<Node | s
   ]);
 }
 
-export function parameterBlock(label: string, children: Array<Node | string>): HTMLElement {
-  return element("section", { className: "parameter-block" }, [
-    element("h4", { className: "parameter-block-title", text: label }),
-    element("div", { className: "parameter-block-body" }, children),
-  ]);
-}
-
 export function rangeInput(label: string, key: string, value: number): HTMLInputElement {
   return element("input", {
     attrs: {
@@ -84,12 +77,6 @@ export function fieldControl(label: string, control: HTMLElement): HTMLElement {
     element("span", { text: label }),
     control,
   ]);
-}
-
-export function colorSwatch(color: string): HTMLElement {
-  const swatch = element("span", { className: "color-swatch" });
-  swatch.style.background = color;
-  return swatch;
 }
 
 export type ColorPickerOptions = {
@@ -204,6 +191,8 @@ export function colorPicker(options: ColorPickerOptions): HTMLElement {
   };
   let dragging = false;
   wheel.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    wheel.focus({ preventScroll: true });
     dragging = true;
     wheel.setPointerCapture(event.pointerId);
     setFromPointer(event);

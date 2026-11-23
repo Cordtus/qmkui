@@ -71,48 +71,29 @@ describe("device-first connection layout", () => {
     expect(await page.locator("[data-connection-screen]").count()).toBe(1);
   });
 
-  it("keeps a real hardware keymap read contained and its grouped controls aligned at a narrow desktop width", async () => {
+  it("keeps the Device diagnostics contained at a narrow desktop width", async () => {
     const page = await openReadResultPage({ width: 900, height: 760 });
-    const layout = await page.locator("[data-hardware-snapshot]").evaluate((snapshot) => {
-      const keymap = snapshot.querySelector<HTMLElement>("[data-hardware-keymap]");
-      const board = snapshot.querySelector<HTMLElement>("[data-hardware-keymap-board]");
-      const layerTabs = snapshot.querySelector<HTMLElement>("[data-hardware-layer-tabs]");
-      const identity = snapshot.querySelector<HTMLElement>("[data-snapshot-field=identity]");
-      const capabilities = snapshot.querySelector<HTMLElement>("[data-snapshot-field=capabilities]");
-      const lighting = snapshot.querySelector<HTMLElement>("[data-snapshot-field=lighting]");
-      if (!keymap || !board || !layerTabs || !identity || !capabilities || !lighting) {
-        throw new Error("Expected a complete hardware snapshot workspace");
-      }
-
-      const bounds = (element: HTMLElement) => {
+    const layout = await page.evaluate(() => {
+      const bounds = (selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) throw new Error(`Missing ${selector}`);
         const rect = element.getBoundingClientRect();
         return { bottom: rect.bottom, left: rect.left, right: rect.right, top: rect.top };
       };
-      const styles = [identity, capabilities, lighting].map((panel) => getComputedStyle(panel));
       return {
-        board: bounds(board),
-        keymap: bounds(keymap),
-        layerTabs: bounds(layerTabs),
-        menuBorders: styles.map((style) => style.borderTopWidth),
-        menuLeftEdges: [bounds(identity).left, bounds(capabilities).left, bounds(lighting).left],
+        facts: bounds('[data-context-detail="device-facts"]'),
         pageWidth: document.documentElement.scrollWidth,
-        snapshot: bounds(snapshot as HTMLElement),
+        recovery: bounds("[data-safety-panel]"),
+        status: bounds("[data-device-status]"),
         viewportWidth: window.innerWidth,
       };
     });
 
     expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(isContained(layout.keymap, layout.snapshot)).toBe(true);
-    expect(isContained(layout.board, layout.keymap)).toBe(true);
-    expect(isContained(layout.layerTabs, layout.keymap)).toBe(true);
-    expect(layout.board.right - layout.board.left).toBeLessThanOrEqual(
-      layout.keymap.right - layout.keymap.left,
-    );
-    expect(layout.menuBorders).toEqual(["1px", "1px", "1px"]);
-    // Identity and capabilities share the Device facts disclosure; lighting is
-    // the always-visible card above it.
-    expect(layout.menuLeftEdges[1]).toBeGreaterThan(layout.menuLeftEdges[0]);
-    expect(layout.menuLeftEdges[2]).toBeLessThan(layout.menuLeftEdges[0]);
+    for (const panel of [layout.status, layout.recovery, layout.facts]) {
+      expect(panel.left).toBeGreaterThanOrEqual(0);
+      expect(panel.right).toBeLessThanOrEqual(layout.viewportWidth + 0.5);
+    }
   }, 20_000);
 
   it("keeps the keymap canvas scrollable and page-contained at phone width", async () => {
@@ -393,19 +374,34 @@ describe("device-first connection layout", () => {
     expect(reduced).toBeLessThanOrEqual(0.00002);
   }, 30_000);
 
-  it("keeps the board-lighting disclosure open while adjusting it", async () => {
+  it("keeps one lighting editor and responds to wheel dragging", async () => {
     const page = await openReadResultPage({ width: 1440, height: 900 });
     await page.locator('[data-view="keymap"]').click();
-    const disclosure = page.locator('[data-context-detail="board-lighting"]');
-    await disclosure.click({ position: { x: 24, y: 12 } });
-    // The controlled state commits from the native toggle event.
-    await expect.poll(() => disclosure.getAttribute("open")).not.toBeNull();
+    await page.locator('[data-keymap-tab="lighting"]').click();
+    await page.locator("[data-lighting-color-readout]").waitFor();
 
-    await page.locator('[data-lighting-control="brightness"]').evaluate((input) => {
-      (input as HTMLInputElement).value = "120";
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    expect(await disclosure.getAttribute("open")).not.toBeNull();
+    expect(await page.locator("[data-color-hex]").count()).toBe(1);
+    expect(await page.locator('[data-control-group="board-lighting"]').count()).toBe(1);
+    expect(await page.locator("[data-lighting-refresh]").count()).toBe(1);
+    expect(await page.locator('[data-context-detail="board-lighting"]').count()).toBe(0);
+
+    const before = await page.locator("[data-lighting-color-readout]").textContent();
+    const wheel = page.locator(".color-picker .color-wheel");
+    const box = await wheel.boundingBox();
+    if (!box) throw new Error("Missing colour wheel");
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.85, box.y + box.height * 0.5, { steps: 8 });
+    await page.mouse.up();
+
+    await expect
+      .poll(() => page.locator("[data-lighting-color-readout]").textContent())
+      .not.toBe(before);
+    const after = await page.locator("[data-lighting-color-readout]").textContent();
+    expect(
+      await page.locator("[data-key].selected").first().getAttribute("data-lighting-color"),
+    ).toBe(after);
   }, 20_000);
 
   it("keeps the gated write confirmation inline", async () => {

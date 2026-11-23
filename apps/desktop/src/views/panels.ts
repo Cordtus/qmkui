@@ -7,11 +7,11 @@ import { illuminationBase, type IlluminationBase } from "../illumination";
 import { DEFAULT_BOARD_COLOR, boardColor, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { HostKeyCapture } from "../keyTester";
 import { canDeleteLayer, scanLayerReferences } from "../layerActions";
-import { lightingSystemsForKeyboard, supportedLightingSystems } from "../lightingCapabilities";
+import { supportedLightingSystems } from "../lightingCapabilities";
 import { ProjectSummary } from "../projectStorage";
 import { icon, type IconName } from "../icons";
 import { colorPicker, contextDisclosure, controlGroup, definitionList, element, fieldControl, optionSelect, rangeInput, showNativeDialog, uiButton } from "./primitives";
-import { keyLightingDetails, macroEditor, previewLightingColor } from "./workspace";
+import { macroEditor, previewLightingColor } from "./workspace";
 import { resolveRgbMatrixEffect, rgbMatrixEffectsFor, viaDefinitionFor, type ViaRgbMatrixEffect } from "../viaDefinition";
 import { lightingRuleTriggerLabel } from "../lightingRules";
 
@@ -283,8 +283,9 @@ export function lightingPanel(
   actions: RenderActions,
 ): HTMLElement {
   const profile = activeLightingProfile(state.project);
-  const lightingSystems = lightingSystemsForKeyboard(state.keyboard);
   const supportedSystems = supportedLightingSystems(state.keyboard);
+  const rgbMatrix = supportedSystems.some((system) => system.id === "rgbMatrix");
+  const effects = rgbMatrixEffectsFor(state.keyboard.qmkKeyboard);
   const base = illuminationBase(state.hardwareSnapshot);
   const context = buildSelectedKeyContext(
     state.project,
@@ -374,33 +375,34 @@ export function lightingPanel(
         element("div", { className: "selection-actions" }, [paint, selectAll, clear]),
       ]),
       swatches,
-      element("div", { className: "color-readout" }, [
-        element("span", { text: "Hex" }),
-        element("code", {
-          text: selectedLighting.color || "unset",
-          attrs: { "data-lighting-color-readout": "true" },
-        }),
+      element("span", {
+        className: "visually-hidden",
+        text: selectedLighting.color || "unset",
+        attrs: { "data-lighting-color-readout": "true" },
+      }),
+      element("div", { className: "assignment-field" }, [
+        element("span", { text: "Mode" }),
+        modeButtons,
       ]),
     ]),
-    controlGroup("lighting-mode", "Map lighting", [modeButtons]),
-    ...(supportedSystems.some((system) => system.id === "rgbMatrix")
-      ? [controlGroup("lighting-rules", "Key rules", [lightingRulesPanel(state, layout, actions)])]
+    ...(rgbMatrix ? [controlGroup("lighting-rules", "Key rules", [lightingRulesPanel(state, layout, actions)])] : []),
+    ...(rgbMatrix
+      ? [controlGroup("board-lighting", "Board lighting", [
+          element("div", { className: "board-light-head" }, [
+            element("span", {
+              className: "hint",
+              text: base
+                ? `Current board: ${base.source}`
+                : "No board lighting read; the controls use the project profile.",
+            }),
+            resyncLightingButton(actions),
+          ]),
+          ...(state.lightingStatus
+            ? [element("small", { className: "board-light-status", text: state.lightingStatus })]
+            : []),
+          rgbMatrixControls(profile, actions, effects, base),
+        ])]
       : []),
-    contextDisclosure("Board lighting", "board-lighting", [
-      supportedSystems.some((system) => system.id === "rgbMatrix")
-        ? rgbMatrixControls(profile, actions, rgbMatrixEffectsFor(state.keyboard.qmkKeyboard), base)
-        : element("p", { className: "hint", text: "No RGB-matrix controls on this keyboard." }),
-      element("p", {
-        className: "hint",
-        text: "Applies to the whole board over VIA; key colours above are firmware-only.",
-      }),
-    ], {
-      open: state.boardLightingOpen,
-      onToggle: actions.setBoardLightingOpen,
-    }),
-    controlGroup("lighting-options", "Capabilities", [
-      contextDisclosuresRow(lightingDisclosures(context, lightingSystems)),
-    ]),
   ]);
 }
 
@@ -468,10 +470,6 @@ function lightingRulesPanel(
       ]),
     );
   });
-  if (rules.length === 0) {
-    list.append(element("li", { className: "rule-empty", text: "No rules on this key." }));
-  }
-
   let triggerKind: "lock" | "layer" | "held" = "lock";
   let lockKind: "capsLock" | "numLock" | "scrollLock" = "capsLock";
   const triggerRow = element("div", {
@@ -576,29 +574,6 @@ function lightingRulesPanel(
   ]);
 }
 
-function lightingDisclosures(
-  context: ReturnType<typeof buildSelectedKeyContext>,
-  lightingSystems: ReturnType<typeof lightingSystemsForKeyboard>,
-): Array<[string, string, Array<Node | string>]> {
-  const entries: Array<[string, string, Array<Node | string>]> = [
-    ["Lighting capabilities", "lighting-capabilities", [lightingCapabilityList(lightingSystems)]],
-  ];
-  if (context) {
-    entries.push(["Selected key lighting", "selected-key-lighting", [keyLightingDetails(context)]]);
-  }
-  return entries;
-}
-
-function contextDisclosuresRow(
-  entries: ReadonlyArray<readonly [string, string, Array<Node | string>]>,
-): HTMLElement {
-  return element(
-    "div",
-    { className: "context-disclosures" },
-    entries.map(([summary, id, children]) => contextDisclosure(summary, id, children)),
-  );
-}
-
 function firmwareButton(download: () => void): HTMLElement {
   const button = uiButton({
     className: "secondary-action",
@@ -611,31 +586,6 @@ function firmwareButton(download: () => void): HTMLElement {
   });
   button.addEventListener("click", download);
   return button;
-}
-
-export function lightingCapabilityList(
-  systems: ReturnType<typeof lightingSystemsForKeyboard>,
-): HTMLElement {
-  const list = element("div", { className: "lighting-systems" });
-  systems.forEach((system) => {
-    list.append(
-      element(
-        "div",
-        {
-          className: `lighting-system ${system.capability.support}`,
-          attrs: {
-            "data-lighting-system": system.id,
-            "data-support": system.capability.support,
-          },
-        },
-        [
-          element("strong", { text: system.label }),
-          element("small", { text: supportLabel(system.capability.support) }),
-        ],
-      ),
-    );
-  });
-  return list;
 }
 
 export function rgbMatrixControls(
@@ -699,6 +649,18 @@ export function rgbMatrixControls(
       text: "Sets the whole board over VIA; it does not write per-key colours.",
     }),
   ]);
+}
+
+/** A slider with its live value, so a drag has a number to aim at. */
+function resyncLightingButton(actions: RenderActions): HTMLElement {
+  const resync = uiButton({
+    className: "secondary-action compact",
+    type: "button",
+    text: "Resync",
+    attrs: { "data-lighting-refresh": "true", title: "Re-read the board's lighting state" },
+  });
+  resync.addEventListener("click", actions.refreshLighting);
+  return resync;
 }
 
 /** A slider with its live value, so a drag has a number to aim at. */
@@ -946,7 +908,6 @@ export function systemPanel(
   }, [
     element("div", { className: "panel-heading" }, [
       element("h2", { text: "Firmware" }),
-      element("small", { text: "Build, flash, and verify" }),
     ]),
     rail,
     panel,
@@ -1029,7 +990,7 @@ function buildStepPanel(
     blockers.append(
       element("li", {}, [
         element("span", { className: "severity warning", text: "block" }),
-        element("div", {}, [element("strong", { text: blockerLabel(blocker) })]),
+        element("div", {}, [element("strong", { text: blockerLabel(blocker, state.doctorStatus) })]),
       ]),
     );
   });
@@ -1056,7 +1017,7 @@ function buildStepPanel(
         attrs: { "data-build-status": state.buildStatus },
         text: buildStepLabel(state.buildStep),
       })
-    : element("p", { className: "muted", text: "No build has run this session." });
+    : element("p", { className: "muted", text: "No build yet." });
 
   const artifacts = element("ul", {
     className: "artifact-list",
@@ -1225,10 +1186,14 @@ function verifyStepPanel(actions: BuildActions): HTMLElement {
   ]);
 }
 
-function blockerLabel(code: string): string {
+function blockerLabel(code: string, doctorStatus: EditorState["doctorStatus"]): string {
+  if (code === "command.qmk.missing") {
+    return doctorStatus === "missing"
+      ? "Local build status is unknown; no doctor report is loaded."
+      : "The local doctor report did not find the qmk CLI.";
+  }
   return (
     {
-      "command.qmk.missing": "The qmk CLI is not installed on this machine.",
       "build.remote.unavailable": "Remote builds need a JSON-only project.",
       "build.remote.generatedC": "Remote builds cannot generate custom C.",
     }[code] ?? code
@@ -1273,10 +1238,10 @@ export function systemRows(state: EditorState): Array<[string, string]> {
     [
       "Local build",
       state.doctorStatus === "missing"
-        ? "Unavailable"
+        ? "Not checked"
         : qmkCommand?.path
           ? "Ready"
-          : "Missing qmk",
+          : "qmk not found",
     ],
     ["Distro", state.doctorReport?.snapshot.distroId ?? ""],
     ...(state.doctorReport?.snapshot.protocol
@@ -1300,21 +1265,6 @@ export function modeLabel(mode: LightingProfile["mode"]): string {
   return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
-export function supportLabel(support: string): string {
-  if (support === "supported") {
-    return "Supported";
-  }
-  if (support === "unsupported") {
-    return "Off";
-  }
-  if (support === "requiresBuild") {
-    return "Build";
-  }
-  if (support === "requiresCustomC") {
-    return "C";
-  }
-  return "Unknown";
-}
 
 export function requirementLabel(requirement: CommandStatus["requiredFor"]): string {
   if (requirement === "localBuild") {
@@ -1406,6 +1356,7 @@ export function layerTools(state: EditorState, actions: RenderActions): HTMLElem
   };
   if (!deleteState.deleted) {
     deleteAttrs.disabled = "";
+    deleteAttrs.title = deleteStateLabel(deleteState);
   }
   const remove = uiButton({
     className: "secondary-action danger",
@@ -1426,10 +1377,12 @@ export function layerTools(state: EditorState, actions: RenderActions): HTMLElem
       nameInput,
     ]),
     actionGroup,
-    element("p", {
-      className: "hint",
-      text: `${layer.assignments.length} keys · ${references.length} layer key${references.length === 1 ? "" : "s"} point here${deleteState.deleted ? "" : ` · ${deleteStateLabel(deleteState)}`}`,
-    }),
+    ...(references.length === 0
+      ? []
+      : [element("p", {
+          className: "hint",
+          text: `${references.length} layer key${references.length === 1 ? "" : "s"} point${references.length === 1 ? "s" : ""} here.`,
+        })]),
   ]);
 }
 
@@ -1438,15 +1391,15 @@ export function deleteStateLabel(state: ReturnType<typeof canDeleteLayer>): stri
     return "Ready";
   }
   if (state.reason === "base") {
-    return "Base";
+    return "The base layer cannot be deleted.";
   }
   if (state.reason === "referenced") {
-    return "In use";
+    return "Another layer still points to this one.";
   }
   if (state.reason === "notHighest") {
-    return "Higher layers";
+    return "Only the top layer can be deleted.";
   }
-  return "Missing";
+  return "This layer cannot be deleted.";
 }
 
 function nextInRing<T>(items: T[], position: number, key: string): T {
@@ -1484,7 +1437,14 @@ export function supportDetails(
       element("section", {}, [
         element("h3", { text: "Environment" }),
         definitionList([
-          ["Local build", state.qmkDetected ? "Ready" : "Missing qmk"],
+          [
+            "Local build",
+            state.doctorStatus === "missing"
+              ? "Not checked"
+              : state.qmkDetected
+                ? "Ready"
+                : "qmk not found",
+          ],
           ["Keyboard", detected?.displayName ?? state.keyboard.displayName],
           ["Device", detected ? `${detected.device.vid}:${detected.device.pid}` : "Preset"],
         ]),

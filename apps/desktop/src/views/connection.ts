@@ -64,11 +64,7 @@ export function connectionPanel(state: EditorState, actions: RenderActions): HTM
   return element("section", { className: "connection-panel" }, [
     element("div", { className: "connection-intro" }, [
       element("p", { className: "eyebrow", text: "QMKUI" }),
-      element("h1", { text: "Connect a keyboard" }),
-      element("p", {
-        className: "connection-lede",
-        text: "Read and edit VIA-compatible keyboards over WebHID in a Chromium-based browser. Connect one to begin.",
-      }),
+      element("h1", { text: "No keyboard connected" }),
     ]),
     element("div", { className: "connection-actions" }, [connect, ...(verify ? [verify] : []), ...(read ? [read] : [])]),
     ...(error

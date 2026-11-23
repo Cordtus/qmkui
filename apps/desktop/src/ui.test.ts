@@ -195,7 +195,7 @@ describe("device-first hardware workspace", () => {
     );
   });
 
-  it("shows capability chips, a read-only lighting wheel, and a tester toggle", async () => {
+  it("shows capability chips and a tester toggle", async () => {
     const root = document.createElement("div");
     createApp(root, {
       discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
@@ -205,16 +205,6 @@ describe("device-first hardware workspace", () => {
     expect(
       root.querySelectorAll('[data-snapshot-field="capabilities"] .capability-chips .chip'),
     ).toHaveLength(4);
-    const wheel = root.querySelector<HTMLElement>("[data-device-lighting-wheel]");
-    expect(wheel).not.toBeNull();
-    // The mirror maps 0-255 hue/saturation to the wheel's 0-360/0-1 space and
-    // fades the shade with brightness.
-    expect(wheel?.querySelector<HTMLElement>(".color-wheel-cursor")?.style.left).toBe(
-      `${50 + (34 / 255) * 50 * Math.sin((12 / 255) * Math.PI * 2)}%`,
-    );
-    expect(wheel?.querySelector<HTMLElement>(".color-wheel-shade")?.style.opacity).toBe(
-      String(1 - 56 / 255),
-    );
     expect(root.querySelector("[data-test-capture]")).toBeNull();
 
     root.querySelector<HTMLElement>("[data-key-tester-toggle]")?.click();
@@ -285,7 +275,7 @@ describe("device-first hardware workspace", () => {
     expect(chooseBrowserKeyboard).toHaveBeenCalled();
   });
 
-  it("auto-reads a snapshot on selection and renders reported fields", async () => {
+  it("auto-reads a snapshot on selection and renders the device facts", async () => {
     const root = document.createElement("div");
     const readSnapshot = vi.fn(async () => availableSnapshot());
 
@@ -295,14 +285,12 @@ describe("device-first hardware workspace", () => {
     expect(readSnapshot).toHaveBeenCalledOnce();
     expect(root.querySelector("[data-hardware-snapshot]")?.getAttribute("data-source")).toBe("hardware");
     expect(root.textContent).toContain("1.2.3");
-    expect(root.querySelector("[data-hardware-keymap]")).not.toBeNull();
-    expect(root.querySelector('[data-hardware-key="0:0"]')?.textContent).toContain("A");
-    expect(root.querySelector('[data-hardware-key="0:2"]')?.textContent).toContain("B");
-    expect(root.querySelector("[data-hardware-snapshot]")?.textContent).not.toContain("KC_ESC");
-    expect(root.querySelector("[data-lighting-swatches]")).not.toBeNull();
-    expect(root.querySelector("[data-lighting-swatches] [data-hue]")?.getAttribute("data-hue")).toBe("12");
-    expect(root.querySelector("[data-lighting-swatches] [data-hue]")?.getAttribute("data-saturation")).toBe("34");
-    expect(root.querySelector("[data-lighting-swatches] [data-hue]")?.getAttribute("data-value")).toBe("56");
+    expect(root.querySelector("[data-device-status]")).not.toBeNull();
+    expect(root.querySelector('[data-snapshot-field="identity"]')).not.toBeNull();
+    expect(root.querySelector('[data-snapshot-field="capabilities"]')).not.toBeNull();
+    expect(root.querySelector("[data-hardware-keymap]")).toBeNull();
+    expect(root.querySelector("[data-lighting-swatches]")).toBeNull();
+    expect(root.querySelector("[data-device-write-controls]")).toBeNull();
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
   });
 
@@ -321,85 +309,12 @@ describe("device-first hardware workspace", () => {
     expect(root.querySelector('[data-view="system"]')).toBeNull();
     expect(root.querySelector("[data-board-picker]")).not.toBeNull();
     expect(root.querySelector('[data-view="device"]')?.getAttribute("aria-current")).toBe("page");
-    expect(root.querySelector("[data-device-save-lighting]")).not.toBeNull();
     expect(root.querySelector("[data-hardware-snapshot]")).not.toBeNull();
 
     root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
     expect(root.querySelector("[data-keyboard-workspace]")).not.toBeNull();
     expect(root.querySelector("[data-hardware-snapshot]")).toBeNull();
-  });
-
-  it("shows the selected key's role on every layer and flags Print/SysRq", async () => {
-    const root = document.createElement("div");
-    const snapshot = availableSnapshot();
-    snapshot.keymap = {
-      state: "available",
-      value: { layerCount: 2, keycodes: [[[0x0004, 0, 0]], [[0x0046, 0, 0]]] },
-    };
-    createApp(root, {
-      discoverBrowserKeyboard: async () => recognizedSelection(async () => snapshot),
-    });
-    await flush();
-    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
-    await flush();
-
-    expect(root.querySelector('[data-hardware-key-roles="0:0"]')).not.toBeNull();
-    const roles = root.querySelectorAll("[data-hardware-key-role]");
-    expect(roles).toHaveLength(2);
-    expect(roles[0]?.textContent).toContain("Layer 0");
-    expect(roles[0]?.textContent).toContain("A");
-    expect(roles[1]?.textContent).toContain("Layer 1");
-    expect(roles[1]?.textContent).toContain("Print");
-    expect(roles[1]?.textContent).toContain("0x0046");
-    expect(roles[1]?.textContent).toContain("SysRq");
-  });
-
-  it("selects a key on the board and updates its roles", async () => {
-    const root = document.createElement("div");
-    createApp(root, {
-      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
-    });
-    await flush();
-    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
-    await flush();
-
-    root.querySelector<HTMLElement>('[data-hardware-key="0:2"]')?.click();
-    await flush();
-
-    expect(root.querySelector('[data-hardware-key-roles="0:2"]')).not.toBeNull();
-    expect(root.querySelector('[data-hardware-key="0:2"]')?.getAttribute("aria-pressed")).toBe("true");
-  });
-
-  it("reports when no key maps to Print/SysRq on any layer", async () => {
-    const root = document.createElement("div");
-    createApp(root, {
-      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
-    });
-    await flush();
-    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
-    await flush();
-
-    expect(root.textContent).toContain("No key maps to Print/SysRq on any layer.");
-  });
-
-  it("reports a board-level Print/SysRq summary when a key is mapped", async () => {
-    const root = document.createElement("div");
-    const snapshot = availableSnapshot();
-    snapshot.keymap = {
-      state: "available",
-      value: { layerCount: 1, keycodes: [[[0x0046, 0, 0]]] },
-    };
-    createApp(root, {
-      discoverBrowserKeyboard: async () => recognizedSelection(async () => snapshot),
-    });
-    await flush();
-    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
-    await flush();
-
-    expect(root.querySelector(".hardware-sysrq-summary")?.textContent).toContain(
-      "Print/SysRq is mapped",
-    );
   });
 
   it("ignores a snapshot that resolves after another keyboard selection starts", async () => {
@@ -447,14 +362,18 @@ describe("device-first hardware workspace", () => {
     root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
     await flush();
 
-    expect(root.querySelector('[data-snapshot-field="keymap"]')?.getAttribute("data-snapshot-state")).toBe("unavailable");
-    expect(root.textContent).toContain("No verified V5 Max matrix dimensions were supplied.");
-    expect(root.querySelector('[data-snapshot-field="lighting"]')?.getAttribute("data-snapshot-state")).toBe("unverified");
-    expect(root.textContent).toContain("RGB state could not be verified.");
+    expect(root.querySelector('[data-snapshot-field="identity"]')?.textContent).toContain(
+      "Identity response timed out.",
+    );
+    expect(root.querySelector('[data-snapshot-field="capabilities"]')?.textContent).toContain(
+      "Feature response was malformed.",
+    );
+    expect(root.querySelector('[data-snapshot-field="macros"]')?.textContent).toContain(
+      "Macro read failed: timeout.",
+    );
     expect(root.querySelector("[data-hardware-snapshot]")?.textContent).not.toContain("Win Base");
     expect(root.querySelector("[data-keyboard-workspace]")).toBeNull();
-    expect(root.querySelector("[data-write-blocked]")).not.toBeNull();
-    expect(root.querySelector("[data-device-write-enable]")).toBeNull();
+    expect(root.querySelector("[data-device-write-controls]")).toBeNull();
   });
 
   it("leaves the connection screen visible when the explicit read fails", async () => {
@@ -803,7 +722,7 @@ function deferred<Value>() {
     expect(root.textContent).not.toContain("Reading lighting");
   });
 
-  it("renders one key inspector, one lighting group and one board readout", async () => {
+  it("renders one key inspector and one lighting editor", async () => {
     const root = document.createElement("div");
     createApp(root, {
       discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
@@ -813,10 +732,10 @@ function deferred<Value>() {
     await flush();
 
     expect(root.querySelectorAll('[data-settings-group="lighting"]')).toHaveLength(1);
-    expect(
-      root.querySelector('[data-context-detail="board-lighting"]')?.hasAttribute("open"),
-    ).toBe(false);
-    expect(root.querySelectorAll("[data-board-lighting]")).toHaveLength(1);
+    expect(root.querySelectorAll('[data-context-detail="board-lighting"]')).toHaveLength(0);
+    expect(root.querySelectorAll('[data-control-group="board-lighting"]')).toHaveLength(1);
+    expect(root.querySelectorAll("[data-lighting-refresh]")).toHaveLength(1);
+    expect(root.querySelectorAll("[data-color-hex]")).toHaveLength(1);
     expect(root.querySelectorAll("[data-key-info-panel]")).toHaveLength(0);
 
     root.querySelector<HTMLElement>('[data-keymap-tab="key"]')?.click();
@@ -1058,64 +977,6 @@ function deferred<Value>() {
     );
   });
 
-  it("shows a refused device write next to the write controls", async () => {
-    const root = document.createElement("div");
-    createApp(root, {
-      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
-    });
-    await flush();
-    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
-    await flush();
-
-    // No confirmation ticked: the refusal must be visible, not drawer-only.
-    root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
-    await flush();
-    expect(root.querySelector("[data-write-status]")?.textContent).toContain(
-      "enable device writes first",
-    );
-  });
-
-  it("writes a keycode to the device behind confirmation", async () => {
-    const root = document.createElement("div");
-    const writeKeycode = vi.fn(async () => {});
-    const selection = recognizedSelection(async () => availableSnapshot());
-    (selection.session as { writeKeycode: unknown }).writeKeycode = writeKeycode;
-
-    createApp(root, { discoverBrowserKeyboard: async () => selection });
-    await flush();
-    root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
-    await flush();
-
-    // Writes are gated: without confirmation nothing is sent.
-    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
-    root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
-    await flush();
-    expect(writeKeycode).not.toHaveBeenCalled();
-    expect(root.textContent).toContain("enable device writes first.");
-
-    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
-    root.querySelector<HTMLElement>("[data-device-write-enable]")?.click();
-    await flush();
-    expect(root.textContent).toContain("Device writes enabled");
-
-    root.querySelector<HTMLElement>('[data-hardware-key="0:0"]')?.click();
-    await flush();
-    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
-    const input = root.querySelector<HTMLInputElement>("[data-write-keycode]")!;
-    input.value = "zz";
-    root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
-    await flush();
-    expect(writeKeycode).not.toHaveBeenCalled();
-
-    const validInput = root.querySelector<HTMLInputElement>("[data-write-keycode]")!;
-    validInput.value = "0046";
-    root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
-    root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
-    await flush();
-
-    expect(writeKeycode).toHaveBeenCalledWith(0, 0, 0, 0x0046);
-  });
-
   it("writes the whole project keymap to the device from the editor", async () => {
     const root = document.createElement("div");
     const writeKeycode = vi.fn(async () => {});
@@ -1158,9 +1019,11 @@ function deferred<Value>() {
       }) => {},
     );
     const selection = recognizedSelection(async () => availableSnapshot());
+    const readLighting = vi.fn(async () => availableSnapshot().lighting);
     (selection.session as { writeKeycode: unknown }).writeKeycode = vi.fn(async () => {});
     (selection.session as { saveLighting: unknown }).saveLighting = vi.fn(async () => {});
     (selection.session as { writeRgbMatrix: unknown }).writeRgbMatrix = writeRgbMatrix;
+    (selection.session as { readLighting: unknown }).readLighting = readLighting;
 
     createApp(root, { discoverBrowserKeyboard: async () => selection });
     await flush();
@@ -1197,6 +1060,8 @@ function deferred<Value>() {
     expect(payload.effect).toBe(7);
     expect(payload.hue).toBeGreaterThanOrEqual(0);
     expect(payload.saturation).toBeGreaterThanOrEqual(0);
+    // One resync when entering Keymap, one after the write.
+    expect(readLighting).toHaveBeenCalledTimes(2);
     expect(root.textContent).toContain("Wrote RGB-matrix lighting");
   });
 
@@ -1345,8 +1210,6 @@ function deferred<Value>() {
   it("refuses a write when the connected device does not match the target", async () => {
     const root = document.createElement("div");
     const writeKeycode = vi.fn(async () => {});
-    const saveLighting = vi.fn(async () => {});
-    const writeRgbMatrix = vi.fn(async () => {});
     // An unrelated VIA board, not the project's V5 Max target.
     const selection = recognizedSelection(async () => availableSnapshot());
     selection.identity = {
@@ -1355,12 +1218,12 @@ function deferred<Value>() {
       collections: [{ usagePage: 0xff60, usage: 0x0061 }],
     };
     (selection.session as { writeKeycode: unknown }).writeKeycode = writeKeycode;
-    (selection.session as { saveLighting: unknown }).saveLighting = saveLighting;
-    (selection.session as { writeRgbMatrix: unknown }).writeRgbMatrix = writeRgbMatrix;
 
     createApp(root, { discoverBrowserKeyboard: async () => selection });
     await flush();
     root.querySelector<HTMLElement>('[data-device-action="read"]')?.click();
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="keymap"]')?.click();
     await flush();
 
     root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
@@ -1368,12 +1231,8 @@ function deferred<Value>() {
     await flush();
     expect(root.textContent).toContain("Device writes enabled");
 
-    root.querySelector<HTMLElement>('[data-hardware-key="0:0"]')?.click();
-    await flush();
     root.querySelector<HTMLInputElement>("[data-write-confirm]")!.checked = true;
-    const input = root.querySelector<HTMLInputElement>("[data-write-keycode]")!;
-    input.value = "0046";
-    root.querySelector<HTMLElement>("[data-device-write-key]")?.click();
+    root.querySelector<HTMLElement>("[data-write-keymap]")?.click();
     await flush();
 
     expect(writeKeycode).not.toHaveBeenCalled();
@@ -1422,6 +1281,23 @@ function deferred<Value>() {
     expect(
       root.querySelector<HTMLButtonElement>("[data-build-run]")?.disabled,
     ).toBe(true);
+  });
+
+  it("does not claim qmk is missing when no doctor report is loaded", async () => {
+    const root = document.createElement("div");
+    createApp(root, {
+      discoverBrowserKeyboard: async () => recognizedSelection(async () => availableSnapshot()),
+      doctorReportLoader: async () => null,
+    });
+    await flush();
+    root.querySelector<HTMLElement>('[data-view="firmware"]')?.click();
+    await flush();
+
+    expect(root.textContent).toContain(
+      "Local build status is unknown; no doctor report is loaded.",
+    );
+    expect(root.textContent).not.toContain("not installed on this machine");
+    expect(root.textContent).not.toContain("Missing qmk");
   });
 
   it("runs a local build through the injected runner and shows the outcome", async () => {
