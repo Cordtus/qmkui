@@ -818,8 +818,11 @@ export function createActions(
                 // readout beside the new write result.
                 readLightingNow();
               })
-              .catch(() => {
-                noteWriteStatus(state, "Lighting write failed.");
+              .catch((error) => {
+                noteWriteStatus(
+                  state,
+                  `Lighting write failed: ${error instanceof Error ? error.message : "unknown error"}.`,
+                );
                 actions.render();
               });
           },
@@ -846,8 +849,11 @@ export function createActions(
                 noteWriteStatus(state, "RGB-matrix lighting saved to device EEPROM.");
                 actions.render();
               })
-              .catch(() => {
-                noteWriteStatus(state, "Lighting save failed.");
+              .catch((error) => {
+                noteWriteStatus(
+                  state,
+                  `Lighting save failed: ${error instanceof Error ? error.message : "unknown error"}.`,
+                );
                 actions.render();
               });
           },
@@ -888,8 +894,11 @@ export function createActions(
                 );
                 actions.render();
               })
-              .catch(() => {
-                noteWriteStatus(state, `Keymap write failed at entry ${index} of ${writes.entries.length}.`);
+              .catch((error) => {
+                noteWriteStatus(
+                  state,
+                  `Keymap write failed at entry ${index} of ${writes.entries.length}: ${error instanceof Error ? error.message : "unknown error"}.`,
+                );
                 actions.render();
               });
           },
