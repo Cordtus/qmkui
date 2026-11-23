@@ -292,10 +292,6 @@ export function lightingPanel(
   const showBoardLighting = rgbSystem?.capability.support !== "unsupported";
   const effects = rgbMatrixEffectsFor(state.keyboard.qmkKeyboard);
   const base = illuminationBase(state.hardwareSnapshot);
-  const currentEffect =
-    base?.effect === undefined
-      ? undefined
-      : (effects.find((effect) => effect.id === base.effect)?.name ?? `Effect ${base.effect}`);
   const context = buildSelectedKeyContext(
     state.project,
     layout.keys,
@@ -415,7 +411,7 @@ export function lightingPanel(
       element("span", {
         className: "hint",
         text: base
-          ? `Board lighting read: ${base.source}${currentEffect ? ` · ${currentEffect}` : ""}`
+          ? `Board lighting read: ${base.source}`
           : "No board lighting read; using profile/default values.",
       }),
       resyncLightingButton(actions, canResyncLighting(state)),
