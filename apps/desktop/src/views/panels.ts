@@ -2,7 +2,7 @@ import { EditorState, RenderActions, activeLightingProfile, bundledKeyboards, cu
 import { BuildPlan, createBuildPlan } from "../buildPlan";
 import { BuildStep } from "../buildService";
 import { firmwareBundleFileName } from "../firmwareBundle";
-import { CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, LightingRuleTrigger, UiIssue, validateProject } from "../domain";
+import { CommandStatus, DetectedKeyboard, KeyboardDefinition, LightingProfile, UiIssue, validateProject } from "../domain";
 import { illuminationBase, type IlluminationBase } from "../illumination";
 import { DEFAULT_BOARD_COLOR, boardColor, buildSelectedKeyContext, lightingForKey } from "../keyDetails";
 import { HostKeyCapture } from "../keyTester";

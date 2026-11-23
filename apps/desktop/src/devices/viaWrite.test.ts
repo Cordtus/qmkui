@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { RGB_MATRIX_BRIGHTNESS, RGB_MATRIX_CHANNEL, ViaWriteProtocol, ViaWriteProtocolError } from "./viaWrite";
+import { RGB_MATRIX_BRIGHTNESS, RGB_MATRIX_CHANNEL, ViaWriteProtocol } from "./viaWrite";
 import type { ViaReadTransport } from "./viaReadProtocol";
 
 function createTransport() {

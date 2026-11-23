@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  KeychronV5MaxProtocolError,
   verifyKeychronV5MaxProtocolVersion,
   type KeychronV5MaxProtocolDevice,
 } from "./keychronV5MaxProtocol";
