@@ -5,13 +5,13 @@
 //! Usage:
 //!   cargo run -p qmkui-hid --bin protocol-check -- [fixtures-dir]
 
+use qmkui_hid::fixture_support::{RecordingTransport, SequentialTransport, VectorTransport};
 use qmkui_hid::keychron_v5::KeychronV5Reader;
-use qmkui_hid::transport::{HidError, HidTransport, REPORT_LENGTH};
+use qmkui_hid::transport::REPORT_LENGTH;
 use qmkui_hid::via::{KeymapDimensions, ViaReadProtocol};
 use qmkui_hid::via_write::{RgbMatrixLighting, ViaWriteProtocol};
 use qmkui_hid::{allowlist_snapshot, is_read_only_keychron_command, is_read_only_via_command};
 use serde_json::Value;
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 fn main() {
@@ -142,7 +142,7 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
     {
         return Err("v5-lighting.json: RGB state decode mismatch".into());
     }
-    let mut keymap = ViaReadProtocol::new(SequentialTransport { next: 1 });
+    let mut keymap = ViaReadProtocol::new(SequentialTransport::new());
     let keymap = keymap.read_via_keymap(KeymapDimensions {
         layer_count: 1,
         rows: 1,
@@ -187,7 +187,7 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
     })?;
     writer.save_rgb_matrix_eeprom()?;
     let writes = writer.into_inner();
-    let frames = &writes.frames;
+    let frames = writes.frames.borrow();
     if frames.len() != 6 {
         return Err(format!("expected 6 write frames, got {}", frames.len()).into());
     }
@@ -211,7 +211,7 @@ fn run(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
         "viaReadCommands": read_commands,
         "keychronReadCommands": keychron_commands,
         "viaWriteCommands": write_commands,
-        "writeFrames": writes.frames.len(),
+        "writeFrames": frames.len(),
     })
     .to_string())
 }
@@ -345,67 +345,6 @@ fn bytes(value: &Value, key: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>
                 .ok_or_else(|| "vector byte is out of range".into())
         })
         .collect()
-}
-
-struct VectorTransport {
-    by_request: BTreeMap<Vec<u8>, Vec<u8>>,
-}
-
-impl VectorTransport {
-    fn from_dir(dir: &Path, name: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut by_request = BTreeMap::new();
-        for entry in read_vectors(dir, name)? {
-            by_request.insert(bytes(&entry, "request")?, bytes(&entry, "response")?);
-        }
-        Ok(Self { by_request })
-    }
-}
-
-impl HidTransport for VectorTransport {
-    fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        let request = qmkui_hid::transport::build_report(command, payload);
-        self.by_request
-            .get(&request)
-            .cloned()
-            .ok_or(HidError::ResponseMismatch)
-    }
-}
-
-#[derive(Default)]
-struct SequentialTransport {
-    next: u16,
-}
-
-impl HidTransport for SequentialTransport {
-    fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        let mut report = vec![0u8; REPORT_LENGTH];
-        report[0] = command;
-        report[1..1 + payload.len()].copy_from_slice(payload);
-        match command {
-            0x11 => report[1] = 1,
-            0x04 => {
-                let keycode = self.next;
-                self.next += 1;
-                report[4] = (keycode >> 8) as u8;
-                report[5] = (keycode & 0xff) as u8;
-            }
-            _ => return Err(HidError::ResponseMismatch),
-        }
-        Ok(report)
-    }
-}
-
-#[derive(Default)]
-struct RecordingTransport {
-    frames: Vec<Vec<u8>>,
-}
-
-impl HidTransport for RecordingTransport {
-    fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        let frame = qmkui_hid::transport::build_report(command, payload);
-        self.frames.push(frame.clone());
-        Ok(frame)
-    }
 }
 
 #[cfg(test)]

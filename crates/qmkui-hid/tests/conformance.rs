@@ -3,70 +3,16 @@
 //! TypeScript readers; a failure here is a corpus or decoder bug, not a mock
 //! artifact.
 
+use qmkui_hid::fixture_support::{SequentialTransport, VectorTransport};
 use qmkui_hid::keychron_v5::KeychronV5Reader;
 use qmkui_hid::transport::HidError;
 use qmkui_hid::via::{KeymapDimensions, ViaReadProtocol};
 use qmkui_hid::HidTransport;
-use serde_json::Value;
-use std::collections::BTreeMap;
-
-fn read_vectors(file: &str) -> Vec<Value> {
-    let contents = std::fs::read_to_string(format!(
-        "{}/../../fixtures/protocol/{}",
-        env!("CARGO_MANIFEST_DIR"),
-        file
-    ))
-    .expect("vector file readable");
-    serde_json::from_str(&contents).expect("vector file valid")
-}
-
-fn response_bytes(entry: &Value) -> Vec<u8> {
-    entry["response"]
-        .as_array()
-        .expect("response array")
-        .iter()
-        .map(|value| value.as_u64().expect("byte") as u8)
-        .collect()
-}
-
-/// Serves fixture responses keyed by the full request frame, so multi-command
-/// readers (and the four `0x08` custom-get-value channel-3 lighting vectors)
-/// receive the correct response for each request.
-struct VectorTransport {
-    by_request: BTreeMap<Vec<u8>, Vec<u8>>,
-}
-
-impl VectorTransport {
-    fn from_vectors(file: &str) -> Self {
-        let mut by_request = BTreeMap::new();
-        for entry in read_vectors(file) {
-            let request: Vec<u8> = entry["request"]
-                .as_array()
-                .expect("request array")
-                .iter()
-                .map(|value| value.as_u64().expect("byte") as u8)
-                .collect();
-            by_request.insert(request, response_bytes(&entry));
-        }
-        Self { by_request }
-    }
-}
-
-impl HidTransport for VectorTransport {
-    fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        let mut request = vec![0u8; 32];
-        request[0] = command;
-        request[1..1 + payload.len()].copy_from_slice(payload);
-        self.by_request
-            .get(&request)
-            .cloned()
-            .ok_or(HidError::ResponseMismatch)
-    }
-}
 
 #[test]
 fn replays_via_vectors() {
-    let transport = VectorTransport::from_vectors("via-commands.json");
+    let transport =
+        VectorTransport::from_manifest_fixture("via-commands.json").expect("via fixtures");
     let mut via = ViaReadProtocol::new(transport);
     assert_eq!(via.get_protocol_version().expect("protocol"), 12);
     assert_eq!(via.get_layer_count().expect("layers"), 4);
@@ -77,14 +23,16 @@ fn replays_via_vectors() {
 
 #[test]
 fn replays_v5_identity_vectors() {
-    let transport = VectorTransport::from_vectors("v5-identity.json");
+    let transport =
+        VectorTransport::from_manifest_fixture("v5-identity.json").expect("identity fixtures");
     let mut reader = KeychronV5Reader::new(transport);
     let identity = reader.read_identity().expect("identity");
     assert_eq!(identity.protocol_version, [2, 0, 2]);
     assert_eq!(identity.firmware_version, "v1.0.0");
     assert_eq!(identity.default_layer, 2);
 
-    let transport = VectorTransport::from_vectors("v5-identity.json");
+    let transport =
+        VectorTransport::from_manifest_fixture("v5-identity.json").expect("identity fixtures");
     let mut reader = KeychronV5Reader::new(transport);
     let caps = reader.read_capabilities().expect("capabilities");
     assert_eq!(caps.feature_bitmap, [0x00, 0x81]);
@@ -92,7 +40,8 @@ fn replays_v5_identity_vectors() {
 
 #[test]
 fn replays_v5_keymap_vector() {
-    let transport = VectorTransport::from_vectors("v5-keymap.json");
+    let transport =
+        VectorTransport::from_manifest_fixture("v5-keymap.json").expect("keymap fixtures");
     let mut via = ViaReadProtocol::new(transport);
     assert_eq!(via.get_keycode(2, 0, 15).expect("keycode"), 0x0046);
 }
@@ -101,7 +50,8 @@ fn replays_v5_keymap_vector() {
 fn replays_v5_lighting_vectors() {
     // V5 lighting is standard VIA RGB-matrix channel 3, not the Keychron 0xa8
     // protocol (which the firmware answers with id_unhandled).
-    let transport = VectorTransport::from_vectors("v5-lighting.json");
+    let transport =
+        VectorTransport::from_manifest_fixture("v5-lighting.json").expect("lighting fixtures");
     let mut via = ViaReadProtocol::new(transport);
     let state = via.read_rgb_matrix_state().expect("rgb matrix state");
     assert_eq!(
@@ -118,9 +68,7 @@ fn replays_v5_lighting_vectors() {
 
 #[test]
 fn read_via_keymap_reads_all_positions() {
-    let transport = SequentialTransport {
-        next_keycode: std::cell::Cell::new(1),
-    };
+    let transport = SequentialTransport::new();
     let mut via = ViaReadProtocol::new(transport);
     let keymap = via
         .read_via_keymap(KeymapDimensions {
@@ -174,7 +122,9 @@ fn read_via_macros_returns_empty_when_disabled() {
 
 #[test]
 fn read_helpers_decode_keyboard_values_and_encoders() {
-    let mut via = ViaReadProtocol::new(VectorTransport::from_vectors("via-commands.json"));
+    let mut via = ViaReadProtocol::new(
+        VectorTransport::from_manifest_fixture("via-commands.json").expect("via fixtures"),
+    );
     assert_eq!(via.get_uptime().expect("uptime"), 0x0102_0304);
     assert_eq!(via.get_layout_options().expect("layout options"), 3);
     assert_eq!(via.get_firmware_version().expect("firmware"), 0x0001_0002);
@@ -187,14 +137,18 @@ fn read_helpers_decode_keyboard_values_and_encoders() {
 
 #[test]
 fn replays_the_dynamic_keymap_and_macro_buffer_vectors() {
-    let mut via = ViaReadProtocol::new(VectorTransport::from_vectors("via-commands.json"));
+    let mut via = ViaReadProtocol::new(
+        VectorTransport::from_manifest_fixture("via-commands.json").expect("via fixtures"),
+    );
     assert_eq!(
         via.get_dynamic_keymap_buffer(0x0456, 2)
             .expect("dynamic buffer"),
         vec![0xca, 0xfe]
     );
 
-    let mut via = ViaReadProtocol::new(VectorTransport::from_vectors("via-commands.json"));
+    let mut via = ViaReadProtocol::new(
+        VectorTransport::from_manifest_fixture("via-commands.json").expect("via fixtures"),
+    );
     assert_eq!(
         via.get_macro_buffer(0, 4).expect("macro buffer"),
         vec![0x68, 0x69, 0x00, 0x00]
@@ -203,7 +157,9 @@ fn replays_the_dynamic_keymap_and_macro_buffer_vectors() {
 
 #[test]
 fn dynamic_keymap_buffer_rejects_an_empty_or_oversized_chunk() {
-    let mut via = ViaReadProtocol::new(VectorTransport::from_vectors("via-commands.json"));
+    let mut via = ViaReadProtocol::new(
+        VectorTransport::from_manifest_fixture("via-commands.json").expect("via fixtures"),
+    );
     assert!(matches!(
         via.get_dynamic_keymap_buffer(0, 0),
         Err(HidError::InvalidRequest)
@@ -255,27 +211,6 @@ impl HidTransport for MacroTransport {
                 }
             }
             _ => return Err(HidError::ResponseMismatch),
-        }
-        Ok(report)
-    }
-}
-
-struct SequentialTransport {
-    next_keycode: std::cell::Cell<u16>,
-}
-
-impl HidTransport for SequentialTransport {
-    fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        let mut report = vec![0u8; 32];
-        report[0] = command;
-        report[1..1 + payload.len()].copy_from_slice(payload);
-        if command == 0x11 {
-            report[1] = 1; // layer count
-        } else if command == 0x04 {
-            let keycode = self.next_keycode.get();
-            self.next_keycode.set(keycode + 1);
-            report[4] = (keycode >> 8) as u8;
-            report[5] = (keycode & 0xff) as u8;
         }
         Ok(report)
     }

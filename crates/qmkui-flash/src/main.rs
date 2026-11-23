@@ -15,11 +15,22 @@ use qmkui_build::runner::SystemCommandRunner;
 use qmkui_flash::adapter::{prepare_keymap, retain_log, run_flash, QmkOutput};
 use qmkui_flash::bootloader;
 use qmkui_flash::bundle::{crc32, read_bundle, MAX_ARCHIVE_SIZE};
+use qmkui_flash::events::{run_flash_session, CancelToken, FlashEvent};
 use qmkui_flash::request::{FlashRequest, FlashStatus};
 use qmkui_flash::FlashError;
 use std::env;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+static INTERRUPTED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(unix)]
+extern "C" fn handle_interrupt(_signal: libc::c_int) {
+    INTERRUPTED.store(true, Ordering::SeqCst);
+}
 
 const USAGE: &str = "\
 qmkui-flash — flash a QMKUI firmware bundle
@@ -40,8 +51,8 @@ Options:
   -h, --help            Show this help
 
 Bootloader families: stm32-dfu, atmel-dfu
-Exit codes: 0 success, 2 usage/IO, 3 no unique bootloader device, 4 refused
-or flash failed.
+Exit codes: 0 success, 2 usage/IO, 3 no unique bootloader device, 4 refused,
+cancelled, or flash failed.
 ";
 
 struct Args {
@@ -211,20 +222,7 @@ fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Er
         println!("previous keymap kept at {}", backup.display());
     }
 
-    let mut runner = SystemCommandRunner;
-    // The CLI has no separate project state. Its gate is the exact
-    // --confirm target, the keyboard's declared bootloader family, and one
-    // unique bootloader device; the request digest is recorded provenance.
-    let result = run_flash(
-        &prepared,
-        &request,
-        None,
-        Some(&detected.identity),
-        Some(spec.family),
-        &mut runner,
-    );
-
-    let mut log = vec![
+    let mut header = vec![
         format!("target: {} ({})", args.keyboard, args.keymap),
         format!("bundle: {} sha256 {sha256}", args.bundle.display()),
         format!(
@@ -236,11 +234,69 @@ fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Er
             args.keyboard
         ),
     ];
-    log.extend(result.log.iter().cloned());
-    for line in &log {
+    for line in &header {
         println!("{line}");
     }
-    match retain_log(&args.log_dir, &log) {
+
+    // The CLI has no separate project state. Its gate is the exact
+    // --confirm target, the keyboard's declared bootloader family, and one
+    // unique bootloader device; the request digest is recorded provenance.
+    let result = if std::io::stdin().is_terminal() {
+        INTERRUPTED.store(false, Ordering::SeqCst);
+        #[cfg(unix)]
+        unsafe {
+            libc::signal(libc::SIGINT, handle_interrupt as libc::sighandler_t);
+            libc::signal(libc::SIGTERM, handle_interrupt as libc::sighandler_t);
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        eprintln!("Press Enter or Ctrl-C to cancel the flash. Cancelling during a write can leave the board in bootloader mode.");
+        let signal = cancel.clone();
+        std::thread::spawn(move || {
+            let mut line = String::new();
+            if std::io::stdin().read_line(&mut line).is_ok() {
+                signal.store(true, Ordering::SeqCst);
+            }
+        });
+        run_flash_session(
+            &prepared,
+            &request,
+            None,
+            Some(&detected.identity),
+            Some(spec.family),
+            CancelToken {
+                requested: cancel,
+                interrupt: &INTERRUPTED,
+            },
+            |event| match event {
+                FlashEvent::Started { command } => println!("running {command}"),
+                FlashEvent::Stdout(line) => println!("out  {line}"),
+                FlashEvent::Stderr(line) => eprintln!("err  {line}"),
+                FlashEvent::Exited { code } => match code {
+                    Some(code) => println!("qmk flash exited with code {code}"),
+                    None => println!("qmk flash was terminated by a signal"),
+                },
+                FlashEvent::Blocked(reason) => eprintln!("qmkui-flash: {reason}"),
+                FlashEvent::Cancelled => eprintln!("qmkui-flash: cancelled by operator"),
+                FlashEvent::Failed(reason) => eprintln!("qmkui-flash: {reason}"),
+            },
+        )
+    } else {
+        let mut runner = SystemCommandRunner;
+        let result = run_flash(
+            &prepared,
+            &request,
+            None,
+            Some(&detected.identity),
+            Some(spec.family),
+            &mut runner,
+        );
+        for line in &result.log {
+            println!("{line}");
+        }
+        result
+    };
+    header.extend(result.log.iter().cloned());
+    match retain_log(&args.log_dir, &header) {
         Ok(path) => println!("log kept at {}", path.display()),
         Err(error) => eprintln!("qmkui-flash: could not keep the log: {error}"),
     }
@@ -251,6 +307,10 @@ fn run(args: impl Iterator<Item = String>) -> Result<i32, Box<dyn std::error::Er
                 "flash complete. Unplug and reconnect, then test every key in QMKUI's Device view."
             );
             Ok(0)
+        }
+        FlashStatus::Cancelled => {
+            eprintln!("qmkui-flash: flash cancelled.");
+            Ok(4)
         }
         FlashStatus::Failed | FlashStatus::Blocked => {
             eprintln!("qmkui-flash: flash did not complete.");

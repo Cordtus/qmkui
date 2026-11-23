@@ -35,6 +35,7 @@ pub enum FlashStatus {
     Success,
     Failed,
     Blocked,
+    Cancelled,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

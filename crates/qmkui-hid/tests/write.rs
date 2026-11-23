@@ -2,35 +2,9 @@
 //! these assert the set-keycode, lighting, and save-EEPROM frames against the
 //! protocol contract.
 
+use qmkui_hid::fixture_support::RecordingTransport;
 use qmkui_hid::transport::{HidError, HidTransport};
 use qmkui_hid::via_write::{RgbMatrixLighting, ViaWriteProtocol};
-use std::cell::RefCell;
-use std::rc::Rc;
-
-#[derive(Clone)]
-struct RecordingTransport {
-    frames: Rc<RefCell<Vec<Vec<u8>>>>,
-}
-
-impl RecordingTransport {
-    fn new() -> Self {
-        Self {
-            frames: Rc::new(RefCell::new(Vec::new())),
-        }
-    }
-}
-
-impl HidTransport for RecordingTransport {
-    fn request(&mut self, command: u8, payload: &[u8]) -> Result<Vec<u8>, HidError> {
-        let mut report = vec![0u8; 32];
-        report[0] = command;
-        for (index, byte) in payload.iter().take(31).enumerate() {
-            report[1 + index] = *byte;
-        }
-        self.frames.borrow_mut().push(report.clone());
-        Ok(report)
-    }
-}
 
 #[test]
 fn set_keycode_emits_the_via_frame() {

@@ -8,10 +8,12 @@
 pub mod adapter;
 pub mod bootloader;
 pub mod bundle;
+pub mod events;
 pub mod policy;
 pub mod request;
 
 pub use adapter::{prepare_keymap, retain_log, run_flash, PreparedFlash, QmkOutput};
+pub use events::{run_flash_session, CancelToken, FlashEvent};
 pub use policy::{assess_request, assess_target, PolicyVerdict};
 pub use request::{DeviceIdentity, FlashRequest, FlashResult, FlashStatus, FlashTarget};
 

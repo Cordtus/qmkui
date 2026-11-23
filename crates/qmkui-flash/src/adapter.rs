@@ -138,7 +138,9 @@ pub fn prepare_keymap(output: &QmkOutput, bundle: &[u8]) -> Result<PreparedFlash
 }
 
 /// Runs the prepared command after re-assessing the policy. A blocked request
-/// never reaches the runner.
+/// never reaches the runner. This is the blocking fallback for non-interactive
+/// CLI runs and library/test callers; use [`crate::events::run_flash_session`]
+/// when output streaming or cancellation is needed.
 pub fn run_flash<R: CommandRunner>(
     prepared: &PreparedFlash,
     request: &FlashRequest,
@@ -147,18 +149,14 @@ pub fn run_flash<R: CommandRunner>(
     detected_bootloader: Option<&str>,
     runner: &mut R,
 ) -> FlashResult {
-    let verdict = match current_project_digest {
-        Some(digest) => assess_request(request, digest, detected_device, detected_bootloader),
-        None => crate::policy::assess_target(request, detected_device, detected_bootloader),
-    };
-    if let PolicyVerdict::Blocked { reason } = verdict {
-        return blocked_result(prepared, reason);
-    }
-    if prepared.sha256 != request.target.firmware_sha256 {
-        return blocked_result(
-            prepared,
-            "Staged files do not match the request digest.".to_owned(),
-        );
+    if let Some(blocked) = preflight(
+        prepared,
+        request,
+        current_project_digest,
+        detected_device,
+        detected_bootloader,
+    ) {
+        return blocked;
     }
 
     let mut log = vec![format!(
@@ -191,9 +189,33 @@ pub fn run_flash<R: CommandRunner>(
     }
 }
 
+/// Policy and staged-digest gate shared by the blocking and streamed paths.
+pub(crate) fn preflight(
+    prepared: &PreparedFlash,
+    request: &FlashRequest,
+    current_project_digest: Option<&str>,
+    detected_device: Option<&DeviceIdentity>,
+    detected_bootloader: Option<&str>,
+) -> Option<FlashResult> {
+    let verdict = match current_project_digest {
+        Some(digest) => assess_request(request, digest, detected_device, detected_bootloader),
+        None => crate::policy::assess_target(request, detected_device, detected_bootloader),
+    };
+    if let PolicyVerdict::Blocked { reason } = verdict {
+        return Some(blocked_result(prepared, reason));
+    }
+    if prepared.sha256 != request.target.firmware_sha256 {
+        return Some(blocked_result(
+            prepared,
+            "Staged files do not match the request digest.".to_owned(),
+        ));
+    }
+    None
+}
+
 /// Rolls a blocked request back: removes the staged keymap and restores the
 /// previous directory. A flash failure keeps the staged keymap for retry.
-fn blocked_result(prepared: &PreparedFlash, reason: String) -> FlashResult {
+pub(crate) fn blocked_result(prepared: &PreparedFlash, reason: String) -> FlashResult {
     let mut log = vec![reason];
     match &prepared.backup_dir {
         Some(backup) => {

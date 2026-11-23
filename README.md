@@ -103,7 +103,10 @@ matrix is off. The browser app does not build or flash firmware; the native
 
 **Download firmware** produces a zip with the keymap and lighting overlay. Put
 the board in bootloader mode, then use the native adapter (QMK CLI and
-`dfu-util` installed):
+`dfu-util` installed). The adapter streams `qmk flash` output and, on a
+terminal, accepts Enter or Ctrl-C to cancel. Cancelling during the write can
+leave the board in bootloader mode or partially written; re-run the flash and
+do not unplug mid-write:
 
 ```sh
 cargo run -p qmkui-flash --release -- --bundle ~/Downloads/my-board-firmware.zip \
@@ -132,7 +135,7 @@ the target, detected identity, bootloader family and bundle sha256 under
 bootloader mode, so it never flashes by itself.
 
 Exit codes: `0` success, `2` usage/IO, `3` no unique bootloader device, `4`
-refused or flash failed.
+refused, cancelled, or flash failed.
 
 ## Safety model
 
